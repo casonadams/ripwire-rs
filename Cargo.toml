@@ -1,6 +1,6 @@
 [package]
 name = "ripwire-rs"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 authors = ["Cason Adams", "David Brewster (ripwire, https://github.com/redhat-et/ripwire)"]
 description = "High-throughput agent context router and deterministic static analysis engine"
