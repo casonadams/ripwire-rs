@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.4](https://github.com/casonadams/ripwire-rs/compare/v0.5.3...v0.5.4) (2026-10-18)
+
+
+### Features
+
+* **analysis:** close parity gaps in slicing, C++ extraction, pagination, and map ranking ([64a2639](https://github.com/casonadams/ripwire-rs/commit/64a2639c4d7f2d0a7af25fae4e208ac75ec1e657))
+* **analysis:** unify corpus traits and improve cross-repo graph accuracy ([48c254c](https://github.com/casonadams/ripwire-rs/commit/48c254c2ff15a3ca9495cfb501003cabd7065840))
+* **deps:** resolve Rust mod edges and super paths, and unify Flags/StrayContent/Mentions onto XmlReport ([e6f8f1b](https://github.com/casonadams/ripwire-rs/commit/e6f8f1b5b0e14ef7fbb60412f5498457641db978))
+* **graph:** resolve polymorphic trait calls, trace file:line frames, and paginate match hits ([f8b2cbd](https://github.com/casonadams/ripwire-rs/commit/f8b2cbdabbc32499dc2551e847bc440201f82490))
+* **ingest,navigate,gate:** improve knowledge precision and trait ergonomics across lenses ([a175fb9](https://github.com/casonadams/ripwire-rs/commit/a175fb9efbb8ee80f6d6d91c5594a8ce1b27d918))
+* **languages:** tighten multi-language stdlib qualifiers and Dart AST extraction ([06ec114](https://github.com/casonadams/ripwire-rs/commit/06ec114ab60632d2a932f5b044e1023f98ed0757))
+* **navigate:** close parity gaps on impact importers, doc-drift, C++ uses, and task budgets ([2946c5e](https://github.com/casonadams/ripwire-rs/commit/2946c5eca5094082fd9104c6f3f5a43611113de9))
+* **navigate:** support qualified uses, lego method contracts, and generic workspace imports ([da8a0ed](https://github.com/casonadams/ripwire-rs/commit/da8a0ed3b2136a35fd4fe5c5ac783e662458601f))
+* **resolve:** add ResolutionLookup trait, C-family macro blanking, and std-member gates ([e1b70d8](https://github.com/casonadams/ripwire-rs/commit/e1b70d8eb51a4ed643e9533af8bab58db51a4c89))
+* **resolve:** tighten std/builtin call binding, entry filtering, and task ranking ([8541007](https://github.com/casonadams/ripwire-rs/commit/854100722e4e3f22c9b1916d4e103170a3f6d240))
+* **resolve:** triage unresolved calls, extract C++ attribute methods, and refine doc-drift ([1ba9d00](https://github.com/casonadams/ripwire-rs/commit/1ba9d008f1a88dc5d6981d14241c7d78b636dfea))
+* **retrieval,slice,resolve:** close parity gaps in signature spans, task lens, slice context, and disambiguation ([b45ca9c](https://github.com/casonadams/ripwire-rs/commit/b45ca9c5c57da61ff3f35b09a6b94067103a8743))
+* **serialize:** add PathLayerExt and GitStampExt traits, layer() query filter, and exemplar callee signatures ([74c1fe8](https://github.com/casonadams/ripwire-rs/commit/74c1fe881989f690a07e86701b1e97a4fcca5b4f))
+* **serialize:** add PathLayerExt::write_layer_attr, stream XML serializers, and report files_unlisted in --tree ([9cb62e6](https://github.com/casonadams/ripwire-rs/commit/9cb62e692e38265d4b9a5c2ce880949aeb514e78))
+* **serialize:** close cross-repo XML parity and knowledge gaps via report traits ([ef012ff](https://github.com/casonadams/ripwire-rs/commit/ef012ffba24b67472951cd0b6b39d916a887f2a7))
+
+
+### Bug Fixes
+
+* **handoff,retrieval,metrics:** emit detached HEAD attribute and improve cross-repo lens precision ([55d4207](https://github.com/casonadams/ripwire-rs/commit/55d4207c2b54529eb009032d105e1419c822613d))
+
+
+### Performance Improvements
+
+* **metrics:** make hotspot symbol aggregation O(F+S) and simplify CorpusView lookups ([16ce361](https://github.com/casonadams/ripwire-rs/commit/16ce361fee5d0c38e3b5e69ca2f396bb0c628336))
+
 ## [0.5.3](https://github.com/casonadams/ripwire-rs/compare/v0.5.2...v0.5.3) (2026-10-17)
 
 
