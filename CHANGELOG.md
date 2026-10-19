@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.5](https://github.com/casonadams/ripwire-rs/compare/v0.5.4...v0.5.5) (2026-10-19)
+
+
+### Features
+
+* **cli,parity:** add --stable, body compression, notebook recall, and skill injection rules ([84599d7](https://github.com/casonadams/ripwire-rs/commit/84599d7d1309f07f05144427e399685b00ec1d01))
+* **ingest:** enforce tags.scm capture gates and ripwire-rs protocol naming ([fa24420](https://github.com/casonadams/ripwire-rs/commit/fa244203ad5028d35721d7fa985242089234c41f))
+* **languages:** split into per-language trait modules and add 5-layer graph protocol suite ([f635e4c](https://github.com/casonadams/ripwire-rs/commit/f635e4cc7d00cb4dfe830fcb07c3b5055373e186))
+
+
+### Bug Fixes
+
+* **parity:** allow count-dependent rows_next fold attribute in validate-parity ([c5f458e](https://github.com/casonadams/ripwire-rs/commit/c5f458e9879e73b849b28d3bb2223bf9d3da3614))
+
 ## [0.5.4](https://github.com/casonadams/ripwire-rs/compare/v0.5.3...v0.5.4) (2026-10-18)
 
 
