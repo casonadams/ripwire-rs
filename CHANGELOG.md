@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.1](https://github.com/casonadams/ripwire-rs/compare/v0.6.0...v0.6.1) (2026-10-19)
+
+
+### Features
+
+* **orchestration:** port multi-agent orchestration algorithms and add 7th workflow ([eba7def](https://github.com/casonadams/ripwire-rs/commit/eba7def8b5f57e956efe8a1530b07922fa762cf1))
+
+
+### Bug Fixes
+
+* **gate:** cover load_revision_baseline_incremental on clean worktree and reduce CRAP ([8ff8fb5](https://github.com/casonadams/ripwire-rs/commit/8ff8fb54e969e21c0abf76805d0cde4a2f149e94))
+
 ## [0.6.0](https://github.com/casonadams/ripwire-rs/compare/v0.5.5...v0.6.0) (2026-10-19)
 
 
