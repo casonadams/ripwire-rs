@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/casonadams/ripwire-rs/compare/v0.5.5...v0.6.0) (2026-10-19)
+
+
+### Features
+
+* **dist,docs:** add APT/RPM release packaging, docs/INSTALL.md, and update www pages ([89c1aa5](https://github.com/casonadams/ripwire-rs/commit/89c1aa5e598d285649e0e5ef017b3a32720f59c2))
+
+
+### Documentation
+
+* **readme,agents:** align design principles and 6 core workflows ([1f25aae](https://github.com/casonadams/ripwire-rs/commit/1f25aae25a20377a3130562560fbe8681fba8fef))
+
 ## [0.5.5](https://github.com/casonadams/ripwire-rs/compare/v0.5.4...v0.5.5) (2026-10-19)
 
 
