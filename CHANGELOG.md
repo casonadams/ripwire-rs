@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.6.2](https://github.com/casonadams/ripwire-rs/compare/v0.6.1...v0.6.2) (2026-10-21)
+
+
+### Features
+
+* **affected:** add partner-named tests to --affected and --test-gate ([692f637](https://github.com/casonadams/ripwire-rs/commit/692f63789bd9c856ae4ef87414acddb85a2b815e))
+* **cli:** accept remote git URLs as the root ([5a46c5e](https://github.com/casonadams/ripwire-rs/commit/5a46c5e9bb2fc684602573ace6d3a78c3ce4aa5f))
+* **cli:** add rw binary shorthand alongside ripwire-rs ([f94ff93](https://github.com/casonadams/ripwire-rs/commit/f94ff9394d7209b1e65d2f511719ec48c59ff004))
+* **gate:** real --test-gate report, test runners, language hooks ([1a8effd](https://github.com/casonadams/ripwire-rs/commit/1a8effd12e13c752467101a5a47b408adf0b6974))
+* **languages:** add BrightScript, Fortran, and COBOL support (39 languages) ([b808cbc](https://github.com/casonadams/ripwire-rs/commit/b808cbcaeacba2cc9a61a45971d16a7f301df208))
+* **languages:** resolve TS/JS imports through tsconfig paths aliases ([c2ba34e](https://github.com/casonadams/ripwire-rs/commit/c2ba34ed60fcef07ef29ae08c803e3d9c582ea49))
+
+
+### Bug Fixes
+
+* **ci:** handle shallow history in coverage and doctor parity on CI ([918c5b6](https://github.com/casonadams/ripwire-rs/commit/918c5b6b48f65aa1e02299fc11d791dc961f2578)), closes [#17](https://github.com/casonadams/ripwire-rs/issues/17)
+* close --at, --tree, --whereis and --test-gate parity gaps ([0a8efd1](https://github.com/casonadams/ripwire-rs/commit/0a8efd1af7bfe036eb7882f51d6f59267f9778d4))
+* **crawler:** index dot paths like upstream; skip generated files ([b9e69f9](https://github.com/casonadams/ripwire-rs/commit/b9e69f9dde22f63e2091949bd356a9c8529d33d6))
+* **doctor:** report total supported languages (39) in tree-sitter check ([a15fccf](https://github.com/casonadams/ripwire-rs/commit/a15fccf66dc805c61b836fe143062ae315f0820b))
+* **doctor:** run nine real setup checks instead of a hardcoded pass ([c27c4ae](https://github.com/casonadams/ripwire-rs/commit/c27c4ae446472d16e26411ea719159087c526e8c))
+* **edit-check:** emit every caller row and honor --limit/--offset ([4afaecb](https://github.com/casonadams/ripwire-rs/commit/4afaecba2df935e61be829f4c88334176f8b344d))
+* **flags,mentions:** scan CI workflows; read docs by language ([2e4848a](https://github.com/casonadams/ripwire-rs/commit/2e4848ac4a9738d1af2049466f7a41f40a6a9ad9))
+* **flags:** match upstream env-read and settings-gate extraction ([960f8e3](https://github.com/casonadams/ripwire-rs/commit/960f8e31db4ae0c015acaccc6f2140d4265f94f0))
+* **git:** run every git subprocess with core.fsmonitor=false ([8ed9535](https://github.com/casonadams/ripwire-rs/commit/8ed9535eb38ff0a7d3fd29d2e9668a8a09fe94d6))
+* **impact:** list only real import edges as importers ([acfa3cf](https://github.com/casonadams/ripwire-rs/commit/acfa3cf00e808786243cf163ce8e1fe91e4436ae))
+* **ingest:** attribute top-level references to a per-file &lt;file-scope&gt; owner ([b775ad0](https://github.com/casonadams/ripwire-rs/commit/b775ad00d59c90f40b8e2d9881d59b70150496f8))
+* **ingest:** calls through a parameter never bind to a global ([84cc5c7](https://github.com/casonadams/ripwire-rs/commit/84cc5c7b009655539825419d9a598b6b1bca13c8))
+* **ingest:** qualify calls through lowercase module aliases ([0bcc8fc](https://github.com/casonadams/ripwire-rs/commit/0bcc8fc004851d4730806007fa836b04274d987f))
+* **navigate:** page --callers/--callees; honest --grep enclosing rows ([27987b9](https://github.com/casonadams/ripwire-rs/commit/27987b9b93f50d318f29d6edb36c3be5c618075f))
+* **parity:** close navigation, search, and lint gaps ([e127ab8](https://github.com/casonadams/ripwire-rs/commit/e127ab84b7a0267130dbe2b1a8a0f6e1db5aaa77))
+* **recall:** serve BM25-ranked markdown sections under a token budget ([e96871e](https://github.com/casonadams/ripwire-rs/commit/e96871e52504f5101171b14743fbab228af6da5f))
+* **recall:** stop 4-line title preambles outranking full sections ([c1e189c](https://github.com/casonadams/ripwire-rs/commit/c1e189c23ff416991e7850bbbd9de77b5da3dd25))
+* **release,docs:** restore RPM spec heredoc EOF and use DNF5-compatible repo setup ([27c0bc0](https://github.com/casonadams/ripwire-rs/commit/27c0bc0603b63cf7cdb0e3a1053b07d73a6e1ef7))
+* **resolve:** bind embedded SQL to tables only; resolve Python module aliases ([f22d010](https://github.com/casonadams/ripwire-rs/commit/f22d0108ae33ea8cbf271e47807aea37d99d6f39))
+* **scripts:** use main branch for tree-sitter-brightscript in update-grammars ([5f19119](https://github.com/casonadams/ripwire-rs/commit/5f191193b36d531c5c20bb3231494015a4342033))
+
 ## [0.6.1](https://github.com/casonadams/ripwire-rs/compare/v0.6.0...v0.6.1) (2026-10-19)
 
 
