@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/casonadams/ripwire-rs/compare/v0.6.2...v0.6.3) (2026-10-21)
+
+
+### Bug Fixes
+
+* **build:** use tree-sitter-fortran crate and patch COBOL scanner for MSVC ([1483ee2](https://github.com/casonadams/ripwire-rs/commit/1483ee2559cd00ed5fdf30fdaacd9603656986a9))
+
 ## [0.6.2](https://github.com/casonadams/ripwire-rs/compare/v0.6.1...v0.6.2) (2026-10-21)
 
 
