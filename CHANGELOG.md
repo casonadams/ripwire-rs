@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.5](https://github.com/casonadams/ripwire-rs/compare/v0.6.4...v0.6.5) (2026-10-23)
+
+
+### Features
+
+* **sql,mcp:** index Dataform .sqlx models; scope MCP tools by path ([8496aac](https://github.com/casonadams/ripwire-rs/commit/8496aac485cca7eb8e5a2803525cf0a668f37195))
+
+
+### Bug Fixes
+
+* **ci:** install the release target for the pinned toolchain; force the cccc install ([0cd4d9b](https://github.com/casonadams/ripwire-rs/commit/0cd4d9b97754ba07030fce4c11272dffc0999c47))
+* **resolve,mcp,lanes,sql:** close DIRT audit issues 1-4 ([64e53bc](https://github.com/casonadams/ripwire-rs/commit/64e53bcf5c8fada06a0e8d09994c2c6780f276e9))
+
 ## [0.6.4](https://github.com/casonadams/ripwire-rs/compare/v0.6.3...v0.6.4) (2026-10-23)
 
 
