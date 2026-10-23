@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.6.4](https://github.com/casonadams/ripwire-rs/compare/v0.6.3...v0.6.4) (2026-10-23)
+
+
+### Features
+
+* **merge-scout:** compute arms from git; fix parity on pull-request checkouts ([5b0996a](https://github.com/casonadams/ripwire-rs/commit/5b0996aab7e2a7ce975d8132e4730714616e7ca1))
+* **navigate:** group declarations and report template and macro provenance ([d511a75](https://github.com/casonadams/ripwire-rs/commit/d511a754cf7e123598ad8a653379eece99e95eb9))
+* **output:** derive default row caps from the output budget ([593e427](https://github.com/casonadams/ripwire-rs/commit/593e427b54a6f93cb1cf0efc2283f884ee52cbd0))
+* **output:** derive pack-task, recall, for and report sizes from the token budget ([df5b104](https://github.com/casonadams/ripwire-rs/commit/df5b1046b1b67a9cb157403414774136f6672b45))
+* **parity:** generic paged-list rule and counted defect ledger ([e28e206](https://github.com/casonadams/ripwire-rs/commit/e28e206712e282227f75ac48443eedf95618b8f2))
+* **quality-delta:** pair renamed functions so a rename cannot hide a regression ([7da4bad](https://github.com/casonadams/ripwire-rs/commit/7da4bad3dbbd0afb5e7cecf2c3e85cf1002142b9))
+* **resolve:** bind pybind11 exports and overlay SCIP indexes ([7fd237f](https://github.com/casonadams/ripwire-rs/commit/7fd237f701aa090f0647a756428af3185fef2bf8))
+* **retrieval:** admit and rank coordinating implementations for conceptual queries ([9fc1083](https://github.com/casonadams/ripwire-rs/commit/9fc1083a326f0adf3031beff3444f44db2b68e24))
+* **typescript:** derive assertion-script run commands; show humps and deep in panel evidence ([c21608c](https://github.com/casonadams/ripwire-rs/commit/c21608cbee9d9244d4ce3152eb9a980c8905519a))
+* **typescript:** factory return inference, contract members, class-field receivers ([6dc638b](https://github.com/casonadams/ripwire-rs/commit/6dc638b2241206913d9165bb4f6054fe6ffaddb8))
+
+
+### Bug Fixes
+
+* **cache:** include uncommitted working-tree state in the cache key ([0dcdacd](https://github.com/casonadams/ripwire-rs/commit/0dcdacd5eb51ca7cc5de80e6400e56310fb28949))
+* **cli:** --hotspots and --clones honor --limit/--offset; close command plugin boundary gaps ([4fee867](https://github.com/casonadams/ripwire-rs/commit/4fee867affd896575eb46063ed1e1ab7c2a06ae8))
+* **cli:** --nonlocal-state honors --limit/--offset ([01ad942](https://github.com/casonadams/ripwire-rs/commit/01ad94222b1a62d28bfa8d3439ed33287727e475))
+* **cli:** honor load options in --html and drop dead nav serializers ([6fd7dc2](https://github.com/casonadams/ripwire-rs/commit/6fd7dc2c247c00fb5f667ebc49dad2fa284d5dd0))
+* **cli:** root help shows the command about text ([22ca6fc](https://github.com/casonadams/ripwire-rs/commit/22ca6fc0bc5ad6e89140a4249f2aa321525df793))
+* **crawler:** index a single file passed as the root ([5421a0c](https://github.com/casonadams/ripwire-rs/commit/5421a0ca0b9e5e3c0e1c3a2ec3d795b3d498d617))
+* **dead-code:** count Rust identifier uses before reporting internal functions ([b99af42](https://github.com/casonadams/ripwire-rs/commit/b99af42eaa17e2c20cdfca3ff99a953ced9dfde4))
+* **dead-code:** give Rust free functions internal linkage ([089537b](https://github.com/casonadams/ripwire-rs/commit/089537b9e572971c25b9b60472a35961f0f965e5))
+* **gate:** compute safe-delete, seams, edit-check and macro-call facts instead of constants ([4137e96](https://github.com/casonadams/ripwire-rs/commit/4137e96e08bb7e30da4ab3db16a662898601ded0))
+* **gate:** partner tests follow upstream rules ([3f17967](https://github.com/casonadams/ripwire-rs/commit/3f1796701f35f15251d081a0ff1f52a8ea51de2b))
+* **grep:** count read hits only within the symbol's dialect group ([1ac821d](https://github.com/casonadams/ripwire-rs/commit/1ac821d290c3818621765b6cd7c6f87154710c1b))
+* **handoff,plan-lanes,flip:** replace invented values with measurements ([e194a28](https://github.com/casonadams/ripwire-rs/commit/e194a2866f020f71b79b98e9c394a8e859e80f0b))
+* **metrics:** measure biggest-first and comment coherence from source; report every churned callable ([2370c85](https://github.com/casonadams/ripwire-rs/commit/2370c85f714ce032f801ea55cb10f068f31f4764))
+* **nonlocal-state:** Rust const and non-mut static are not mutable cells ([4c841c8](https://github.com/casonadams/ripwire-rs/commit/4c841c8fac60594fbddb79c971b3e1dc96fbca7c))
+* **pack-task:** seed test candidates from ranked symbols, not whole files ([92ab05d](https://github.com/casonadams/ripwire-rs/commit/92ab05db7ef08556fe5d1a01c99055f3b7cbaa9e))
+* **panel:** label the state lens and derive the historical cut from corpus churn ([287024a](https://github.com/casonadams/ripwire-rs/commit/287024a99928c4f7c142fefe24124bc2774b769b))
+* **parity:** clear fifteen defect entries and tighten the parity checker ([757cedf](https://github.com/casonadams/ripwire-rs/commit/757cedfd3f868acd883a30150aef2d250760b501))
+* **parity:** make the upstream timeout configurable and say when a command was not compared ([f16942d](https://github.com/casonadams/ripwire-rs/commit/f16942d34a8081e047da08318705994f76e2e172))
+* **parity:** validate situ XML contract ([be861dc](https://github.com/casonadams/ripwire-rs/commit/be861dcdc2ea38453894fe803e30e23b252826c6))
+* **pr-context,whereis,doctor:** honor the base ref and stop stamping HEAD outside git ([8558cea](https://github.com/casonadams/ripwire-rs/commit/8558cea701d565dbf30ce08107fc0349cfccb26d))
+* **quality-panel:** back historical with git churn and add lexical and per-finding evidence ([e707825](https://github.com/casonadams/ripwire-rs/commit/e707825905a0ce06aab1c9cc5c2ced6a17d3becf))
+* **resolve:** disclose declined calls, edge provenance, and per-language complexity ([139f27c](https://github.com/casonadams/ripwire-rs/commit/139f27cc41653615a8414d162898381c28661191))
+* **rust:** drop unconfirmed macro-argument calls; keep the doctor legend valid XML ([de93317](https://github.com/casonadams/ripwire-rs/commit/de9331786bfb089d1d44931d93a01faf64d75fe8))
+* **scan-skills:** flag credential path references (~/.ssh, ~/.aws) ([c919787](https://github.com/casonadams/ripwire-rs/commit/c919787546b6567fbdb6ba66644136a47e2ae5a1))
+* **signature:** parser-bounded headers keep object-literal return types ([7e298f9](https://github.com/casonadams/ripwire-rs/commit/7e298f98a100cdc18836324e25228f15c2daa751))
+* **state:** report constants as state only when the corpus mutates them ([b2fdae7](https://github.com/casonadams/ripwire-rs/commit/b2fdae79b3bfb5b5c176a14fdbdf8ed55d6591fe))
+* **typescript:** a fluent builder's body is its handler callback ([0dd22a8](https://github.com/casonadams/ripwire-rs/commit/0dd22a8f47c69aa823b1bac7d0109bceed9dad56))
+* **typescript:** chained factory builders define module functions ([274a27e](https://github.com/casonadams/ripwire-rs/commit/274a27e608c185dc7c8b3623c1b008dedcf3025d))
+* **typescript:** definition spans keep export and JSDoc; exact-name lookups serve the body ([5439911](https://github.com/casonadams/ripwire-rs/commit/5439911ee0791d946dd6bc60f88a3731af46a3c8))
+* **typescript:** fluent handler consts are functions; multi-line return signatures ([f9e07d8](https://github.com/casonadams/ripwire-rs/commit/f9e07d84d9fb96ac49f1202e108d764ea650c003))
+* **typescript:** immutable scalar consts are not mutable state ([64269c8](https://github.com/casonadams/ripwire-rs/commit/64269c816138845388be49c2dbc68c3acd183f86))
+* **typescript:** interface calls reach structurally conforming classes ([137e9fa](https://github.com/casonadams/ripwire-rs/commit/137e9fa4dd814dfecd66f5a37114b1fe58e35771))
+* **typescript:** nested-callback callers, no name binding to non-callables, lexical state scope, .check.ts partners ([32072f4](https://github.com/casonadams/ripwire-rs/commit/32072f428230e7538e6ea6497318b53985b469da))
+* **typescript:** typed receivers dispatch through declared implementations ([668dc54](https://github.com/casonadams/ripwire-rs/commit/668dc546a495a801a0b4a659da482525ae613e70))
+* **uses:** report Rust scoped call sites as calls, not reads ([873c8e1](https://github.com/casonadams/ripwire-rs/commit/873c8e12bf1d448d8995d3bfbe49846476f639b0))
+
 ## [0.6.3](https://github.com/casonadams/ripwire-rs/compare/v0.6.2...v0.6.3) (2026-10-21)
 
 
