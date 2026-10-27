@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.6](https://github.com/casonadams/ripwire-rs/compare/v0.6.5...v0.6.6) (2026-10-27)
+
+
+### Features
+
+* **eval:** score call resolution against a SCIP index ([ec06c9b](https://github.com/casonadams/ripwire-rs/commit/ec06c9bbca607ca617487b9e528f8a7b1bda74fd))
+* **export:** write the call graph as GraphML or node-link JSON ([216de7a](https://github.com/casonadams/ripwire-rs/commit/216de7a6429700479f6ba3c31506ed9f76f590b1))
+* **mcp:** server instructions and the call shapes agents write ([ec7c3d9](https://github.com/casonadams/ripwire-rs/commit/ec7c3d97b2685e6491e2c18063c958a8769c87d7))
+* **resolve:** typed method dispatch and per-language resolution fixes ([59f0dde](https://github.com/casonadams/ripwire-rs/commit/59f0dde67275f096e7d50a62f2cda0929e30d830))
+
+
+### Bug Fixes
+
+* **cli:** make --index-out write the index cache ([a1e25b9](https://github.com/casonadams/ripwire-rs/commit/a1e25b9271e6bc92af56e68a111729dbb6c12ee6))
+
+
+### Performance Improvements
+
+* **resolve:** cut import-resolution and scan costs ([dd4bbc7](https://github.com/casonadams/ripwire-rs/commit/dd4bbc787f6edc4f7306dfcf10014c321e4bdef9))
+
 ## [0.6.5](https://github.com/casonadams/ripwire-rs/compare/v0.6.4...v0.6.5) (2026-10-23)
 
 
