@@ -33,30 +33,42 @@ fn test_snapshot_roundtrip_serialization() {
     assert!(parsed.public_api.contains("src/calc.rs::add"));
 }
 
-#[test]
-fn test_snapshot_dead_symbols_follow_the_dead_code_rule() {
-    use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
+fn dead_symbols(files: &[(&str, ripwire_rs::Lang, &str)]) -> Vec<String> {
+    use ripwire_rs::{Graph, Interner, LanguageRegistry, ingest_in_memory_files};
     let registry = LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
     let interner = Interner::new();
-    let ingest = ingest_in_memory_files(
-        &[
-            (
-                "src/store.rs",
-                Lang::Rust,
-                b"fn orphan() -> u32 {\n    1\n}\n\nstruct Store;\n\nimpl Store {\n    fn size(&self) -> u32 {\n        2\n    }\n}\n".as_slice(),
-            ),
-            (
-                "tests/store_test.rs",
-                Lang::Rust,
-                b"#[test]\nfn store_is_small() {\n    assert!(true);\n}\n".as_slice(),
-            ),
-        ],
-        &registry,
-        &interner,
-    );
+    let slices: Vec<_> = files
+        .iter()
+        .map(|(p, l, s)| (*p, *l, s.as_bytes()))
+        .collect();
+    let ingest = ingest_in_memory_files(&slices, &registry, &interner);
     let graph = Graph::build(&ingest, &interner);
     let snap = ripwire_rs::gate::baseline::compute_snapshot(&ingest, &graph, &interner, "head");
-    let mut dead: Vec<&str> = snap.dead_symbols.iter().map(String::as_str).collect();
+    let mut dead: Vec<String> = snap.dead_symbols.into_iter().collect();
     dead.sort_unstable();
-    assert_eq!(dead, ["src/store.rs::orphan"]);
+    dead
+}
+
+#[test]
+fn test_snapshot_dead_symbols_are_unreferenced_callables_in_any_language() {
+    use ripwire_rs::Lang::{Rust, TypeScript};
+    let rust = "fn orphan() -> u32 {\n    1\n}\n\nfn main() {}\n\nstruct Store;\n\nimpl Store {\n    fn size(&self) -> u32 {\n        2\n    }\n}\n\nstruct Shown;\n\nimpl std::fmt::Display for Shown {\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n        write!(f, \"x\")\n    }\n}\n";
+    let ts = "export class Client {\n  constructor() {}\n}\n\nexport function unused(): number {\n  return 1;\n}\n\nexport const tool = {\n  execute() {\n    return 2;\n  },\n};\n";
+    let dead = dead_symbols(&[
+        ("src/store.rs", Rust, rust),
+        ("src/client.ts", TypeScript, ts),
+        (
+            "tests/store_test.rs",
+            Rust,
+            "#[test]\nfn store_is_small() {\n    assert!(true);\n}\n",
+        ),
+    ]);
+    assert_eq!(
+        dead,
+        [
+            "src/client.ts::unused",
+            "src/store.rs::Store::size",
+            "src/store.rs::orphan"
+        ]
+    );
 }

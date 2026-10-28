@@ -178,8 +178,9 @@ impl Graph {
     }
 
     #[must_use]
-    pub fn hits(&self) -> crate::rank::HitsResult {
-        crate::rank::compute_hits(self, &crate::rank::HitsConfig::default())
+    /// HITS with callers counted per file; `node_files[node]` is each node's file.
+    pub fn hits(&self, node_files: &[u32]) -> crate::rank::HitsResult {
+        crate::rank::compute_hits_by_file(self, node_files, &crate::rank::HitsConfig::default())
     }
 
     #[must_use]

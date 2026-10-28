@@ -2,11 +2,11 @@ use ripwire_rs::gate::baseline::{
     QualitySnapshot, compute_snapshot, parse_snapshot_from_str, serialize_snapshot_to_string,
 };
 use ripwire_rs::gate::quality_delta::{
-    DeltaCliOptions, QualityDeltaFacts, QualityRegression, StaleAck, ack_matching_regressions,
-    apply_cli_delta_options_with_writer, assemble_quality_delta_report, body_text_kinds,
-    collect_changed_clone_regressions, compute_quality_delta, compute_quality_delta_with_acks,
-    content_id, is_changed_callable, parse_acks_content, resolve_delta_head_sha,
-    split_ack_patterns, stale_replay_for, symbol_matches_and_changed,
+    DeltaCliOptions, MemberStatus, NumericSeverity, QualityDeltaFacts, QualityRegression, StaleAck,
+    ack_matching_regressions, apply_cli_delta_options_with_writer, assemble_quality_delta_report,
+    body_text_kinds, classify_numeric, collect_changed_clone_regressions, compute_quality_delta,
+    compute_quality_delta_with_acks, content_id, is_changed_callable, parse_acks_content,
+    resolve_delta_head_sha, split_ack_patterns, stale_replay_for, symbol_matches_and_changed,
 };
 use ripwire_rs::metrics::source_mask::mask_source;
 use ripwire_rs::query::commands::QueryContext;
@@ -101,7 +101,7 @@ fn test_quality_delta_clean_vs_regression() {
 
     let xml = reg_report.to_xml_string();
     assert!(xml.contains("gating=\"1\""));
-    assert!(xml.contains("<r kind=\"complexity\" sym=\"evaluate\" p=\"src/calc.rs:7\" was=\"10\" now=\"25\" gating=\"1\" bar=\"15\"/>"));
+    assert!(xml.contains("<r kind=\"complexity\" sym=\"evaluate\" was=\"10\" now=\"25\" bar=\"15\" p=\"src/calc.rs:7\" gating=\"1\" next=\"--expand=src/calc.rs:evaluate\"/>"));
 }
 
 #[test]
@@ -158,12 +158,12 @@ fn test_quality_baseline_rejects_absorbing_findings_unless_allowed() {
     assert!(report.has_gating_failures());
     assert_eq!(report.gating_count, 1);
     assert!(report.to_xml_string().contains(
-        "<r kind=\"complexity\" sym=\"evaluate\" p=\"src/calc.rs:10\" was=\"10\" now=\"25\" gating=\"1\" bar=\"15\"/>"
+        "<r kind=\"complexity\" sym=\"evaluate\" was=\"10\" now=\"25\" bar=\"15\" p=\"src/calc.rs:10\" gating=\"1\" next=\"--expand=src/calc.rs:evaluate\"/>"
     ));
 }
 
 #[test]
-fn test_changed_callable_and_clone_regressions_in_memory() {
+fn test_changed_callable_requires_a_changed_file() {
     let interner = Interner::new();
     let mut ingest = IngestResult::new();
     ingest.files.push(FileInfo {
@@ -186,9 +186,24 @@ fn test_changed_callable_and_clone_regressions_in_memory() {
     let changed = vec!["src/a.rs".to_string()];
     assert!(is_changed_callable(&sym, "src/a.rs", &changed));
     assert!(!is_changed_callable(&sym, "src/b.rs", &changed));
+}
+
+/// (kind, gating, new-symbol, now) of each row a clone group of `helper` and `copy` yields.
+type CloneRows = Vec<(String, bool, bool, u32)>;
+
+fn clone_rows(helper: MemberStatus, copy: MemberStatus) -> CloneRows {
+    let registry =
+        ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
+    let interner = Interner::new();
+    let source = b"fn helper(x: u32) -> u32 {\n    x + 1\n}\n\nfn copy(x: u32) -> u32 {\n    x + 1\n}\n\nfn first() -> u32 {\n    helper(1)\n}\n\nfn second() -> u32 {\n    helper(2)\n}\n";
+    let ingest = ripwire_rs::ingest_in_memory_files(
+        &[("src/calc.rs", Lang::Rust, source.as_slice())],
+        &registry,
+        &interner,
+    );
     let graph = Graph::build(&ingest, &interner);
     let pr = graph.page_rank(&ripwire_rs::PageRankConfig::default());
-    let sources = [("src/a.rs", b"fn dup_fn() {}\n".as_slice())];
+    let sources = [("src/calc.rs", source.as_slice())];
     let state = QueryContext {
         root: ":memory:",
         ingest: &ingest,
@@ -199,19 +214,77 @@ fn test_changed_callable_and_clone_regressions_in_memory() {
         commits: None,
         at: None,
     };
-    let cg = CloneGroup {
-        members: vec![0],
+    let id_of = |name: &str| {
+        ingest
+            .symbols
+            .iter()
+            .find(|s| interner.resolve(&s.name) == name)
+            .map(|s| s.id)
+            .unwrap_or_else(|| panic!("{name} indexed"))
+    };
+    let group = CloneGroup {
+        members: vec![id_of("copy"), id_of("helper")],
         clone_type: CloneType::Type1,
         token_count: 80,
         similarity: 1.0,
         idiom: CloneIdiom::None,
         tokens_saved: 80,
     };
+    let status = |sym: &Symbol| {
+        if interner.resolve(&sym.name) == "helper" {
+            helper
+        } else {
+            copy
+        }
+    };
     let mut regs = Vec::new();
-    collect_changed_clone_regressions(vec![cg], &state, &changed, &mut regs);
-    assert_eq!(regs.len(), 1);
-    assert_eq!(regs[0].kind, "duplication");
-    assert_eq!(regs[0].line, 5);
+    collect_changed_clone_regressions(&[group], &state, &status, &mut regs);
+    regs.into_iter()
+        .map(|r| (r.kind, r.is_gating, r.is_new_symbol, r.now_val))
+        .collect()
+}
+
+#[test]
+fn test_clone_groups_gate_unless_every_member_is_new() {
+    use MemberStatus::{New, Touched, Untouched};
+    let dup = |gating: bool, new: bool| ("duplication".to_string(), gating, new, 80);
+    let reused = ("new-clone-of-reused-helper".to_string(), true, false, 2);
+    let cases: [(MemberStatus, MemberStatus, CloneRows); 4] = [
+        (Untouched, Untouched, vec![]),
+        (New, New, vec![dup(false, true)]),
+        (Touched, New, vec![dup(true, false)]),
+        (Untouched, New, vec![reused, dup(true, false)]),
+    ];
+    for (helper, copy, want) in cases {
+        assert_eq!(
+            clone_rows(helper, copy),
+            want,
+            "helper {helper:?}, copy {copy:?}"
+        );
+    }
+}
+
+#[test]
+fn test_classify_numeric_matches_upstream_materiality() {
+    use NumericSeverity::{Major, Minor};
+    let cases = [
+        ((59, 61, 60), Some(Major)),
+        ((5, 6, 5), Some(Minor)),
+        ((128, 161, 60), Some(Major)),
+        ((74, 92, 60), Some(Minor)),
+        ((20, 21, 15), Some(Minor)),
+        ((4, 10, 15), Some(Minor)),
+        ((10, 11, 15), None),
+        ((4, 9, 15), None),
+        ((7, 7, 15), None),
+    ];
+    for ((was, now, bar), want) in cases {
+        assert_eq!(
+            classify_numeric(was, now, bar),
+            want,
+            "{was}->{now} bar {bar}"
+        );
+    }
 }
 
 #[test]
@@ -293,6 +366,7 @@ fn test_ack_only_filter_marks_and_records_matching_rows() {
         is_gating: true,
         is_new_symbol: false,
         renamed_from: None,
+        ..QualityRegression::default()
     };
     report.regressions = vec![
         row("complexity", "calc"),
@@ -471,6 +545,7 @@ fn test_apply_cli_delta_options_with_in_memory_writer() {
         is_gating: true,
         is_new_symbol: false,
         renamed_from: None,
+        ..QualityRegression::default()
     });
     report.gating_count = 1;
 
@@ -672,4 +747,63 @@ fn test_quality_delta_report_names_its_merge_base_only_when_measured_from_a_ref(
         (header(Some("a1b2c3d4e")), header(None)),
         (Some("a1b2c3d4e".to_string()), None)
     );
+}
+
+/// Dead-code rows when `src/user.rs` goes from `before` to `after` and `src/helper.rs` is unchanged.
+fn dead_rows_when_user_changes(before: &str, after: &str) -> Vec<(String, bool, bool)> {
+    use ripwire_rs::gate::quality_delta::{WorkingTree, rebuild_baseline};
+    let registry =
+        ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
+    let interner = Interner::new();
+    let helper = b"pub fn helper() -> u32 {\n    1\n}\n".as_slice();
+    let ingest = ripwire_rs::ingest_in_memory_files(
+        &[
+            ("src/helper.rs", Lang::Rust, helper),
+            ("src/user.rs", Lang::Rust, after.as_bytes()),
+        ],
+        &registry,
+        &interner,
+    );
+    let graph = Graph::build(&ingest, &interner);
+    let working = compute_snapshot(&ingest, &graph, &interner, "head");
+    let changed = ["src/user.rs".to_string()];
+    let tree = WorkingTree {
+        ingest: &ingest,
+        interner: &interner,
+        snapshot: &working,
+        changed_files: &changed,
+    };
+    let baseline = rebuild_baseline(
+        &tree,
+        &[("src/user.rs", Lang::Rust, before.as_bytes())],
+        "base",
+    );
+    compute_quality_delta(&working, &baseline, "git-ref")
+        .regressions
+        .into_iter()
+        .filter(|r| r.kind == "dead-code")
+        .map(|r| (r.sym_name, r.is_gating, r.is_new_symbol))
+        .collect()
+}
+
+#[test]
+fn test_removing_the_last_caller_in_another_file_makes_a_function_newly_dead() {
+    let calls = "pub fn user() -> u32 {\n    crate::helper::helper()\n}\n";
+    let no_call = "pub fn user() -> u32 {\n    2\n}\n";
+    let cases = [
+        (
+            calls,
+            no_call,
+            vec![("src/helper.rs::helper".to_string(), true, false)],
+        ),
+        (no_call, no_call, vec![]),
+        (no_call, calls, vec![]),
+    ];
+    for (before, after, want) in cases {
+        assert_eq!(
+            dead_rows_when_user_changes(before, after),
+            want,
+            "{before:?} -> {after:?}"
+        );
+    }
 }

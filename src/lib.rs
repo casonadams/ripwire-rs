@@ -61,7 +61,7 @@ pub use navigate::{
 };
 pub use rank::{
     HitsConfig, HitsResult, PageRankConfig, PageRankResult, biased_teleport, compute_hits,
-    page_rank, uniform_teleport,
+    compute_hits_by_file, page_rank, uniform_teleport,
 };
 pub use resolve::{EdgeAcc, EdgeProv, ResolutionResult, ResolvedRef, resolve_all_references};
 pub use serialize::{

@@ -408,15 +408,6 @@ impl LanguageSemantics for RustLanguage {
         linkage::is_rust_internal_function(root, name_byte, source)
     }
 
-    fn for_each_identifier(
-        &self,
-        root: tree_sitter::Node<'_>,
-        source: &[u8],
-        visit: &mut dyn FnMut(&str),
-    ) {
-        linkage::for_each_rust_identifier(root, source, visit);
-    }
-
     fn var_binding(&self, ctx: &DefCaptureGateContext<'_>) -> crate::domain::Binding {
         if ctx
             .def_node

@@ -27,6 +27,15 @@ pub struct BodyFingerprint {
     pub text_kinds: Vec<&'static str>,
 }
 
+impl BodyFingerprint {
+    /// Whether two fingerprints hold the same body text, across separately built indexes whose node
+    /// ids differ.
+    #[must_use]
+    pub fn same_text(&self, other: &Self) -> bool {
+        self.body.raw_hash == other.body.raw_hash
+    }
+}
+
 /// A baseline symbol the working tree renamed. Its working key is compared against `old_key`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenamePair {

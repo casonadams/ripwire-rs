@@ -107,11 +107,14 @@ fn map_ranks<'a>(
             None,
         ));
     }
-    if args.rank_by.eq_ignore_ascii_case("authority") {
-        return Ok((Cow::Owned(graph.hits().authority), Some("authority")));
-    }
-    if args.rank_by.eq_ignore_ascii_case("hub") {
-        return Ok((Cow::Owned(graph.hits().hub), Some("hub")));
+    if args.rank_by.eq_ignore_ascii_case("authority") || args.rank_by.eq_ignore_ascii_case("hub") {
+        let node_files: Vec<u32> = ingest.symbols.iter().map(|s| s.file_id).collect();
+        let hits = graph.hits(&node_files);
+        return Ok(if args.rank_by.eq_ignore_ascii_case("hub") {
+            (Cow::Owned(hits.hub), Some("hub"))
+        } else {
+            (Cow::Owned(hits.authority), Some("authority"))
+        });
     }
     if args.rank_by.eq_ignore_ascii_case("degree") {
         let ranks = ingest

@@ -94,7 +94,7 @@ pub fn parse_acks_content(content: &str) -> QualityAcks {
     }
     QualityAcks { acks, entries }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct QualityRegression {
     pub kind: String,
     pub sym_name: String,
@@ -103,7 +103,11 @@ pub struct QualityRegression {
     pub was_val: u32,
     pub now_val: u32,
     pub is_gating: bool,
+    /// `sev="minor"`: a small change on a symbol that existed at the baseline; never gates.
+    pub is_minor: bool,
     pub is_new_symbol: bool,
+    /// Clone kinds name the whole group: every member's name, in group order.
+    pub members: Vec<String>,
     /// The baseline name this symbol was renamed from, when `pair_renames` paired it; `None` otherwise.
     pub renamed_from: Option<String>,
 }
@@ -157,35 +161,67 @@ pub fn stale_by_kind(stale: &[StaleAck]) -> String {
         .join(",")
 }
 
-fn write_regression_row<W: Write>(r: &QualityRegression, out: &mut W) -> io::Result<()> {
-    let origin_attr = if r.is_new_symbol {
-        " origin=\"new-symbol\""
+/// `bar=` for the numeric kinds; `None` for the rest.
+fn numeric_bar(kind: &str) -> Option<u32> {
+    NUMERIC_KINDS.iter().find(|k| k.kind == kind).map(|k| k.bar)
+}
+
+/// The subject and values of a row: `members= tokens=` for a duplication group, else `sym= was= now=`
+/// with `bar=` on the numeric kinds.
+fn regression_subject(r: &QualityRegression) -> String {
+    if r.kind == "duplication" {
+        return format!(
+            " members=\"{}\" tokens=\"{}\"",
+            r.members.join(" | ").xml_escaped(),
+            r.now_val
+        );
+    }
+    let sym = if r.members.is_empty() {
+        r.sym_name.clone()
     } else {
-        ""
+        r.members.join(" | ")
     };
-    let renamed_attr = r.renamed_from.as_ref().map_or_else(String::new, |old| {
-        format!(" renamed_from=\"{}\"", old.xml_escaped())
-    });
-    let gating_val = usize::from(r.is_gating);
-    let bar_val = match r.kind.as_str() {
-        "complexity" => 15,
-        "verbosity" => 60,
-        "nesting" => 4,
-        "params" => 5,
-        _ => 0,
-    };
+    let bar = numeric_bar(&r.kind).map_or_else(String::new, |b| format!(" bar=\"{b}\""));
+    format!(
+        " sym=\"{}\" was=\"{}\" now=\"{}\"{bar}",
+        sym.xml_escaped(),
+        r.was_val,
+        r.now_val
+    )
+}
+
+/// `gating="1"` with the `--expand` follow-up, `sev="minor"`, and `origin=`, each only when it applies.
+fn regression_flags(r: &QualityRegression) -> String {
+    let mut flags = String::new();
+    if r.is_gating {
+        flags.push_str(" gating=\"1\"");
+    }
+    if r.is_minor {
+        flags.push_str(" sev=\"minor\"");
+    }
+    if r.is_new_symbol {
+        flags.push_str(" origin=\"new-symbol\"");
+    }
+    if let Some(old) = &r.renamed_from {
+        flags.push_str(&format!(" renamed_from=\"{}\"", old.xml_escaped()));
+    }
+    if r.is_gating && r.kind != "duplication" {
+        let name = r.sym_name.rsplit("::").next().unwrap_or(&r.sym_name);
+        let next = format!("--expand={}:{name}", r.file_path);
+        flags.push_str(&format!(" next=\"{}\"", next.xml_escaped()));
+    }
+    flags
+}
+
+fn write_regression_row<W: Write>(r: &QualityRegression, out: &mut W) -> io::Result<()> {
     writeln!(
         out,
-        "  <r kind=\"{}\" sym=\"{}\" p=\"{}:{}\" was=\"{}\" now=\"{}\" gating=\"{}\" bar=\"{bar_val}\"{}{}/>",
+        "  <r kind=\"{}\"{} p=\"{}:{}\"{}/>",
         r.kind.xml_escaped(),
-        r.sym_name.xml_escaped(),
+        regression_subject(r),
         r.file_path.xml_escaped(),
         r.line,
-        r.was_val,
-        r.now_val,
-        gating_val,
-        origin_attr,
-        renamed_attr
+        regression_flags(r)
     )
 }
 
@@ -239,7 +275,7 @@ impl crate::serialize::ToXmlString for QualityDeltaReport {
         if self.is_verdict_only(collapse.is_some()) {
             return writeln!(
                 out,
-                "<!-- ripwire-rs quality-delta schema=ripwire-rs.quality-delta/v1: only what the change made WORSE vs baseline=: regressions= minor= gating=; <r kind= sym= p= was= now= gating= bar=>, <sa> acked; with no regressions the <sa> rows collapse to stale_by_kind= and stale_next= prints them. -->\n<quality-delta schema=\"ripwire-rs.quality-delta/v1\" baseline=\"{}\" regressions=\"0\" gating=\"0\" stale=\"{}\" at=\"{}\"{hb_attr}{stale_attr}></quality-delta>",
+                "<!-- ripwire-rs quality-delta schema=ripwire-rs.quality-delta/v1: only what the change made WORSE vs baseline=: regressions= minor= gating=; <r kind= sym= p= was= now= bar= gating=1 sev=minor origin=> (clone rows: members= tokens=), <sa> acked; with no regressions the <sa> rows collapse to stale_by_kind= and stale_next= prints them. -->\n<quality-delta schema=\"ripwire-rs.quality-delta/v1\" baseline=\"{}\" regressions=\"0\" gating=\"0\" stale=\"{}\" at=\"{}\"{hb_attr}{stale_attr}></quality-delta>",
                 self.baseline_source.xml_escaped(),
                 self.stale_acks.len(),
                 self.at_stamp.xml_escaped()
@@ -247,7 +283,7 @@ impl crate::serialize::ToXmlString for QualityDeltaReport {
         }
         writeln!(
             out,
-            "<!-- ripwire-rs quality-delta schema=ripwire-rs.quality-delta/v1: only what the change made WORSE vs baseline=: regressions= minor= gating=; <r kind= sym= p= was= now= gating= bar=>, <sa> acked; with no regressions the <sa> rows collapse to stale_by_kind= and stale_next= prints them. baseline_absorbed=N: the pinned sidecar was taken on a dirty tree that already held N gating findings, so a green exit means clean since the pin. -->\n<quality-delta schema=\"ripwire-rs.quality-delta/v1\" baseline=\"{}\" regressions=\"{}\" minor=\"{}\" acked=\"{}\" stale=\"{}\" preexisting-worse=\"{}\" new-symbol=\"{}\" gating=\"{}\" api-new-surface=\"{}\" at=\"{}\"{hb_attr}{stale_attr}>",
+            "<!-- ripwire-rs quality-delta schema=ripwire-rs.quality-delta/v1: only what the change made WORSE vs baseline=: regressions= minor= gating=; <r kind= sym= p= was= now= bar= gating=1 sev=minor origin=> (clone rows: members= tokens=), <sa> acked; with no regressions the <sa> rows collapse to stale_by_kind= and stale_next= prints them. baseline_absorbed=N: the pinned sidecar was taken on a dirty tree that already held N gating findings, so a green exit means clean since the pin. -->\n<quality-delta schema=\"ripwire-rs.quality-delta/v1\" baseline=\"{}\" regressions=\"{}\" minor=\"{}\" acked=\"{}\" stale=\"{}\" preexisting-worse=\"{}\" new-symbol=\"{}\" gating=\"{}\" api-new-surface=\"{}\" at=\"{}\"{hb_attr}{stale_attr}>",
             self.baseline_source.xml_escaped(),
             self.regressions.len(),
             self.minor_count,
@@ -287,73 +323,61 @@ impl QualityDeltaReport {
     }
 }
 
-/// Trait encapsulating a numeric quality regression dimension compared between baseline and working snapshots.
-pub trait QualityDeltaDimension: Sync {
-    fn kind(&self) -> &'static str;
-    fn extract(&self, snap: &QualitySnapshot, key: &str) -> u32;
-    fn preexisting_floor(&self) -> u32;
-    fn is_preexisting_gating(&self, now: u32) -> bool;
-    fn new_symbol_floor(&self) -> Option<u32> {
-        None
-    }
-}
-
-pub struct NumericDimensionSpec {
+/// A numeric kind and the bar its `now=` is judged against.
+pub struct NumericKind {
     pub kind: &'static str,
-    pub preexisting_floor: u32,
-    pub gating_threshold: Option<u32>,
-    pub new_symbol_floor: Option<u32>,
+    pub bar: u32,
     pub extract: fn(&QualitySnapshot, &str) -> u32,
 }
 
-impl QualityDeltaDimension for NumericDimensionSpec {
-    fn kind(&self) -> &'static str {
-        self.kind
-    }
-    fn extract(&self, snap: &QualitySnapshot, key: &str) -> u32 {
-        (self.extract)(snap, key)
-    }
-    fn preexisting_floor(&self) -> u32 {
-        self.preexisting_floor
-    }
-    fn is_preexisting_gating(&self, now: u32) -> bool {
-        self.gating_threshold.is_some_and(|t| now > t)
-    }
-    fn new_symbol_floor(&self) -> Option<u32> {
-        self.new_symbol_floor
-    }
-}
-
-pub static DELTA_DIMENSIONS: &[&dyn QualityDeltaDimension] = &[
-    &NumericDimensionSpec {
+pub static NUMERIC_KINDS: &[NumericKind] = &[
+    NumericKind {
         kind: "complexity",
-        preexisting_floor: 0,
-        gating_threshold: Some(15),
-        new_symbol_floor: Some(15),
+        bar: 15,
         extract: |snap, key| snap.ccx_by_sym.get(key).copied().unwrap_or(0),
     },
-    &NumericDimensionSpec {
+    NumericKind {
         kind: "verbosity",
-        preexisting_floor: 60,
-        gating_threshold: None,
-        new_symbol_floor: None,
+        bar: 60,
         extract: |snap, key| snap.loc_by_sym.get(key).copied().unwrap_or(0),
     },
-    &NumericDimensionSpec {
+    NumericKind {
         kind: "nesting",
-        preexisting_floor: 4,
-        gating_threshold: Some(6),
-        new_symbol_floor: None,
+        bar: 4,
         extract: |snap, key| u32::from(snap.nest_by_sym.get(key).copied().unwrap_or(0)),
     },
-    &NumericDimensionSpec {
+    NumericKind {
         kind: "params",
-        preexisting_floor: 3,
-        gating_threshold: Some(5),
-        new_symbol_floor: None,
+        bar: 5,
         extract: |snap, key| u32::from(snap.params_by_sym.get(key).copied().unwrap_or(0)),
     },
 ];
+
+/// How a numeric change on a symbol that existed at the baseline reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NumericSeverity {
+    Major,
+    Minor,
+}
+
+/// Classifies `was -> now` against `bar`, matching upstream ripwire: over the bar, crossing it or
+/// growing by a quarter is major unless the step is a single unit; under it, only a doubling that
+/// reaches two thirds of the bar is reported, as minor. `None` means no row.
+#[must_use]
+pub fn classify_numeric(was: u32, now: u32, bar: u32) -> Option<NumericSeverity> {
+    if now <= was {
+        return None;
+    }
+    if now > bar {
+        let major = now - was >= 2 && (was <= bar || now * 4 >= was * 5);
+        return Some(if major {
+            NumericSeverity::Major
+        } else {
+            NumericSeverity::Minor
+        });
+    }
+    (now >= 2 * was && now * 3 >= bar * 2).then_some(NumericSeverity::Minor)
+}
 
 fn check_symbol_numeric_regressions(
     key: &str,
@@ -363,42 +387,36 @@ fn check_symbol_numeric_regressions(
     regressions: &mut Vec<QualityRegression>,
 ) {
     let parts: Vec<&str> = key.split("::").collect();
-    let file_path = parts.first().copied().unwrap_or(key).to_string();
-    let sym_name = parts.last().copied().unwrap_or(key).to_string();
-    let line = working.line_by_sym.get(key).copied().unwrap_or(0);
-    let pair = renames.pair_for(key);
+    let row = QualityRegression {
+        sym_name: parts.last().copied().unwrap_or(key).to_string(),
+        file_path: parts.first().copied().unwrap_or(key).to_string(),
+        line: working.line_by_sym.get(key).copied().unwrap_or(0),
+        renamed_from: renames.pair_for(key).map(|p| p.old_name.clone()),
+        ..QualityRegression::default()
+    };
     let was_key = renames.was_key(key);
     let is_preexisting = baseline.ccx_by_sym.contains_key(was_key);
-    let renamed_from = pair.map(|p| p.old_name.clone());
-
-    for dim in DELTA_DIMENSIONS {
-        let now_val = dim.extract(working, key);
-        if is_preexisting {
-            let was_val = dim.extract(baseline, was_key);
-            if now_val > was_val && now_val > dim.preexisting_floor() {
-                regressions.push(QualityRegression {
-                    kind: dim.kind().to_string(),
-                    sym_name: sym_name.clone(),
-                    file_path: file_path.clone(),
-                    line,
-                    was_val,
-                    now_val,
-                    is_gating: dim.is_preexisting_gating(now_val),
-                    is_new_symbol: false,
-                    renamed_from: renamed_from.clone(),
-                });
-            }
-        } else if dim.new_symbol_floor().is_some_and(|floor| now_val > floor) {
+    for dim in NUMERIC_KINDS {
+        let now_val = (dim.extract)(working, key);
+        let was_val = if is_preexisting {
+            (dim.extract)(baseline, was_key)
+        } else {
+            0
+        };
+        let severity = if is_preexisting {
+            classify_numeric(was_val, now_val, dim.bar)
+        } else {
+            (now_val > dim.bar).then_some(NumericSeverity::Minor)
+        };
+        if let Some(severity) = severity {
             regressions.push(QualityRegression {
-                kind: dim.kind().to_string(),
-                sym_name: sym_name.clone(),
-                file_path: file_path.clone(),
-                line,
-                was_val: 0,
+                kind: dim.kind.to_string(),
+                was_val,
                 now_val,
-                is_gating: false,
-                is_new_symbol: true,
-                renamed_from: None,
+                is_gating: is_preexisting && severity == NumericSeverity::Major,
+                is_minor: is_preexisting && severity == NumericSeverity::Minor,
+                is_new_symbol: !is_preexisting,
+                ..row.clone()
             });
         }
     }
@@ -424,6 +442,7 @@ fn check_structural_regressions(
                 is_gating: !is_new,
                 is_new_symbol: is_new,
                 renamed_from: renames.pair_for(dead).map(|p| p.old_name.clone()),
+                ..QualityRegression::default()
             });
         }
     }
@@ -441,6 +460,7 @@ fn check_structural_regressions(
             is_gating: false,
             is_new_symbol: true,
             renamed_from: None,
+            ..QualityRegression::default()
         });
     }
 }
@@ -506,23 +526,6 @@ fn collect_stale_acks(
     out
 }
 
-fn count_delta_categories(regressions: &[QualityRegression]) -> (usize, usize, usize) {
-    let mut gating = 0;
-    let mut preexisting = 0;
-    let mut new_sym = 0;
-    for r in regressions {
-        if r.is_gating {
-            gating += 1;
-        }
-        if r.is_new_symbol {
-            new_sym += 1;
-        } else {
-            preexisting += 1;
-        }
-    }
-    (gating, preexisting, new_sym)
-}
-
 /// Compute quality delta report comparing working tree snapshot against baseline with acks.
 #[must_use]
 pub fn compute_quality_delta_with_acks(
@@ -562,8 +565,6 @@ fn compute_delta_and_renames(
         ),
         None => (0, Vec::new(), 0),
     };
-    let (gating_count, preexisting_worse_count, new_symbol_count) =
-        count_delta_categories(&regressions);
     let api_new_surface = working
         .public_api
         .iter()
@@ -579,9 +580,7 @@ fn compute_delta_and_renames(
     } else {
         short_sha.to_string()
     };
-    let minor_count = regressions.len().saturating_sub(gating_count);
-
-    let report = QualityDeltaReport {
+    let mut report = QualityDeltaReport {
         baseline_source: baseline_source.to_string(),
         head_sha: working.head_sha.clone(),
         at_stamp,
@@ -589,10 +588,10 @@ fn compute_delta_and_renames(
         regressions,
         stale_acks,
         acked_count,
-        gating_count,
-        preexisting_worse_count,
-        new_symbol_count,
-        minor_count,
+        gating_count: 0,
+        preexisting_worse_count: 0,
+        new_symbol_count: 0,
+        minor_count: 0,
         api_new_surface,
         stale_collapse_replay: None,
         baseline_absorbed: 0,
@@ -600,6 +599,7 @@ fn compute_delta_and_renames(
         acked_by_rename,
         base_ref: None,
     };
+    update_report_counts(&mut report);
     (report, renames)
 }
 
@@ -676,23 +676,34 @@ fn resolve_rev_tree<'a>(repo: &'a gix::Repository, rev: &str) -> Option<gix::Tre
     }
 }
 
+/// The baseline blob of each changed path, deleted ones included, with its language: the working
+/// index's when the file still exists, else the path's.
 fn collect_tree_blobs(
     tree: &gix::Tree<'_>,
     ingest: &IngestResult,
     interner: &Interner,
     changed_set: &std::collections::HashSet<&str>,
 ) -> Vec<(String, crate::domain::Lang, Vec<u8>)> {
-    let mut rev_files = Vec::new();
-    for f in &ingest.files {
-        let rel_path = interner.resolve(&f.path);
-        if changed_set.contains(rel_path)
-            && let Ok(Some(entry)) = tree.lookup_entry_by_path(rel_path)
-            && let Ok(obj) = entry.object()
-        {
-            rev_files.push((rel_path.to_string(), f.lang, obj.data.to_vec()));
-        }
-    }
-    rev_files
+    let indexed: std::collections::HashMap<&str, crate::domain::Lang> = ingest
+        .files
+        .iter()
+        .map(|f| (interner.resolve(&f.path), f.lang))
+        .collect();
+    let mut paths: Vec<&str> = changed_set.iter().copied().collect();
+    paths.sort_unstable();
+    paths
+        .into_iter()
+        .filter_map(|rel_path| {
+            let lang = indexed
+                .get(rel_path)
+                .copied()
+                .unwrap_or_else(|| crate::domain::Lang::from_path(Path::new(rel_path)));
+            let entry = tree.lookup_entry_by_path(rel_path).ok().flatten()?;
+            let obj = entry.object().ok()?;
+            (lang != crate::domain::Lang::Unknown)
+                .then(|| (rel_path.to_string(), lang, obj.data.to_vec()))
+        })
+        .collect()
 }
 
 fn read_changed_rev_blobs<P: AsRef<Path>>(
@@ -721,42 +732,81 @@ pub fn load_revision_baseline_incremental(
     changed_files: &[String],
     head_sha: &str,
 ) -> QualitySnapshot {
-    let mut snap = working.clone();
-    snap.head_sha = head_sha.to_string();
     let changed_set: std::collections::HashSet<&str> =
         changed_files.iter().map(String::as_str).collect();
-    for cf in &changed_set {
-        remove_file_entries_from_snapshot(&mut snap, cf);
-    }
     let rev_files = read_changed_rev_blobs(root, rev, ingest, interner, &changed_set);
-    if rev_files.is_empty() {
-        return snap;
-    }
-    let head_interner = crate::domain::Interner::new();
-    let Ok(registry) = crate::ingest::LanguageRegistry::new() else {
-        return snap;
-    };
     let slices: Vec<(&str, crate::domain::Lang, &[u8])> = rev_files
         .iter()
         .map(|(p, l, b)| (p.as_str(), *l, b.as_slice()))
         .collect();
-    let head_ingest = crate::ingest::ingest_in_memory_files(&slices, &registry, &head_interner);
-    let head_graph = crate::graph::Graph::build(&head_ingest, &head_interner);
-    let mut delta_snap = compute_snapshot(&head_ingest, &head_graph, &head_interner, head_sha);
-    attach_head_bodies(
-        &mut delta_snap,
-        &head_ingest,
-        &head_interner,
+    let tree = WorkingTree {
+        ingest,
+        interner,
+        snapshot: working,
         changed_files,
-        working,
-        &slices,
-    );
-    for k in delta_snap.ccx_by_sym.keys() {
-        if working.dead_symbols.contains(k) {
-            delta_snap.dead_symbols.insert(k.clone());
-        }
+    };
+    rebuild_baseline(&tree, &slices, head_sha)
+}
+
+/// The working index and snapshot a baseline is rebuilt from, with the paths that differ from it.
+pub struct WorkingTree<'a> {
+    pub ingest: &'a IngestResult,
+    pub interner: &'a Interner,
+    pub snapshot: &'a QualitySnapshot,
+    pub changed_files: &'a [String],
+}
+
+/// The baseline: the working snapshot with each changed file replaced by its baseline version in
+/// `slices`. A symbol is dead at the baseline only when no reference there uses its name, in the
+/// baseline versions of the changed files or in the unchanged files, so removing a function's
+/// last caller in another file makes it newly dead.
+#[must_use]
+pub fn rebuild_baseline(
+    tree: &WorkingTree<'_>,
+    slices: &[(&str, crate::domain::Lang, &[u8])],
+    head_sha: &str,
+) -> QualitySnapshot {
+    let changed_set: std::collections::HashSet<&str> =
+        tree.changed_files.iter().map(String::as_str).collect();
+    let mut snap = tree.snapshot.clone();
+    snap.head_sha = head_sha.to_string();
+    for cf in &changed_set {
+        remove_file_entries_from_snapshot(&mut snap, cf);
     }
-    merge_snapshot_entries(&mut snap, delta_snap);
+    let head_interner = crate::domain::Interner::new();
+    let head_ingest = match crate::ingest::LanguageRegistry::new() {
+        Ok(registry) if !slices.is_empty() => {
+            crate::ingest::ingest_in_memory_files(slices, &registry, &head_interner)
+        }
+        _ => IngestResult::new(),
+    };
+    if !head_ingest.symbols.is_empty() {
+        let head_graph = crate::graph::Graph::build(&head_ingest, &head_interner);
+        let mut delta_snap = compute_snapshot(&head_ingest, &head_graph, &head_interner, head_sha);
+        attach_head_bodies(
+            &mut delta_snap,
+            &head_ingest,
+            &head_interner,
+            tree.changed_files,
+            tree.snapshot,
+            slices,
+        );
+        merge_snapshot_entries(&mut snap, delta_snap);
+    }
+    let reached: std::collections::HashSet<&str> = head_ingest
+        .references
+        .iter()
+        .map(|r| head_interner.resolve(&r.callee_name))
+        .chain(
+            tree.ingest
+                .references
+                .iter()
+                .filter(|r| !changed_set.contains(tree.ingest.file_path(r.file_id, tree.interner)))
+                .map(|r| tree.interner.resolve(&r.callee_name)),
+        )
+        .collect();
+    snap.dead_symbols
+        .retain(|key| !reached.contains(key.rsplit("::").next().unwrap_or(key)));
     snap
 }
 
@@ -859,6 +909,7 @@ fn check_churn_regressions(
                 is_gating: false,
                 is_new_symbol: false,
                 renamed_from: None,
+                ..QualityRegression::default()
             });
         }
     }
@@ -921,49 +972,83 @@ fn check_body_text_regressions(
             is_gating: false,
             is_new_symbol: is_new,
             renamed_from: pair.map(|p| p.old_name.clone()),
+            ..QualityRegression::default()
         });
     }
 }
 
+/// How a clone member stands against the baseline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemberStatus {
+    /// Absent at the baseline.
+    New,
+    /// Present at the baseline with a different body.
+    Touched,
+    Untouched,
+}
+
+/// A clone member's name as rows print it: `path::scope::name` for a scoped symbol, else its name.
+fn member_name(sym: &crate::domain::Symbol, state: &QueryContext<'_>) -> String {
+    use crate::domain::CorpusView;
+    let name = state.sym_name(sym);
+    match sym.scope {
+        Some(sc) => {
+            symbol_canonical_key(name, state.sym_path(sym), Some(state.interner.resolve(&sc)))
+        }
+        None => name.to_string(),
+    }
+}
+
+/// Duplication rows for the clone groups a change made: a group with no new or touched member
+/// already existed. A group is `new-symbol` only when every member is new; otherwise it gates.
+/// A group that copies an untouched helper with two or more callers adds a
+/// `new-clone-of-reused-helper` row whose `now=` is that helper's caller count.
 pub fn collect_changed_clone_regressions(
-    clones: Vec<crate::clones::CloneGroup>,
+    clones: &[crate::clones::CloneGroup],
     state: &QueryContext<'_>,
-    changed_files: &[String],
+    status: &dyn Fn(&crate::domain::Symbol) -> MemberStatus,
     regressions: &mut Vec<QualityRegression>,
 ) {
+    use crate::domain::CorpusView;
     for cg in clones {
-        let Some(first_sym) = cg
+        let mut members: Vec<(String, &crate::domain::Symbol, MemberStatus)> = cg
             .members
-            .first()
-            .and_then(|&id| state.ingest.symbols.get(id as usize))
-        else {
-            continue;
-        };
-        let fp = state
-            .ingest
-            .files
-            .get(first_sym.file_id as usize)
-            .map_or("", |f| state.interner.resolve(&f.path));
-        if !changed_files.iter().any(|cf| fp == cf || fp.ends_with(cf)) {
+            .iter()
+            .filter_map(|&id| state.ingest.symbols.get(id as usize))
+            .map(|sym| (member_name(sym, state), sym, status(sym)))
+            .collect();
+        if members.iter().all(|m| m.2 == MemberStatus::Untouched) {
             continue;
         }
-        let has_reused_helper = cg.members.iter().any(|&id| state.graph.in_degree(id) >= 2);
-        let kind = if has_reused_helper {
-            "new-clone-of-reused-helper"
-        } else {
-            "duplication"
-        };
-        regressions.push(QualityRegression {
-            kind: kind.to_string(),
-            sym_name: state.interner.resolve(&first_sym.name).to_string(),
-            file_path: fp.to_string(),
-            line: first_sym.line,
-            was_val: 0,
+        members.sort_by(|a, b| a.0.cmp(&b.0));
+        let all_new = members.iter().all(|m| m.2 == MemberStatus::New);
+        let first = members[0].1;
+        let row = QualityRegression {
+            kind: "duplication".to_string(),
+            file_path: state.sym_path(first).to_string(),
+            line: first.line,
             now_val: cg.token_count as u32,
-            is_gating: false,
-            is_new_symbol: true,
-            renamed_from: None,
-        });
+            is_gating: !all_new,
+            is_new_symbol: all_new,
+            members: members.iter().map(|m| m.0.clone()).collect(),
+            ..QualityRegression::default()
+        };
+        let reused_callers = members
+            .iter()
+            .filter(|m| m.2 == MemberStatus::Untouched)
+            .map(|m| state.graph.in_degree(m.1.id))
+            .max()
+            .filter(|&callers| callers >= 2);
+        if let Some(callers) = reused_callers {
+            regressions.push(QualityRegression {
+                kind: "new-clone-of-reused-helper".to_string(),
+                now_val: callers as u32,
+                is_gating: true,
+                is_new_symbol: false,
+                ..row.clone()
+            });
+        }
+        regressions.push(row);
     }
 }
 
@@ -978,15 +1063,43 @@ pub fn is_changed_callable(
             .any(|cf| file_path == cf || file_path.ends_with(cf))
 }
 
+/// A clone member's standing: new when the baseline lacks it, touched when its body in a changed
+/// file differs from the baseline's fingerprint.
+fn member_status(
+    sym: &crate::domain::Symbol,
+    state: &QueryContext<'_>,
+    facts: &QualityDeltaFacts<'_>,
+    renames: &RenameMap,
+) -> MemberStatus {
+    use crate::domain::CorpusView;
+    let path = state.sym_path(sym);
+    let scope = sym.scope.map(|sc| state.interner.resolve(&sc));
+    let key = symbol_canonical_key(state.sym_name(sym), path, scope);
+    let was = renames.was_key(&key);
+    if !facts.baseline.ccx_by_sym.contains_key(was) {
+        MemberStatus::New
+    } else if is_changed_callable(sym, path, facts.changed_files)
+        && !facts
+            .working
+            .body_by_sym
+            .get(&key)
+            .zip(facts.baseline.body_by_sym.get(was))
+            .is_some_and(|(now, then)| now.same_text(then))
+    {
+        MemberStatus::Touched
+    } else {
+        MemberStatus::Untouched
+    }
+}
+
 fn check_source_and_clone_regressions(
     state: &QueryContext<'_>,
-    baseline: &QualitySnapshot,
-    changed_files: &[String],
-    clones: &[crate::clones::CloneGroup],
+    facts: &QualityDeltaFacts<'_>,
     renames: &RenameMap,
     regressions: &mut Vec<QualityRegression>,
 ) {
     use crate::domain::CorpusView;
+    let (baseline, changed_files) = (facts.baseline, facts.changed_files);
     for sym in &state.ingest.symbols {
         let file_path = state.sym_path(sym);
         if is_changed_callable(sym, file_path, changed_files)
@@ -1002,7 +1115,8 @@ fn check_source_and_clone_regressions(
             check_body_text_regressions(sym, sym_name, file_path, &body, is_new, pair, regressions);
         }
     }
-    collect_changed_clone_regressions(clones.to_vec(), state, changed_files, regressions);
+    let status = |sym: &crate::domain::Symbol| member_status(sym, state, facts, renames);
+    collect_changed_clone_regressions(facts.clones, state, &status, regressions);
 }
 
 fn filter_regressions_by_scope(
@@ -1106,13 +1220,13 @@ pub fn stale_replay_for(scope: Option<&str>) -> String {
 }
 
 pub fn update_report_counts(report: &mut QualityDeltaReport) {
-    report.gating_count = report.regressions.iter().filter(|r| r.is_gating).count();
-    report.minor_count = report.regressions.len().saturating_sub(report.gating_count);
-    report.preexisting_worse_count = report
-        .regressions
-        .iter()
-        .filter(|r| !r.is_new_symbol)
-        .count();
+    let count = |keep: fn(&QualityRegression) -> bool| {
+        report.regressions.iter().filter(|r| keep(r)).count()
+    };
+    report.gating_count = count(|r| r.is_gating);
+    report.minor_count = count(|r| r.is_minor);
+    report.new_symbol_count = count(|r| r.is_new_symbol);
+    report.preexisting_worse_count = report.regressions.len() - report.new_symbol_count;
 }
 
 pub fn apply_cli_delta_options_with_writer<W: std::io::Write>(
@@ -1195,12 +1309,52 @@ pub struct QualityDeltaFacts<'a> {
     pub clones: &'a [crate::clones::CloneGroup],
 }
 
+/// Drops dead-code rows whose name appears as an identifier elsewhere in the tree: a macro argument,
+/// a table entry, a value or a re-export reaches it without a call edge.
+fn drop_referenced_dead_rows(state: &QueryContext<'_>, regressions: &mut Vec<QualityRegression>) {
+    use std::collections::HashMap;
+    let lang_of: HashMap<&str, crate::domain::Lang> = state
+        .ingest
+        .files
+        .iter()
+        .map(|f| (state.interner.resolve(&f.path), f.lang))
+        .collect();
+    let mut names: HashMap<crate::domain::Lang, Vec<String>> = HashMap::new();
+    for r in regressions.iter().filter(|r| r.kind == "dead-code") {
+        if let Some(&lang) = lang_of.get(r.file_path.as_str()) {
+            let name = r.sym_name.rsplit("::").next().unwrap_or(&r.sym_name);
+            names.entry(lang).or_default().push(name.to_string());
+        }
+    }
+    let mut referenced = std::collections::HashSet::new();
+    for (lang, list) in &names {
+        let mut uses: HashMap<&str, u32> = list.iter().map(|n| (n.as_str(), 0)).collect();
+        crate::ingest::identifiers::count_identifier_uses(
+            state.ingest,
+            state.interner,
+            state.sources,
+            *lang,
+            &mut uses,
+        );
+        referenced.extend(
+            uses.into_iter()
+                .filter(|&(_, n)| n > 0)
+                .map(|(name, _)| name.to_string()),
+        );
+    }
+    regressions.retain(|r| {
+        r.kind != "dead-code"
+            || !referenced.contains(r.sym_name.rsplit("::").next().unwrap_or(&r.sym_name))
+    });
+}
+
 pub fn assemble_quality_delta_report(
     state: &QueryContext<'_>,
     facts: &QualityDeltaFacts<'_>,
 ) -> QualityDeltaReport {
     let (mut report, renames) =
         compute_delta_and_renames(facts.working, facts.baseline, facts.source_name, facts.acks);
+    drop_referenced_dead_rows(state, &mut report.regressions);
     report.head_basis = facts.head_basis;
     report.baseline_absorbed = facts.baseline.absorbed;
     if !facts.at_stamp.is_empty() {
@@ -1213,14 +1367,7 @@ pub fn assemble_quality_delta_report(
             facts.changed_files,
             &mut report.regressions,
         );
-        check_source_and_clone_regressions(
-            state,
-            facts.baseline,
-            facts.changed_files,
-            facts.clones,
-            &renames,
-            &mut report.regressions,
-        );
+        check_source_and_clone_regressions(state, facts, &renames, &mut report.regressions);
         if let Some(ledger) = facts.acks {
             let _ = apply_quality_acks(&mut report.regressions, ledger);
         }
@@ -1280,7 +1427,7 @@ fn collect_delta_clones(
     crate::clones::find_clones_in_root(
         state.ingest,
         state.interner,
-        60,
+        20,
         None,
         Some(Path::new(root)),
     )

@@ -24,20 +24,6 @@ struct CachedFile<'a> {
     tree: Option<tree_sitter::Tree>,
 }
 
-fn parse_file_tree(
-    lang: crate::domain::Lang,
-    path: &str,
-    source: &[u8],
-) -> Option<tree_sitter::Tree> {
-    let grammar = lang.semantics().source_grammar(path)?;
-    crate::ingest::registry::PARSER_STATE.with(|state| {
-        let mut borrowed = state.borrow_mut();
-        let (parser, _) = &mut *borrowed;
-        parser.set_language(grammar).ok()?;
-        parser.parse(source, None)
-    })
-}
-
 pub struct DeadCodeContext<'a> {
     pub root: &'a str,
     pub sources: &'a dyn crate::query::SourceReader,
@@ -45,53 +31,6 @@ pub struct DeadCodeContext<'a> {
     pub graph: &'a Graph,
     pub interner: &'a Interner,
     pub page: &'a dyn crate::commands::context::Paginated,
-}
-
-/// Counts identifier tokens of `lang` across the corpus for each name in `uses`. A function's own
-/// definition contributes one, so a count above one is evidence of a reference somewhere else.
-fn count_identifier_uses<'a>(
-    ctx: &DeadCodeContext<'_>,
-    lang: crate::domain::Lang,
-    uses: &mut std::collections::HashMap<&'a str, u32>,
-) {
-    use rayon::prelude::*;
-    use std::collections::HashMap;
-    let files: Vec<_> = ctx
-        .ingest
-        .files
-        .iter()
-        .filter(|file| file.lang == lang)
-        .collect();
-    let known = &*uses;
-    let counted: HashMap<&'a str, u32> = files
-        .par_iter()
-        .fold(HashMap::new, |mut local, file| {
-            let path = ctx.ingest.file_path(file.id, ctx.interner);
-            let source = ctx
-                .sources
-                .read(path)
-                .unwrap_or(std::borrow::Cow::Borrowed(&[]));
-            if let Some(tree) = parse_file_tree(lang, path, source.as_ref()) {
-                lang.semantics()
-                    .for_each_identifier(tree.root_node(), source.as_ref(), &mut |text| {
-                        if let Some((&name, _)) = known.get_key_value(text) {
-                            *local.entry(name).or_insert(0) += 1;
-                        }
-                    });
-            }
-            local
-        })
-        .reduce(HashMap::new, |mut left, right| {
-            for (name, count) in right {
-                *left.entry(name).or_insert(0) += count;
-            }
-            left
-        });
-    for (name, count) in counted {
-        if let Some(total) = uses.get_mut(name) {
-            *total += count;
-        }
-    }
 }
 
 pub fn execute_dead_code_query_paged<W: Write>(
@@ -105,7 +44,13 @@ pub fn execute_dead_code_query_paged<W: Write>(
     let mut candidates = Vec::new();
     for sym in &ctx.ingest.symbols {
         let p = view.sym_path(sym);
-        if !crate::gate::baseline::is_dead_code_candidate(sym, p, ctx.graph) {
+        let semantics = sym.lang.semantics();
+        if sym.kind != crate::domain::SymKind::Function
+            || !semantics.supports_internal_linkage()
+            || sym.sig_end_byte >= sym.end_byte
+            || ctx.graph.in_degree(sym.id) != 0
+            || semantics.is_header_file(p)
+        {
             continue;
         }
         let cached = file_cache.entry(sym.file_id).or_insert_with(|| {
@@ -113,7 +58,7 @@ pub fn execute_dead_code_query_paged<W: Write>(
                 .sources
                 .read(p)
                 .unwrap_or(std::borrow::Cow::Borrowed(&[]));
-            let tree = parse_file_tree(sym.lang, p, source.as_ref());
+            let tree = crate::ingest::identifiers::parse_file_tree(sym.lang, p, source.as_ref());
             CachedFile { source, tree }
         });
         let is_internal = cached.tree.as_ref().is_some_and(|tree| {
@@ -136,7 +81,7 @@ pub fn execute_dead_code_query_paged<W: Write>(
             .insert(view.sym_name(sym), 0);
     }
     for (lang, uses) in &mut uses_by_lang {
-        count_identifier_uses(ctx, *lang, uses);
+        crate::ingest::identifiers::count_identifier_uses(ctx.ingest, ctx.interner, ctx.sources, *lang, uses);
     }
     let mut dead = Vec::new();
     for sym in candidates {
@@ -144,7 +89,7 @@ pub fn execute_dead_code_query_paged<W: Write>(
         let referenced = uses_by_lang
             .get(&sym.lang)
             .and_then(|uses| uses.get(name))
-            .is_some_and(|&count| count > 1);
+            .is_some_and(|&count| count > 0);
         if !referenced {
             dead.push((name, sym.kind.tag(), view.sym_path(sym), sym.line));
         }

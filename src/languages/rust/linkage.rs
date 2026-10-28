@@ -104,18 +104,3 @@ fn has_word(node: Node<'_>, source: &[u8], word: &str) -> bool {
     })
 }
 
-/// Visits the text of every identifier leaf under `root`. Leaves cover value-position uses such as
-/// struct shorthand (`Plugin { run }`), fn-pointer bindings, and method names in macro bodies.
-pub(super) fn for_each_rust_identifier(root: Node<'_>, source: &[u8], visit: &mut dyn FnMut(&str)) {
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
-        if node.child_count() > 0 {
-            let mut cursor = node.walk();
-            stack.extend(node.children(&mut cursor));
-        } else if node.kind().ends_with("identifier")
-            && let Ok(text) = node.utf8_text(source)
-        {
-            visit(text);
-        }
-    }
-}

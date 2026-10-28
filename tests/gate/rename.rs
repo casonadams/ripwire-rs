@@ -326,3 +326,22 @@ fn pinned_sidecar_baseline_without_fingerprints_pairs_no_rename() {
     assert_eq!(rows.len(), 1);
     assert!(rows[0].is_new_symbol);
 }
+
+#[test]
+fn test_same_text_ignores_node_ids_across_separately_built_indexes() {
+    let base = snapshot(&Interner::new(), &[func("kept", 20, branches(24))], "base");
+    let work = snapshot(
+        &Interner::new(),
+        &[
+            func("added", 1, unrelated_body()),
+            func("kept", 20, branches(24)),
+        ],
+        "work",
+    );
+    let edited = snapshot(&Interner::new(), &[func("kept", 20, branches(25))], "work");
+    let key = format!("{PATH}::kept");
+    let same = |a: &QualitySnapshot, b: &QualitySnapshot| {
+        a.body_by_sym[&key].same_text(&b.body_by_sym[&key])
+    };
+    assert_eq!((same(&base, &work), same(&base, &edited)), (true, false));
+}

@@ -12,7 +12,8 @@
 - **Reference**: [Wikipedia: HITS algorithm](https://en.wikipedia.org/wiki/HITS_algorithm)
 - **Formulation**: Coupled iterative eigenvector convergence:
   $$a^{(k+1)} = \frac{W_{\text{in}} h^{(k)}}{\|W_{\text{in}} h^{(k)}\|_2}, \quad h^{(k+1)} = \frac{W_{\text{out}} a^{(k+1)}}{\|W_{\text{out}} a^{(k+1)}\|_2}$$
-- **Interpretation**: Authorities highlight core utility APIs; hubs highlight orchestrators and test harnesses.
+- **Edge weights by calling file**: each edge $u \to v$ is divided by the number of callers of $v$ in $u$'s file, in both $W_{\text{in}}$ and $W_{\text{out}}$, so many callers in one file count as one file's reliance. Raw HITS concentrates on the densest caller block (the tightly-knit-community effect), so a test file's local helpers outrank code the whole tree calls.
+- **Interpretation**: Authorities highlight core utility APIs relied on across files; hubs highlight orchestrators and test harnesses that reach into many files.
 
 ## 3. Louvain Community Modularity
 - **Reference**: [Wikipedia: Louvain method](https://en.wikipedia.org/wiki/Louvain_method), [Wikipedia: Modularity (networks)](https://en.wikipedia.org/wiki/Modularity_(networks))

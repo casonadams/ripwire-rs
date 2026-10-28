@@ -120,12 +120,12 @@ why = "Under a 4000-token budget ours is slightly smaller than upstream and carr
 evidence = "bytes rw=7314 rip=7513; facts rw=613 rip=476; density rw=0.08381 rip=0.06336; ours 16 file rows and 77 s rows vs upstream 27 and 39."
 
 [[divergence]]
-id = "map-rank-authority-smaller"
+id = "map-rank-authority-by-calling-file"
 command = "--rank-by=authority"
 case = ""
-kind = "smaller"
-why = "Authority-ranked map is 6% fewer bytes than upstream and the same token budget yields a denser map."
-evidence = "bytes rw=23805 rip=25305; facts rw=1969 rip=2115; density rw=0.08271 rip=0.08358; ours 65 file rows vs upstream 59, 439 c rows vs 450."
+kind = "fixes-upstream-defect"
+why = "Upstream's HITS authority concentrates on the densest caller block, so one test file's local helpers outrank code the whole tree calls; on this tree its top six are one test file's helpers, and its size swings with that file. Ours splits a callee's in-edges from one file into one unit, so authority counts calling files. Graded by a rust-analyzer SCIP index over the top 25 on three trees: ours called from 3+ other files 64% vs upstream 27%, used only in its own file 8% vs 68%."
+evidence = "tests/rank/hits.rs::test_authority_by_file_prefers_reliance_across_files_over_one_file_of_callers"
 
 [[divergence]]
 id = "map-rank-hub-smaller"

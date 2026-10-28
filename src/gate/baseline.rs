@@ -34,16 +34,64 @@ pub(crate) fn symbol_canonical_key(sym_name: &str, file_path: &str, scope: Optio
     }
 }
 
-/// The structural half of the `--dead-code` rule: a function with a body and no indexed caller, in a
-/// language with internal linkage, outside a header. Whether it is also internal needs its parse tree.
-#[must_use]
-pub fn is_dead_code_candidate(sym: &crate::domain::Symbol, path: &str, graph: &Graph) -> bool {
+/// What can reach a callable without a resolved call edge, gathered once per snapshot.
+struct Reachable {
+    /// Every name some reference uses: bound, declined or unresolved calls, reads, values, macro
+    /// arguments. Matched by name, so this is a floor.
+    referenced: HashSet<lasso::Spur>,
+    /// Types that implement or extend another, whose methods may be reached by dispatch.
+    dispatched_types: HashSet<lasso::Spur>,
+}
+
+impl Reachable {
+    fn of(ingest: &IngestResult) -> Self {
+        let referenced = ingest.references.iter().map(|r| r.callee_name).collect();
+        let dispatched_types = ingest
+            .references
+            .iter()
+            .filter(|r| r.role == crate::domain::RefRole::Extends)
+            .filter_map(|r| r.receiver_type.or(r.qualifier))
+            .collect();
+        Self {
+            referenced,
+            dispatched_types,
+        }
+    }
+}
+
+/// Constructors are reached through their type: `constructor`, `__init__`, `__new__`, or a method
+/// named after its type.
+fn is_constructor(name: &str, scope: Option<&str>) -> bool {
+    matches!(name, "constructor" | "__init__" | "__new__")
+        || scope.is_some_and(|sc| sc.rsplit("::").next() == Some(name))
+}
+
+/// A function or method with a body that nothing references, outside headers and tests, that is
+/// not an entrypoint, a constructor, a method of a type that implements or extends another, or a
+/// method with no enclosing type (an object-literal member).
+fn is_unreferenced_callable(
+    sym: &crate::domain::Symbol,
+    path: &str,
+    graph: &Graph,
+    interner: &Interner,
+    reachable: &Reachable,
+) -> bool {
     let semantics = sym.lang.semantics();
-    sym.kind == SymKind::Function
-        && semantics.supports_internal_linkage()
+    let name = &interner[sym.name];
+    let scope = sym.scope.map(|sc| &interner[sc]);
+    let method_reached = sym.kind == SymKind::Method
+        && sym
+            .scope
+            .is_none_or(|sc| reachable.dispatched_types.contains(&sc));
+    matches!(sym.kind, SymKind::Function | SymKind::Method)
         && sym.sig_end_byte < sym.end_byte
         && graph.in_degree(sym.id) == 0
+        && !reachable.referenced.contains(&sym.name)
+        && !method_reached
+        && !is_constructor(name, scope)
+        && !semantics.is_entrypoint_symbol(name, scope, sym.kind, path)
         && !semantics.is_header_file(path)
+        && !crate::gate::affected::is_test_path(path)
 }
 
 /// Compute a quality snapshot from an ingested repository index.
@@ -61,6 +109,7 @@ pub fn compute_snapshot(
         ..Default::default()
     };
 
+    let reachable = Reachable::of(ingest);
     for sym in &ingest.symbols {
         if sym.kind == SymKind::Section || sym.kind == SymKind::ModuleScope {
             continue;
@@ -100,7 +149,7 @@ pub fn compute_snapshot(
             .and_modify(|v| *v = (*v).max(sym.params))
             .or_insert(sym.params);
 
-        if is_dead_code_candidate(sym, path, graph) && !crate::gate::affected::is_test_path(path) {
+        if is_unreferenced_callable(sym, path, graph, interner, &reachable) {
             snap.dead_symbols.insert(key.clone());
         }
 

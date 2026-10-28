@@ -107,7 +107,7 @@ ripwire-rs <dir> --affected=F1,F2 --legend=compact       # 3. identify affected 
 
 <example title="Resolving a cognitive complexity regression before commit">
 Good:
-1. Run `ripwire-rs . --quality-delta --legend=compact` and see `<r kind="complexity" sym="parse_header" was="12" now="19" gating="1" bar="15"/>`.
+1. Run `ripwire-rs . --quality-delta --legend=compact` and see `<r kind="complexity" sym="parse_header" was="12" now="19" bar="15" p="src/parser.rs:40" gating="1" next="--expand=src/parser.rs:parse_header"/>`.
 2. Extract the inner validation loop into a private helper, then re-run `--quality-delta`, `--edit-check=parse_header`, and `--affected=src/parser.rs`.
 
 Bad:

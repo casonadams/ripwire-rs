@@ -140,6 +140,16 @@ pub struct DefCaptureGateContext<'a> {
     pub source_bytes: &'a [u8],
 }
 
+/// Whether `node` names what its parent defines: the parent's `name` field, or the `declarator` of a
+/// C-family function declarator (a prototype or a definition).
+fn is_definition_name(node: tree_sitter::Node<'_>) -> bool {
+    node.parent().is_some_and(|parent| {
+        parent.child_by_field_name("name") == Some(node)
+            || (parent.kind() == "function_declarator"
+                && parent.child_by_field_name("declarator") == Some(node))
+    })
+}
+
 /// Unified trait encapsulating all language-specific syntax, AST, visibility, and resolution rules.
 pub trait LanguageSemantics: Sync {
     /// Short canonical tag used in XML output (`"rs"`, `"ts"`, etc.).
@@ -518,14 +528,29 @@ pub trait LanguageSemantics: Sync {
         false
     }
 
-    /// Calls `visit` with the text of every identifier token in `root`; `--dead-code` counts these
-    /// as name-use evidence, so value-position references (struct shorthand, fn pointers) count too.
+    /// Calls `visit` with the text of every identifier token in `root` that uses a name rather than
+    /// defining it (each leaf whose kind ends in `identifier`, outside a definition's `name` and a
+    /// function declarator's `declarator`, so a prototype is not a use). Dead-code checks count these
+    /// as name-use evidence, so value positions (shorthand properties, fn pointers, macro arguments,
+    /// re-exports) count too.
     fn for_each_identifier(
         &self,
-        _root: tree_sitter::Node<'_>,
-        _source: &[u8],
-        _visit: &mut dyn FnMut(&str),
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+        visit: &mut dyn FnMut(&str),
     ) {
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            if node.child_count() > 0 {
+                let mut cursor = node.walk();
+                stack.extend(node.children(&mut cursor));
+            } else if node.kind().ends_with("identifier")
+                && !is_definition_name(node)
+                && let Ok(text) = node.utf8_text(source)
+            {
+                visit(text);
+            }
+        }
     }
 
     /// Optional language-specific enclosing scope extractor for non-standard container AST shapes.
