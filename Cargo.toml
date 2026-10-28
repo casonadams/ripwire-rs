@@ -43,7 +43,7 @@ harness = false
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 ignore = "0.4"
-gix = { version = "0.89", default-features = false, features = ["revision", "blob-diff", "parallel", "sha1", "status"] }
+gix = { version = "0.90", default-features = false, features = ["revision", "blob-diff", "parallel", "sha1", "status"] }
 lasso = { version = "0.7", features = ["multi-threaded", "serialize"] }
 memchr = "2.8"
 rayon = "1.10"
