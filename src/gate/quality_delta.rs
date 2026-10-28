@@ -126,6 +126,8 @@ pub struct QualityDeltaReport {
     pub baseline_absorbed: usize,
     pub renames: usize,
     pub acked_by_rename: usize,
+    /// Merge base the delta was measured from under `--quality-delta=REV`.
+    pub base_ref: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -134,6 +136,8 @@ pub struct DeltaCliOptions<'a> {
     pub quality_ack: Option<&'a str>,
     pub ack_only: Option<&'a str>,
     pub show_stale: bool,
+    /// `REV` or `REV..HEAD`: measure from that merge base instead of the sidecar or HEAD.
+    pub base: Option<&'a str>,
 }
 
 #[must_use]
@@ -190,26 +194,40 @@ impl QualityDeltaReport {
         let eligible = self.regressions.is_empty() && !self.stale_acks.is_empty();
         self.stale_collapse_replay.as_deref().filter(|_| eligible)
     }
+
+    /// Root attributes emitted only when set: `head_basis=`, `base_ref=` and the non-zero counts.
+    fn optional_attrs(&self) -> String {
+        let text = [
+            ("head_basis", self.head_basis.map(str::to_string)),
+            ("base_ref", self.base_ref.clone()),
+            ("baseline_absorbed", nonzero(self.baseline_absorbed)),
+            ("renames", nonzero(self.renames)),
+            ("acked_by_rename", nonzero(self.acked_by_rename)),
+        ];
+        text.into_iter()
+            .filter_map(|(name, value)| value.map(|v| format!(" {name}=\"{}\"", v.xml_escaped())))
+            .collect()
+    }
+
+    /// A clean identity delta with nothing to disclose but collapsed stale rows.
+    fn is_verdict_only(&self, collapsed: bool) -> bool {
+        collapsed
+            && self.head_basis == Some("identity")
+            && self.acked_count == 0
+            && self.baseline_absorbed == 0
+            && self.api_new_surface == 0
+            && self.renames == 0
+            && self.acked_by_rename == 0
+    }
+}
+
+fn nonzero(n: usize) -> Option<String> {
+    (n > 0).then(|| n.to_string())
 }
 
 impl crate::serialize::ToXmlString for QualityDeltaReport {
     fn write_xml<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        let mut hb_attr = match self.head_basis {
-            Some(hb) => format!(" head_basis=\"{}\"", hb.xml_escaped()),
-            None => String::new(),
-        };
-        if self.baseline_absorbed > 0 {
-            hb_attr.push_str(&format!(
-                " baseline_absorbed=\"{}\"",
-                self.baseline_absorbed
-            ));
-        }
-        if self.renames > 0 {
-            hb_attr.push_str(&format!(" renames=\"{}\"", self.renames));
-        }
-        if self.acked_by_rename > 0 {
-            hb_attr.push_str(&format!(" acked_by_rename=\"{}\"", self.acked_by_rename));
-        }
+        let hb_attr = self.optional_attrs();
         let collapse = self.collapsed_stale_replay();
         let stale_attr = collapse.map_or_else(String::new, |replay| {
             format!(
@@ -218,14 +236,7 @@ impl crate::serialize::ToXmlString for QualityDeltaReport {
                 replay.xml_escaped()
             )
         });
-        let verdict_only = collapse.is_some()
-            && self.head_basis == Some("identity")
-            && self.acked_count == 0
-            && self.baseline_absorbed == 0
-            && self.api_new_surface == 0
-            && self.renames == 0
-            && self.acked_by_rename == 0;
-        if verdict_only {
+        if self.is_verdict_only(collapse.is_some()) {
             return writeln!(
                 out,
                 "<!-- ripwire-rs quality-delta schema=ripwire-rs.quality-delta/v1: only what the change made WORSE vs baseline=: regressions= minor= gating=; <r kind= sym= p= was= now= gating= bar=>, <sa> acked; with no regressions the <sa> rows collapse to stale_by_kind= and stale_next= prints them. -->\n<quality-delta schema=\"ripwire-rs.quality-delta/v1\" baseline=\"{}\" regressions=\"0\" gating=\"0\" stale=\"{}\" at=\"{}\"{hb_attr}{stale_attr}></quality-delta>",
@@ -587,6 +598,7 @@ fn compute_delta_and_renames(
         baseline_absorbed: 0,
         renames: renames.len(),
         acked_by_rename,
+        base_ref: None,
     };
     (report, renames)
 }
@@ -1302,4 +1314,63 @@ pub fn evaluate_quality_delta_with_basis(
         clones: &clones,
     };
     Ok(assemble_quality_delta_report(state, &facts))
+}
+
+/// The delta against the merge base of `base` when given, else against the pinned sidecar or HEAD.
+pub fn evaluate_quality_delta_from(
+    state: &QueryContext<'_>,
+    base: Option<&str>,
+) -> io::Result<QualityDeltaReport> {
+    match base {
+        Some(spec) => evaluate_quality_delta_since_ref(state.root, state, spec),
+        None => evaluate_quality_delta(state.root, state),
+    }
+}
+
+/// Quality delta of the working tree against the merge base of `spec` (`REV` or `REV..HEAD`) and
+/// HEAD, rebuilt from git: what everything since that base made worse. No sidecar is read.
+pub fn evaluate_quality_delta_since_ref(
+    root: &str,
+    state: &QueryContext<'_>,
+    spec: &str,
+) -> io::Result<QualityDeltaReport> {
+    let fail = |e: String| io::Error::other(format!("--quality-delta: {e}"));
+    let changes = crate::git::repo::changes_since_spec(root, spec).map_err(fail)?;
+    let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+    let head_sha = resolve_delta_head_sha(&at_stamp);
+    let changed_files = changes.paths;
+    let mut working = compute_snapshot(state.ingest, state.graph, state.interner, head_sha);
+    working.dirty = !changed_files.is_empty();
+    attach_working_bodies(&mut working, state, &changed_files);
+
+    let (baseline, head_basis) = if changed_files.is_empty() {
+        (working.clone(), Some("identity"))
+    } else {
+        let snap = load_revision_baseline_incremental(
+            root,
+            &changes.base,
+            state.ingest,
+            state.interner,
+            &working,
+            &changed_files,
+            head_sha,
+        );
+        (snap, None)
+    };
+    let acks = load_quality_acks(root);
+    let clones = collect_delta_clones(state, root, !changed_files.is_empty());
+
+    let facts = QualityDeltaFacts {
+        working: &working,
+        baseline: &baseline,
+        source_name: "git-ref",
+        head_basis,
+        at_stamp: &at_stamp,
+        changed_files: &changed_files,
+        acks: acks.as_ref(),
+        clones: &clones,
+    };
+    let mut report = assemble_quality_delta_report(state, &facts);
+    report.base_ref = Some(changes.base.get(..9).unwrap_or(&changes.base).to_string());
+    Ok(report)
 }

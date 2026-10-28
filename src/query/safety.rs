@@ -405,12 +405,13 @@ pub fn execute_quality_baseline_with<W: Write>(
     crate::gate::baseline::write_baseline_file(&snap, &baseline_path)?;
     write_baseline_confirmation(&head_sha, &baseline_path, out)
 }
+/// Runs the delta against the pinned sidecar or HEAD, or the merge base of `args.base` when given.
 pub fn execute_quality_delta_with_args<W: Write>(
     args: crate::gate::quality_delta::DeltaCliOptions<'_>,
     state: &crate::query::commands::QueryContext<'_>,
     out: &mut W,
 ) -> io::Result<bool> {
-    let mut report = crate::gate::quality_delta::evaluate_quality_delta(state.root, state)?;
+    let mut report = crate::gate::quality_delta::evaluate_quality_delta_from(state, args.base)?;
     crate::gate::quality_delta::apply_cli_delta_options(state, &mut report, args)?;
     report.write_xml(out)?;
     Ok(report.has_gating_failures())

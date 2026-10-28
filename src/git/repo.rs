@@ -435,26 +435,111 @@ pub fn merge_base_id(repo: &gix::Repository, branch: &str) -> Option<gix::Object
     branch_merge_base(repo, branch).map(|(base, _)| base)
 }
 
+/// The merge base a ref resolved to, and the paths that differ from it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefChanges {
+    pub base: String,
+    pub paths: Vec<String>,
+}
+
 /// Paths whose content differs between the merge base of `rev` and `HEAD` and the working tree:
-/// committed changes since that base plus uncommitted and untracked edits, compared by blob id.
-/// Errors name why `rev` cannot be honored.
-pub fn changed_since_ref(root: &str, rev: &str) -> Result<Vec<String>, String> {
-    let repo =
-        discover(root).ok_or_else(|| format!("--pr-context: {root} is not a git repository"))?;
+/// committed changes since that base plus uncommitted and untracked edits, compared by blob id,
+/// with that merge base. Errors name why `rev` cannot be honored, without a flag prefix.
+pub fn changes_since_ref(root: &str, rev: &str) -> Result<RefChanges, String> {
+    let repo = discover(root).ok_or_else(|| format!("{root} is not a git repository"))?;
     let workdir = repo
         .workdir()
-        .ok_or_else(|| format!("--pr-context: {root} has no work tree"))?;
+        .ok_or_else(|| format!("{root} has no work tree"))?;
     if revision_commit(&repo, rev).is_none() {
-        return Err(format!("--pr-context: unknown ref '{rev}'"));
+        return Err(format!("unknown ref '{rev}'"));
     }
     let base = merge_base_id(&repo, rev)
-        .ok_or_else(|| format!("--pr-context: '{rev}' shares no history with HEAD"))?;
-    let base_blobs = path_blobs(&repo, &base.to_hex().to_string());
+        .ok_or_else(|| format!("'{rev}' shares no history with HEAD"))?
+        .to_hex()
+        .to_string();
+    let base_blobs = path_blobs(&repo, &base);
     let head_blobs = path_blobs(&repo, "HEAD");
     let dirty: std::collections::BTreeSet<String> = dirty_paths(root).into_iter().collect();
-    Ok(changed_paths(&base_blobs, &head_blobs, &dirty, |path| {
+    let paths = changed_paths(&base_blobs, &head_blobs, &dirty, |path| {
         worktree_blob_id(&repo, workdir, path)
-    }))
+    });
+    Ok(RefChanges { base, paths })
+}
+
+/// [`changes_since_ref`] for a `REV`, `REV..HEAD` or `REV...HEAD` spec.
+pub fn changes_since_spec(root: &str, spec: &str) -> Result<RefChanges, String> {
+    changes_since_ref(root, base_of_range(spec)?)
+}
+
+/// The base of a `REV`, `REV..HEAD` or `REV...HEAD` spec. The compared side is always the working
+/// tree, so a range whose right side is not `HEAD` is refused rather than silently reinterpreted.
+pub fn base_of_range(spec: &str) -> Result<&str, String> {
+    let Some((base, target)) = spec.split_once("..") else {
+        return Ok(spec);
+    };
+    let target = target.strip_prefix('.').unwrap_or(target);
+    if !target.is_empty() && target != "HEAD" {
+        return Err(format!(
+            "'{spec}': only REV or REV..HEAD is supported; the compared side is the working tree"
+        ));
+    }
+    if base.is_empty() {
+        return Err(format!("'{spec}': missing base ref"));
+    }
+    Ok(base)
+}
+
+/// New-side changed lines of each of `paths` against its blob at `base`, read from the working
+/// tree. Binary files are left out, so callers fall back to whole-file attribution for them.
+#[must_use]
+pub fn changed_lines_since(
+    root: &str,
+    base: &str,
+    paths: &[String],
+) -> std::collections::BTreeMap<String, crate::gate::pr_context::ChangedLines> {
+    let mut out = std::collections::BTreeMap::new();
+    let Some(repo) = discover(root) else {
+        return out;
+    };
+    let (Some(workdir), Some(tree)) = (repo.workdir(), revision_tree(&repo, base)) else {
+        return out;
+    };
+    for path in paths {
+        let old = tree
+            .lookup_entry_by_path(path)
+            .ok()
+            .flatten()
+            .and_then(|entry| entry.object().ok())
+            .map(|obj| obj.data.to_vec())
+            .unwrap_or_default();
+        let new = std::fs::read(workdir.join(path)).unwrap_or_default();
+        if is_binary(&old) || is_binary(&new) {
+            continue;
+        }
+        out.insert(path.clone(), new_side_changes(&old, &new));
+    }
+    out
+}
+
+/// Changed line ranges of `new` against `old` (0-based, half-open; empty where lines were only
+/// deleted), with the byte offset each line of `new` starts at.
+#[must_use]
+pub fn new_side_changes(old: &[u8], new: &[u8]) -> crate::gate::pr_context::ChangedLines {
+    use gix::diff::blob::{Algorithm, Diff, InternedInput, sources::byte_lines};
+    let input = InternedInput::new(byte_lines(old), byte_lines(new));
+    let diff = Diff::compute(Algorithm::Histogram, &input);
+    let line_starts = std::iter::once(0)
+        .chain(
+            new.iter()
+                .enumerate()
+                .filter(|&(i, byte)| *byte == b'\n' && i + 1 < new.len())
+                .map(|(i, _)| u32::try_from(i + 1).unwrap_or(u32::MAX)),
+        )
+        .collect();
+    crate::gate::pr_context::ChangedLines {
+        ranges: diff.hunks().map(|h| h.after).collect(),
+        line_starts,
+    }
 }
 
 /// Paths whose working-tree blob differs from their blob at the merge base. A path outside `dirty`

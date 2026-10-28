@@ -104,15 +104,8 @@ pub fn execute_dead_code_query_paged<W: Write>(
         std::collections::HashMap::new();
     let mut candidates = Vec::new();
     for sym in &ctx.ingest.symbols {
-        if sym.kind != crate::domain::SymKind::Function
-            || !sym.lang.semantics().supports_internal_linkage()
-            || sym.sig_end_byte >= sym.end_byte
-            || ctx.graph.in_degree(sym.id) != 0
-        {
-            continue;
-        }
         let p = view.sym_path(sym);
-        if sym.lang.semantics().is_header_file(p) {
+        if !crate::gate::baseline::is_dead_code_candidate(sym, p, ctx.graph) {
             continue;
         }
         let cached = file_cache.entry(sym.file_id).or_insert_with(|| {

@@ -110,3 +110,47 @@ fn test_relative_prefix_is_dir_with_trailing_slash_or_empty_at_top() {
     assert_eq!(relative_prefix(work, Path::new("/work/other")), None);
     assert_eq!(relative_prefix(work, Path::new("/work/treeish")), None);
 }
+
+#[test]
+fn test_base_of_range_accepts_rev_or_rev_to_head_only() {
+    use ripwire_rs::git::repo::base_of_range;
+    let cases = [
+        ("main", Ok("main")),
+        ("main..HEAD", Ok("main")),
+        ("main...HEAD", Ok("main")),
+        ("main..", Ok("main")),
+        ("main..feature", Err(())),
+        ("..HEAD", Err(())),
+    ];
+    for (spec, want) in cases {
+        assert_eq!(base_of_range(spec).map_err(|_| ()), want, "{spec}");
+    }
+}
+
+/// (new-side changed ranges as `(start, end)`, line start offsets)
+type SideChanges = (Vec<(u32, u32)>, Vec<u32>);
+
+#[test]
+fn test_new_side_changes_reports_new_lines_and_their_byte_starts() {
+    use ripwire_rs::git::repo::new_side_changes;
+    let cases: [(&str, &[u8], &[u8], SideChanges); 3] = [
+        (
+            "edit",
+            b"a\nb\nc\n",
+            b"a\nB\nc\n",
+            (vec![(1, 2)], vec![0, 2, 4]),
+        ),
+        (
+            "deletion",
+            b"a\nb\nc\n",
+            b"a\nc\n",
+            (vec![(1, 1)], vec![0, 2]),
+        ),
+        ("unchanged", b"a\nb\n", b"a\nb\n", (vec![], vec![0, 2])),
+    ];
+    for (case, old, new, want) in cases {
+        let got = new_side_changes(old, new);
+        let ranges = got.ranges.iter().map(|r| (r.start, r.end)).collect();
+        assert_eq!((ranges, got.line_starts), want, "{case}");
+    }
+}

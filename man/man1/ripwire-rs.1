@@ -220,8 +220,8 @@ Pin a code quality baseline stamped with git \fBHEAD\fR to \fB.ripwire-rs_qualit
 .B \-\-allow\-dirty
 With \fB\-\-quality\-baseline\fR, pin anyway; the sidecar records \fBdirty 1\fR and \fBabsorbed N\fR, and every later \fB\-\-quality\-delta\fR against it carries \fBbaseline_absorbed="N"\fR. Refused alone.
 .TP
-.B \-\-quality\-delta
-Measure code quality regressions against git \fBHEAD\fR (or pinned baseline) across 10 facets (cognitive complexity, cyclomatic complexity, dead code, duplicates, nesting, params, churn, and arity breaks). Exits non-zero (\fB2\fR) if gating regressions are detected.
+.BI \-\-quality\-delta [=REV]
+Measure code quality regressions against git \fBHEAD\fR (or pinned baseline) across 10 facets (cognitive complexity, cyclomatic complexity, dead code, duplicates, nesting, params, churn, and arity breaks). Exits non-zero (\fB2\fR) if gating regressions are detected. With \fB=\fR\fIREV\fR (or \fIREV\fR\fB..HEAD\fR) the baseline is rebuilt from the merge base of \fIREV\fR and \fBHEAD\fR instead, with no sidecar: the report carries \fBbaseline="git-ref"\fR and \fBbase_ref=\fR. The value needs \fB=\fR, so \fB\-\-quality\-delta .\fR still names the path.
 .TP
 .B \-\-map\-diff
 Re-rank the architecture map toward git-changed files so recent work automatically floats to the top of the context window.
@@ -405,7 +405,7 @@ Execute at most 16 shared read sub-queries from \fIname:argument\fR or \fIname:{
 Install 17 pre-packaged ripwire-rs agent skills and active manifest (\fB.ripwire\-rs\-manifest\-v1\fR) to \fI~/.agents/skills\fR (or custom \fIDIR\fR). Replaces stale or broken symlinks safely. Alias: \fB\-\-install\-skills\fR.
 .TP
 .BI \-\-exclude= GLOB
-Exclude glob or directory pattern from crawling and indexing.
+Exclude glob or directory pattern from crawling and indexing. Repeatable; each value may also be a comma-separated list.
 .TP
 .B \-\-no\-ignore
 Do not respect \fB.gitignore\fR rules during directory traversal.

@@ -12,11 +12,27 @@ pub struct PrContextArgs {
     pub pr_context: Option<Option<String>>,
 }
 
+/// The page with a `--token-budget` / `--max-tokens` request converted at
+/// [`crate::serialize::BYTES_PER_TOKEN`], so `budget_tokens=` reports the tokens asked for.
+fn pr_context_page(run: &Run<'_>) -> crate::serialize::PageRequest {
+    let page = run.page();
+    match run.cli.token_budget.or(run.cli.max_tokens) {
+        Some(tokens) => page.with_budget(Some(
+            tokens.saturating_mul(crate::serialize::BYTES_PER_TOKEN),
+        )),
+        None => page,
+    }
+}
+
 fn run(run: &Run<'_>, args: &PrContextArgs) -> io::Result<()> {
-    let reference = args.pr_context.clone().flatten();
-    run.report(|ctx, out| {
-        execute_pr_context_dispatch(&context_of(ctx), reference.as_deref(), run.page(), out)
-    })
+    let spec = args.pr_context.clone().flatten();
+    let reference = spec
+        .as_deref()
+        .map(crate::git::repo::base_of_range)
+        .transpose()
+        .map_err(|e| io::Error::other(format!("--pr-context: {e}")))?;
+    let page = pr_context_page(run);
+    run.report(|ctx, out| execute_pr_context_dispatch(&context_of(ctx), reference, page, out))
 }
 
 pub static PR_CONTEXT: Plugin<PrContextArgs> = Plugin {

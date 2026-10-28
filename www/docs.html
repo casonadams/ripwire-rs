@@ -848,11 +848,11 @@ cargo install ripwire-rs</code></pre>
       <ul>
         <li><strong>Contract Breakage (<code>--edit-check</code>)</strong>: Verifies if modifying a symbol changes parameter counts or visibility modifiers, identifying all 1-hop callers that become incompatible.</li>
         <li><strong>Test Reachability (<code>--affected</code>)</strong>: Traverses transitive reverse call graph edges to surface exactly which test files reach the changed symbols or files.</li>
-        <li><strong>Quality Delta (<code>--quality-delta</code>)</strong>: Compares the working tree against git HEAD across 10 defect vectors (cognitive complexity, cyclomatic complexity, dead code, duplicates, nesting, params, churn, and arity breaks; exits 2 on regression).</li>
+        <li><strong>Quality Delta (<code>--quality-delta</code>)</strong>: Compares the working tree against git HEAD across 10 defect vectors (cognitive complexity, cyclomatic complexity, dead code, duplicates, nesting, params, churn, and arity breaks; exits 2 on regression). <code>--quality-delta=REV</code> measures from the merge base of <code>REV</code> instead.</li>
         <li><strong>Test Obligations (<code>--test-gate</code>)</strong>: Names tests to run and highlights untested blast radius symbols (exits 4 if modified code leaves untested obligations).</li>
         <li><strong>Integration Seams (<code>--seams</code>)</strong>: Discovers untested cross-module call boundaries between distinct subsystems.</li>
         <li><strong>Map Diff (<code>--map-diff</code>)</strong>: Re-ranks architecture map toward git-changed files so active work automatically floats up in agent context windows.</li>
-        <li><strong>Composite PR Context (<code>--pr-context</code>)</strong>: Generates an all-in-one PR review context bundle vs a base reference, combining changed symbols, impact, tests, co-change, and authors.</li>
+        <li><strong>Composite PR Context (<code>--pr-context</code>)</strong>: Generates an all-in-one PR review context bundle vs a base reference, combining the symbols that own changed lines, caller files, tests with their run commands, co-change, and authors.</li>
         <li><strong>Merge Scout (<code>--merge-scout</code>)</strong>: Predicts symbol and semantic merge conflicts across concurrent divergent branches before merging or rebasing.</li>
         <li><strong>Architectural Layering (<code>--arch</code>)</strong>: Enforces strict directional layering constraints and prohibited dependencies from a rules file (exits 2 on violation).</li>
         <li><strong>Situational Awareness (<code>--situ</code>)</strong>: Computes 5-point diff situational awareness: blast radius, tests to run, forgotten co-change partners, hotspots, and modules touched.</li>

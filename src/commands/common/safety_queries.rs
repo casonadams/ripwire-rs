@@ -258,12 +258,27 @@ pub fn execute_pr_context_from_facts<W: Write>(
     req: &crate::gate::pr_context::PrContextRequest<'_>,
     out: &mut W,
 ) -> io::Result<crate::gate::pr_context::PrContextReport> {
-    let rep = crate::gate::pr_context::compute_pr_context_from_facts(
+    let mut rep = crate::gate::pr_context::compute_pr_context_from_facts(
         req,
         ctx.ingest,
         ctx.graph,
         ctx.interner,
     );
+    let sources = crate::query::FileSources {
+        root: std::path::Path::new(ctx.root),
+    };
+    for file in &mut rep.files {
+        let shown = file
+            .tests
+            .len()
+            .min(crate::gate::pr_context::MAX_DETAIL_ROWS);
+        crate::gate::runners::attach_test_runners_from_sources(
+            &mut file.tests[..shown],
+            &sources,
+            ctx.ingest,
+            ctx.interner,
+        );
+    }
     crate::gate::pr_context::serialize_pr_context_xml(&rep, out)?;
     Ok(rep)
 }
@@ -276,14 +291,20 @@ pub fn execute_pr_context_dispatch<W: Write>(
 ) -> io::Result<()> {
     let SafetyContext { root, .. } = *facts;
     let rev = ref_opt.filter(|s| !s.is_empty());
-    let changed = match rev {
-        Some(rev) => crate::git::repo::changed_since_ref(root, rev).map_err(io::Error::other)?,
-        None => get_working_tree_changed_files(root),
+    let (changed, base) = match rev {
+        Some(rev) => {
+            let changes = crate::git::repo::changes_since_ref(root, rev)
+                .map_err(|e| io::Error::other(format!("--pr-context: {e}")))?;
+            (changes.paths, changes.base)
+        }
+        None => (get_working_tree_changed_files(root), "HEAD".to_string()),
     };
+    let changed_lines = crate::git::repo::changed_lines_since(root, &base, &changed);
     let commits = crate::git::history::walk_repository_history(root).unwrap_or_default();
     let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
     let req = crate::gate::pr_context::PrContextRequest {
         changed_files: &changed,
+        changed_lines: Some(&changed_lines),
         base_ref: rev,
         at_stamp: &at_stamp,
         commits: &commits,
@@ -413,30 +434,23 @@ pub fn execute_dmm_query<W: Write>(
     let head_sha = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
     let short_sha = &head_sha[..9.min(head_sha.len())];
     let working_snap = crate::gate::baseline::compute_snapshot(ingest, graph, interner, short_sha);
-    let rev = rev_opt.filter(|r| !r.is_empty()).unwrap_or("HEAD");
-    let changed_files = get_working_tree_changed_files(root);
-    let baseline_snap = if changed_files.is_empty() && rev == "HEAD" {
-        working_snap.clone()
-    } else {
-        let eff_changed = if changed_files.is_empty() {
-            ingest
-                .files
-                .iter()
-                .map(|f| interner.resolve(&f.path).to_string())
-                .collect()
-        } else {
-            changed_files
-        };
-        crate::gate::quality_delta::load_revision_baseline_incremental(
-            root,
-            rev,
-            ingest,
-            interner,
-            &working_snap,
-            &eff_changed,
-            short_sha,
-        )
+    let (base, changed) = match rev_opt.filter(|r| !r.is_empty()) {
+        Some(spec) => {
+            let changes = crate::git::repo::changes_since_spec(root, spec)
+                .map_err(|e| io::Error::other(format!("--dmm: {e}")))?;
+            (changes.base, changes.paths)
+        }
+        None => (short_sha.to_string(), get_working_tree_changed_files(root)),
     };
+    let baseline_snap = crate::gate::quality_delta::load_revision_baseline_incremental(
+        root,
+        &base,
+        ingest,
+        interner,
+        &working_snap,
+        &changed,
+        base.get(..9).unwrap_or(&base),
+    );
     compute_dmm_from_facts(&baseline_snap, &working_snap, &head_sha, out)?;
     Ok(0)
 }

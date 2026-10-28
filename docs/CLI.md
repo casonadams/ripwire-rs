@@ -130,6 +130,9 @@ ripwire-rs . --quality-baseline --allow-dirty
 # Check for quality regressions against baseline or git HEAD (exits 2 on failure)
 ripwire-rs . --quality-delta
 
+# Quality delta of everything since the merge base of main, ignoring any pinned sidecar
+ripwire-rs . --quality-delta=main..HEAD
+
 # Print stale ack rows that a regression-free delta collapses to stale_by_kind=
 ripwire-rs . --quality-delta --show-stale
 
@@ -388,7 +391,7 @@ ripwire-rs https://github.com/org/repo --refetch --report
 ripwire-rs . --help-task="find callers of function and test blast radius"
 
 # Crawler filtering: exclude patterns, ignore gitignore, ignore test files, file size limits
-ripwire-rs . --exclude="vendor/*" --no-ignore --ignore-tests --max-file-size=500000
+ripwire-rs . --exclude="vendor/*" --exclude=dist,build --no-ignore --ignore-tests --max-file-size=500000
 
 # Compress output with compact token dialect
 ripwire-rs . --compress

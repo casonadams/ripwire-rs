@@ -34,16 +34,17 @@ first. This works on a real diff — `--situ`, `--map-diff`, and `--pr-context` 
 ## The one-shot bundle — `--pr-context[=BASEREF]`
 
 The flagship verb for this moment: a single no-LLM review-evidence bundle for the whole diff (working tree,
-or vs `BASEREF`). Per changed file: defined symbols, their callers, transitive blast radius, affected tests,
-co-change partners not in the diff, and owners — everything steps 1–5 assemble by hand, in one call:
+or vs `BASEREF`). Per changed file: the symbols that own changed lines, the caller files (`<f p= deps=>`),
+affected tests with run commands, co-change partners not in the diff, and owners — everything steps 1–5 assemble by hand, in one call:
 ```
 ripwire-rs <dir> --pr-context --legend=compact                # working-tree diff
 ripwire-rs <dir> --pr-context=main --legend=compact           # vs a base branch/ref
 ```
 ```
 <pr-context base="working-tree" files="N"><file p="…" symbols="K">
-  <impact dependents="…" files="…"/><tests count="…"/>
-  <changed-symbols count="K"><s t="fn" n="…" p="…:L" callers="…"/> …
+  <changed-symbols count="C"><s n="…"/> …</changed-symbols>
+  <impact dependents="…" files_other="…"><f p="…" deps="…"/> …</impact>
+  <tests count="…"><test p="…" run="…"/> …</tests>
 ```
 Use this first for the evidence dump; steps 1–5 below are the same ground as a narrated, one-pass walkthrough.
 

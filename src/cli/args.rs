@@ -65,9 +65,9 @@ pub struct TopModifierArgs {
     /// Select output format (e.g. candidates, columnar, json)
     #[arg(long = "format", value_name = "FORMAT")]
     pub format: Option<String>,
-    /// Exclude glob or directory pattern from indexing
-    #[arg(long = "exclude", value_name = "GLOB")]
-    pub exclude: Option<String>,
+    /// Exclude glob or directory pattern from indexing (repeatable; comma-separated lists accepted)
+    #[arg(long = "exclude", value_name = "GLOB", action = clap::ArgAction::Append)]
+    pub exclude: Vec<String>,
     /// Do not respect .gitignore rules during crawling
     #[arg(long = "no-ignore", overrides_with = "no_ignore")]
     pub no_ignore: bool,

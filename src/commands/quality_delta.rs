@@ -12,9 +12,28 @@ use std::path::Path;
 
 #[derive(Args, Debug, Clone, Default, PartialEq)]
 pub struct QualityDeltaArgs {
-    /// Report code quality delta regressions vs baseline
-    #[arg(long)]
-    pub quality_delta: bool,
+    /// Report code quality delta regressions vs baseline; `=REV` measures from the merge base of REV
+    #[arg(
+        long = "quality-delta",
+        num_args = 0..=1,
+        default_missing_value = "",
+        require_equals = true,
+        value_name = "REV|REV..HEAD"
+    )]
+    pub quality_delta: Option<String>,
+}
+
+impl QualityDeltaArgs {
+    #[must_use]
+    pub fn requested(&self) -> bool {
+        self.quality_delta.is_some()
+    }
+
+    /// The `REV` or `REV..HEAD` spec, when one was given.
+    #[must_use]
+    pub fn base(&self) -> Option<&str> {
+        self.quality_delta.as_deref().filter(|s| !s.is_empty())
+    }
 }
 
 #[derive(Args, Debug, Clone, Default, PartialEq)]
@@ -42,7 +61,11 @@ pub struct QualityDeltaFlags {
 }
 
 /// Runs the quality-delta gate; exits with status 2 when the delta holds failures.
-pub fn run_quality_delta(run: &Run<'_>, opts: &QualityDeltaOpts) -> io::Result<()> {
+pub fn run_quality_delta(
+    run: &Run<'_>,
+    opts: &QualityDeltaOpts,
+    base: Option<&str>,
+) -> io::Result<()> {
     let quality_ack = opts
         .quality_ack
         .as_ref()
@@ -57,6 +80,7 @@ pub fn run_quality_delta(run: &Run<'_>, opts: &QualityDeltaOpts) -> io::Result<(
                 quality_ack,
                 ack_only: opts.ack_only.as_deref(),
                 show_stale: opts.show_stale,
+                base,
             },
             &state.query_context(&sources),
             out,
@@ -70,7 +94,7 @@ pub fn run_quality_delta(run: &Run<'_>, opts: &QualityDeltaOpts) -> io::Result<(
 
 fn run(run: &Run<'_>, args: &QualityDeltaFlags) -> io::Result<()> {
     validate_cli_gate_modifiers(run.cli)?;
-    run_quality_delta(run, &args.opts)
+    run_quality_delta(run, &args.opts, args.primary.base())
 }
 
 fn call_quality_delta(state: &QueryContext<'_>, args: &Value) -> Result<Value, String> {
@@ -79,6 +103,7 @@ fn call_quality_delta(state: &QueryContext<'_>, args: &Value) -> Result<Value, S
         quality_ack: args.opt_str("quality_ack"),
         ack_only: args.opt_str("ack_only"),
         show_stale: args.bool_or("show_stale", false),
+        base: args.opt_str("base"),
     };
     render_xml(|out| {
         crate::query::safety::execute_quality_delta_with_args(options, state, out).map(|_| ())
@@ -89,7 +114,7 @@ pub static QUALITY_DELTA: Plugin<QualityDeltaFlags> = Plugin {
     name: "quality_delta",
     options: &[],
     selected: |args| {
-        args.primary.quality_delta || args.opts.quality_ack.is_some() || args.opts.show_stale
+        args.primary.requested() || args.opts.quality_ack.is_some() || args.opts.show_stale
     },
     run,
     check: None,
@@ -101,6 +126,7 @@ pub static QUALITY_DELTA: Plugin<QualityDeltaFlags> = Plugin {
             ("quality_ack", "string", "Acknowledgement text"),
             ("ack_only", "string", "Acknowledgement finding patterns"),
             ("show_stale", "boolean", "Include stale findings"),
+            ("base", "string", "REV or REV..HEAD: measure from the merge base of REV instead of the baseline"),
         ],
         &[],
         call_quality_delta

@@ -72,8 +72,8 @@ pub fn merge_request<'a>(args: &'a GateArgs, top: &'a TopGate) -> GateRequest<'a
         affected: args.affected.affected.as_deref().or(top.affected.affected.as_deref()),
         quality_baseline: args.quality_baseline.quality_baseline
             || top.baseline.primary.quality_baseline,
-        quality_delta: args.quality_delta.quality_delta
-            || top.delta.primary.quality_delta
+        quality_delta: args.quality_delta.requested()
+            || top.delta.primary.requested()
             || top.delta.opts.quality_ack.is_some(),
         clones: args.clones.clones,
     }
@@ -106,18 +106,22 @@ pub fn select_gate<'a>(request: &GateRequest<'a>) -> Option<GateChoice<'a>> {
 }
 
 impl GateChoice<'_> {
-    fn run(self, run: &Run<'_>, top: &TopGate, min_tokens: usize) -> io::Result<()> {
+    fn run(self, run: &Run<'_>, top: &TopGate, args: &GateArgs) -> io::Result<()> {
         match self {
             Self::EditCheck(symbol) => run_edit_check(run, symbol),
             Self::Affected(specs) => run_affected(run, specs),
-            repo_wide => repo_wide.run_repo_wide(run, top, min_tokens),
+            repo_wide => repo_wide.run_repo_wide(run, top, args),
         }
     }
 
-    fn run_repo_wide(&self, run: &Run<'_>, top: &TopGate, min_tokens: usize) -> io::Result<()> {
+    fn run_repo_wide(&self, run: &Run<'_>, top: &TopGate, args: &GateArgs) -> io::Result<()> {
+        let min_tokens = args.clones.min_tokens;
         match self {
             Self::QualityBaseline => run_quality_baseline(run, top.baseline.opts.allow_dirty),
-            Self::QualityDelta => run_quality_delta(run, &top.delta.opts),
+            Self::QualityDelta => {
+                let base = args.quality_delta.base().or(top.delta.primary.base());
+                run_quality_delta(run, &top.delta.opts, base)
+            }
             _ => crate::clones::execute_clones_command(run.root, min_tokens, run.page()),
         }
     }
@@ -134,7 +138,7 @@ fn execute_gate_subcommand(cli: &Cli, default_root: &str, args: &GateArgs) -> io
     )?;
     let root = args.path.as_deref().unwrap_or(default_root);
     let run = Run::new(cli, root, PAGED);
-    select_gate(&request).map_or(Ok(()), |gate| gate.run(&run, &top, args.clones.min_tokens))
+    select_gate(&request).map_or(Ok(()), |gate| gate.run(&run, &top, args))
 }
 
 pub struct Gate;
@@ -154,7 +158,7 @@ impl Command for Gate {
         vec![
             GateArgs::augment_args(ClapCommand::new("gate"))
                 .mut_arg("quality_delta", |arg| {
-                    arg.help("Measure quality delta against baseline")
+                    arg.help("Measure quality delta against baseline, or the merge base of =REV")
                 })
                 .about("Pre-commit verification gates (edit-check, affected, quality-delta)"),
         ]

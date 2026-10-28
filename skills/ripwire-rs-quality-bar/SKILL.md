@@ -32,7 +32,7 @@ Measure the quality delta your change introduced with a deterministic oracle in 
 ## 1. Wide-Angle Read (`--quality-panel`) vs Pre-Commit Gate (`--quality-delta`)
 
 - **`--quality-panel[=strict|default|lenient]` is a lens (always exits 0)**: ranks functions across six orthogonal evidence families (`structural`, `lexical`, `confusion`, `historical`, `colocation`, `state`). Use it to inspect the area you touched or pick refactoring targets.
-- **`--quality-delta` is the pre-commit gate (exits 2 on gating regressions)**: compares your working tree against `git HEAD` (or a pinned `.ripwire-rs_quality_baseline`) and reports only what your diff made worse.
+- **`--quality-delta` is the pre-commit gate (exits 2 on gating regressions)**: compares your working tree against `git HEAD` (or a pinned `.ripwire-rs_quality_baseline`) and reports only what your diff made worse. `--quality-delta=REV` measures from the merge base of `REV` instead (a whole branch or PR, no sidecar).
 
 ### Reading the Structural Profile (`humps`, `deep`, `ev`, `locals`)
 

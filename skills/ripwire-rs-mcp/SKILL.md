@@ -118,7 +118,7 @@ enclosing-chain report) and `@FILE:LINE` in any SYM selector; contract gate: `te
 | Verb | CLI twin | The moment |
 |---|---|---|
 | `exemplar` (`kind` or `task`) | `--exemplar` | BEFORE you write a fn/class/… — the repo's best-in-class instance to imitate, chosen by ROLE (fan-in / cognitive-cx / tested), with its body |
-| `quality_delta` (`path`) | `--quality-delta` | only what the working tree made worse vs the baseline or git HEAD, in the canonical CLI report |
+| `quality_delta` (`path`, `base`) | `--quality-delta[=REV]` | only what the working tree made worse vs the baseline or git HEAD, or vs the merge base of `base` when given, in the canonical CLI report |
 | `quality_baseline` (`path`) | `--quality-baseline` | pin the quality floor (writes the HEAD-stamped `.ripwire-rs_quality_baseline`) — a side-effect verb |
 | `impact` (`symbol`, `limit`/`offset`/`max_depth` optional) | `--impact=SYM [--limit=N --offset=M --impact-depth=N]` | canonical transitive blast radius; `max_depth` and CLI global `--impact-depth` set the same optional traversal limit, including `navigate --impact`; default unchanged |
 | `uses` (`symbol`) | `--uses=SYM` | the resolvable USE-SITES — call/read/write/import/extends, not just calls (`count=0` is a real answer; `counts_floor="1"` — a floor, never a total) |

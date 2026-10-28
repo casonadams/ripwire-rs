@@ -480,6 +480,7 @@ fn test_apply_cli_delta_options_with_in_memory_writer() {
         quality_ack: Some("testing ack writer"),
         ack_only: Some("src/calc.rs"),
         show_stale: false,
+        base: None,
     };
 
     let res =
@@ -652,4 +653,23 @@ fn quality_report_preserves_borrowed_type_names_and_quoted_paths() {
     assert_eq!(stale.attribute("key"), Some(key));
     assert_eq!(stale.attribute("sym"), Some("&View<T>::item"));
     assert_eq!(stale.attribute("p"), Some("src/a&\"b.rs"));
+}
+
+#[test]
+fn test_quality_delta_report_names_its_merge_base_only_when_measured_from_a_ref() {
+    let baseline = QualitySnapshot {
+        head_sha: "sha_base".to_string(),
+        ..Default::default()
+    };
+    let header = |base_ref: Option<&str>| {
+        let mut report = compute_quality_delta(&baseline, &baseline, "git-ref");
+        report.base_ref = base_ref.map(str::to_string);
+        let xml = report.to_xml_string();
+        let doc = roxmltree::Document::parse(&xml).expect("well-formed xml");
+        doc.root_element().attribute("base_ref").map(str::to_string)
+    };
+    assert_eq!(
+        (header(Some("a1b2c3d4e")), header(None)),
+        (Some("a1b2c3d4e".to_string()), None)
+    );
 }

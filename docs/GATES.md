@@ -50,7 +50,7 @@ Maps modified files and symbols to transitively reachable test files across the 
 
 ## 3. Quality Delta Gate (`--quality-delta`)
 
-Enforces regression-free commits across 10 architectural quality dimensions against git `HEAD` or a pinned baseline (`--quality-baseline`):
+Enforces regression-free commits across 10 architectural quality dimensions against git `HEAD` or a pinned baseline (`--quality-baseline`). `--quality-delta=REV` (or `REV..HEAD`) instead rebuilds the baseline from the merge base of `REV` and `HEAD`, ignoring any sidecar, and reports `baseline="git-ref" base_ref="<sha>"`: the delta of everything since that base, for CI or review bots that check out a fresh head. The value needs `=`, so `--quality-delta .` still names the path:
 1. **Cognitive Complexity** ($CCX \le 15$ Campbell standard)
 2. **Cyclomatic Complexity** (McCabe paths)
 3. **Function Length / Line Count**
@@ -121,7 +121,7 @@ ripwire-rs . --map-diff --top-k=30
 
 ## 7. Composite PR Context (`--pr-context=BASE`)
 
-Assembles a complete pull request review context bundle for the changed files. Changed files are the working tree compared with the merge base of REF and `HEAD` (`--pr-context=REF`, `direction="worktree-since-merge-base"`, `base="REF"`). Without REF they are tracked edits against `HEAD` (`base="working-tree"`). An unknown REF, or a root outside a git repository, exits nonzero. A file with no commit history gets no `<cochange>` or `<owners>` element, and `at` (the HEAD short sha, with `+dirty` when the tree is dirty) is omitted outside git.
+Assembles a complete pull request review context bundle for the changed files. `<changed-symbols>` lists the symbols that own a changed line (the innermost definition spanning it; a pure deletion counts for the definition holding the lines on both sides), not every symbol of a changed file. `<impact>` lists caller files outside the changed file as `<f p= deps=>` and `<tests>` lists `<test p= run=>` rows (`run_unknown="1"` when no runner is derivable); each list shows at most 5 rows with `shown=`/`capped=` while the counts cover all. `--token-budget=N` / `--max-tokens=N` budget the file rows at 4 bytes per token, so `budget_tokens=` echoes N; `est_tokens=` is measured from the emitted rows (an upper bound under minified output). `<owners bf=>` is the `--owners` single-owner flag: 1 when one author holds at least 80% of the file's recency-weighted commits. Changed files are the working tree compared with the merge base of REF and `HEAD` (`--pr-context=REF`, `direction="worktree-since-merge-base"`, `base="REF"`). Without REF they are tracked edits against `HEAD` (`base="working-tree"`). An unknown REF, or a root outside a git repository, exits nonzero. A file with no commit history gets no `<cochange>` or `<owners>` element, and `at` (the HEAD short sha, with `+dirty` when the tree is dirty) is omitted outside git.
 
 ```xml
 <pr-context schema="ripwire-rs.pr-context/v1" base="main" files="2">
@@ -129,8 +129,14 @@ Assembles a complete pull request review context bundle for the changed files. C
     <changed-symbols count="1">
       <s n="execute"/>
     </changed-symbols>
-    <impact dependents="5" files_other="2"/>
-    <tests count="2"/>
+    <impact dependents="5" files_other="2">
+      <f p="src/api.rs" deps="3"/>
+      <f p="src/cli.rs"/>
+    </impact>
+    <tests count="2">
+      <test p="tests/service.rs" run="cargo test --test service"/>
+      <test p="tests/api.rs" run="cargo test --test api"/>
+    </tests>
     <cochange commits="12" partners="1"/>
     <owners authors="2" bf="1"/>
   </file>

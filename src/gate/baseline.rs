@@ -34,6 +34,18 @@ pub(crate) fn symbol_canonical_key(sym_name: &str, file_path: &str, scope: Optio
     }
 }
 
+/// The structural half of the `--dead-code` rule: a function with a body and no indexed caller, in a
+/// language with internal linkage, outside a header. Whether it is also internal needs its parse tree.
+#[must_use]
+pub fn is_dead_code_candidate(sym: &crate::domain::Symbol, path: &str, graph: &Graph) -> bool {
+    let semantics = sym.lang.semantics();
+    sym.kind == SymKind::Function
+        && semantics.supports_internal_linkage()
+        && sym.sig_end_byte < sym.end_byte
+        && graph.in_degree(sym.id) == 0
+        && !semantics.is_header_file(path)
+}
+
 /// Compute a quality snapshot from an ingested repository index.
 #[must_use]
 pub fn compute_snapshot(
@@ -88,9 +100,7 @@ pub fn compute_snapshot(
             .and_modify(|v| *v = (*v).max(sym.params))
             .or_insert(sym.params);
 
-        if graph.in_degree(sym.id) == 0
-            && (sym.kind == SymKind::Function || sym.kind == SymKind::Method)
-        {
+        if is_dead_code_candidate(sym, path, graph) && !crate::gate::affected::is_test_path(path) {
             snap.dead_symbols.insert(key.clone());
         }
 

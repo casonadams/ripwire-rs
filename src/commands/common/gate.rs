@@ -69,6 +69,6 @@ pub fn validate_cli_gate_modifiers(cli: &Cli) -> io::Result<()> {
         baseline.opts.allow_dirty,
         baseline.primary.quality_baseline,
         delta.opts.show_stale,
-        delta.primary.quality_delta || delta.opts.quality_ack.is_some(),
+        delta.primary.requested() || delta.opts.quality_ack.is_some(),
     )
 }

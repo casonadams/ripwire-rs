@@ -710,6 +710,7 @@ fn test_page_window_and_xml_report_trait() {
     let scout = ripwire_rs::gate::merge_scout::evaluate_merge_scout("abc123def", "abc123def", &[]);
     assert!(scout.to_xml_string().contains("ripwire-rs.merge-scout/v1"));
     let pr_req = ripwire_rs::gate::pr_context::PrContextRequest {
+        changed_lines: None,
         changed_files: &[],
         base_ref: None,
         at_stamp: "",

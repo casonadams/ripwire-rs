@@ -91,14 +91,10 @@ pub fn crawler_options_for_cli(cli: &Cli) -> crate::crawler::CrawlerOptions {
         custom_excludes: cli
             .modifiers
             .exclude
-            .as_deref()
-            .map(|s| {
-                split_csv_patterns(s)
-                    .into_iter()
-                    .map(String::from)
-                    .collect()
-            })
-            .unwrap_or_default(),
+            .iter()
+            .flat_map(|s| split_csv_patterns(s))
+            .map(String::from)
+            .collect(),
     }
 }
 

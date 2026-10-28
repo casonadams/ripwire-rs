@@ -24,3 +24,45 @@ fn test_compute_effective_budget() {
     assert_eq!(split_endpoint_pair("a->b"), ("a", "b"));
     assert_eq!(split_endpoint_pair("single"), ("single", ""));
 }
+
+#[test]
+fn test_exclude_is_repeatable_and_splits_comma_lists() {
+    let cli = ripwire_rs::parse_from(["rw", "--exclude=vendor", "--exclude=dist,build"]).unwrap();
+    let opts = ripwire_rs::commands::context::crawler_options_for_cli(&cli);
+    assert_eq!(opts.custom_excludes, ["vendor", "dist", "build"]);
+}
+
+/// (`--quality-delta` requested, its base, the positional path)
+type DeltaParse = (bool, Option<String>, Option<String>);
+
+#[test]
+fn test_quality_delta_takes_a_base_only_with_equals() {
+    use ripwire_rs::commands::quality_delta::QualityDeltaFlags;
+    let parse = |args: &[&str]| -> DeltaParse {
+        let cli = ripwire_rs::parse_from(args.iter().copied()).unwrap();
+        let flags = cli
+            .plugins
+            .decode::<QualityDeltaFlags>()
+            .unwrap_or_default();
+        (
+            flags.primary.requested(),
+            flags.primary.base().map(str::to_string),
+            cli.path.clone(),
+        )
+    };
+    let cases: [(&[&str], DeltaParse); 4] = [
+        (&["rw", "--quality-delta"], (true, None, None)),
+        (
+            &["rw", "--quality-delta", "."],
+            (true, None, Some(".".into())),
+        ),
+        (
+            &["rw", "--quality-delta=main..HEAD"],
+            (true, Some("main..HEAD".into()), None),
+        ),
+        (&["rw", "."], (false, None, Some(".".into()))),
+    ];
+    for (args, want) in cases {
+        assert_eq!(parse(args), want, "{args:?}");
+    }
+}

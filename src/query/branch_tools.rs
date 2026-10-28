@@ -36,9 +36,7 @@ fn compute_file_author_weights(
     let head_epoch = commits.first().map_or(0, |c| c.timestamp);
 
     for c in commits {
-        let age_sec = (head_epoch - c.timestamp).max(0);
-        let age_days = (age_sec as f64) / 86400.0;
-        let weight = 0.5f64.powf(age_days / 180.0);
+        let weight = recency_weight(head_epoch, c.timestamp);
         let author = if c.author.is_empty() {
             "unknown"
         } else {
@@ -56,6 +54,19 @@ fn compute_file_author_weights(
     file_authors
 }
 
+/// Weight of a commit `timestamp` seconds old relative to `head_epoch`: halves every 180 days.
+#[must_use]
+pub fn recency_weight(head_epoch: i64, timestamp: i64) -> f64 {
+    let age_days = ((head_epoch - timestamp).max(0) as f64) / 86400.0;
+    0.5f64.powf(age_days / 180.0)
+}
+
+/// `bf=`: 1 when one author holds at least 80% of the file's recency-weighted commits, else 0.
+#[must_use]
+pub fn single_owner_flag(top_share: f64) -> usize {
+    usize::from(top_share >= 0.80)
+}
+
 fn score_file_ownership(f: String, author_weights: HashMap<String, f64>) -> Value {
     let authors_count = author_weights.len();
     let total_weight: f64 = author_weights.values().sum();
@@ -68,7 +79,7 @@ fn score_file_ownership(f: String, author_weights: HashMap<String, f64>) -> Valu
     } else {
         1.0
     };
-    let bf = if share >= 0.80 { 1 } else { 0 };
+    let bf = single_owner_flag(share);
 
     json!({
         "file": f.clone(),

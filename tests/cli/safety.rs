@@ -104,6 +104,7 @@ fn test_execute_pr_context_from_facts() {
     let changed = vec!["src/lib.rs".to_string()];
     let pr_req = ripwire_rs::gate::pr_context::PrContextRequest {
         changed_files: &changed,
+        changed_lines: None,
         base_ref: Some("main"),
         at_stamp: "",
         commits: &commits,
