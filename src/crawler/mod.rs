@@ -39,12 +39,30 @@ pub struct CrawledFile {
     pub byte_size: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CrawlerOptions {
     pub max_file_size: u64,
     pub honor_gitignore: bool,
     pub ignore_tests: bool,
     pub custom_excludes: Vec<String>,
+}
+
+impl CrawlerOptions {
+    /// Cache identity suffix: empty for the defaults, so their cache keys and files are unchanged;
+    /// otherwise a hash of the options with excludes order-insensitive.
+    #[must_use]
+    pub fn cache_tag(&self) -> String {
+        use std::hash::{Hash, Hasher};
+        if *self == Self::default() {
+            return String::new();
+        }
+        let mut normalized = self.clone();
+        normalized.custom_excludes.sort_unstable();
+        normalized.custom_excludes.dedup();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        normalized.hash(&mut hasher);
+        format!("-o{:x}", hasher.finish())
+    }
 }
 
 impl Default for CrawlerOptions {

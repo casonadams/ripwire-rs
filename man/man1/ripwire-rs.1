@@ -405,7 +405,7 @@ Execute at most 16 shared read sub-queries from \fIname:argument\fR or \fIname:{
 Install 17 pre-packaged ripwire-rs agent skills and active manifest (\fB.ripwire\-rs\-manifest\-v1\fR) to \fI~/.agents/skills\fR (or custom \fIDIR\fR). Replaces stale or broken symlinks safely. Alias: \fB\-\-install\-skills\fR.
 .TP
 .BI \-\-exclude= GLOB
-Exclude glob or directory pattern from crawling and indexing. Repeatable; each value may also be a comma-separated list.
+Exclude glob or directory pattern from crawling and indexing. Repeatable; each value may also be a comma-separated list. Crawler options are part of the auto-cache identity, so each option set keeps its own cache.
 .TP
 .B \-\-no\-ignore
 Do not respect \fB.gitignore\fR rules during directory traversal.
@@ -428,7 +428,7 @@ Disable secret redaction on emitted code snippets.
 Compress output using compact token dialect.
 .TP
 .BI \-\-index\-out= FILE
-Cold-parse the tree, write the analysis cache to \fIFILE\fR and exit without a map; reload it with \fB\-\-cache=\fR\fIFILE\fR while HEAD, the working tree and the binary match. Refuses \fB\-\-exclude\fR, \fB\-\-no\-ignore\fR, \fB\-\-ignore\-tests\fR, \fB\-\-max\-file\-size\fR and \fB\-\-scip\fR, which bypass the cache.
+Cold-parse the tree, write the analysis cache to \fIFILE\fR and exit without a map; reload it with \fB\-\-cache=\fR\fIFILE\fR while HEAD, the working tree and the binary match. Refuses \fB\-\-exclude\fR, \fB\-\-no\-ignore\fR, \fB\-\-ignore\-tests\fR, \fB\-\-max\-file\-size\fR and \fB\-\-scip\fR, which a reload through \fB\-\-cache=\fR\fIFILE\fR would not reproduce.
 .TP
 .B \-\-lsp
 Launch stdio JSON-RPC Language Server Protocol (LSP) server bridge supporting \fBinitialize\fR, \fBtextDocument/definition\fR, \fBtextDocument/references\fR, \fBtextDocument/documentSymbol\fR, and \fBtextDocument/hover\fR.

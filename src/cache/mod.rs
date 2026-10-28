@@ -108,28 +108,31 @@ pub fn compute_cache_key(root: &str) -> String {
 /// Derive standard auto-cache path in TMPDIR for a target repository root.
 #[must_use]
 pub fn auto_cache_path(root: &str) -> PathBuf {
+    tagged_auto_cache_path(root, "")
+}
+
+fn tagged_auto_cache_path(root: &str, tag: &str) -> PathBuf {
     let abs = fs::canonicalize(root).unwrap_or_else(|_| PathBuf::from(root));
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     abs.to_string_lossy().hash(&mut hasher);
-    std::env::temp_dir().join(format!("ripwire-rs-cache-{:x}.json", hasher.finish()))
+    std::env::temp_dir().join(format!("ripwire-rs-cache-{:x}{tag}.json", hasher.finish()))
+}
+
+/// The cache file and validation key for `root` under crawler options `tag` (empty for defaults).
+fn cache_identity(root: &str, cache_path: Option<&Path>, tag: &str) -> (PathBuf, String) {
+    let path = cache_path.map_or_else(|| tagged_auto_cache_path(root, tag), Path::to_path_buf);
+    (path, format!("{}{tag}", compute_cache_key(root)))
 }
 
 /// Attempt to load cached repository analysis if validation key matches.
 pub fn load_cached_analysis(
     root: &str,
     cache_path: Option<&Path>,
+    options_tag: &str,
 ) -> Option<(IngestResult, Graph, PageRankResult, Interner)> {
-    let path_buf;
-    let path = match cache_path {
-        Some(p) => p,
-        None => {
-            path_buf = auto_cache_path(root);
-            &path_buf
-        }
-    };
-
+    let (path, key) = cache_identity(root, cache_path, options_tag);
     let bytes = fs::read(path).ok()?;
-    load_cached_payload_slice(&bytes, &compute_cache_key(root))
+    load_cached_payload_slice(&bytes, &key)
 }
 
 /// Load and validate cached payload from a byte slice.
@@ -159,19 +162,11 @@ pub fn load_cached_payload<R: std::io::Read>(
 pub fn save_cached_analysis(
     root: &str,
     cache_path: Option<&Path>,
+    options_tag: &str,
     analysis: (&IngestResult, &Graph, &PageRankResult, &Interner),
 ) -> io::Result<()> {
     let (ingest, graph, pr, interner) = analysis;
-    let path_buf;
-    let path = match cache_path {
-        Some(p) => p,
-        None => {
-            path_buf = auto_cache_path(root);
-            &path_buf
-        }
-    };
-
-    let validation_key = compute_cache_key(root);
+    let (path, validation_key) = cache_identity(root, cache_path, options_tag);
     let payload = CachePayloadRef {
         version: CACHE_VERSION,
         validation_key,
@@ -185,5 +180,5 @@ pub fn save_cached_analysis(
     let file = File::create(&tmp_path)?;
     let writer = BufWriter::with_capacity(256 * 1024, file);
     serde_json::to_writer(writer, &payload).map_err(|e| io::Error::other(e.to_string()))?;
-    fs::rename(tmp_path, path)
+    fs::rename(tmp_path, &path)
 }

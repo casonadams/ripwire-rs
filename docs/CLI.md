@@ -444,7 +444,7 @@ binding or alias analysis.
 - `ripwire-rs slice [PATH] <SYM:VAR> [--flow <fwd|back|both>]`: Intra-procedural slicing.
 - `ripwire-rs mcp [PATH] [--scip <FILE>]`: Launch native JSON-RPC Model Context Protocol (MCP) server over stdio.
 - `ripwire-rs [PATH] --lsp`: Launch stdio JSON-RPC Language Server Protocol (LSP) server bridge.
-- `ripwire-rs [PATH] [--cache <PATH>] [--no-cache]`: Persistent binary on-disk caching in TMPDIR (or custom path) for sub-second repeat queries.
+- `ripwire-rs [PATH] [--cache <PATH>] [--no-cache]`: Persistent binary on-disk caching in TMPDIR (or custom path) for sub-second repeat queries. Crawler options (`--exclude`, `--no-ignore`, `--ignore-tests`, `--max-file-size`) are part of the cache identity, so each option set keeps its own cache.
 - `ripwire-rs [PATH] --scip=<index.scip>`: Overlay a compiler-backed SCIP index: the call sites it resolves bind exactly (`prov="scip"`, map header `precise=K`) and sites it resolves outside the index count as external; other sites keep name resolution. Bypasses the cache.
   The same `--scip=PATH` overlay works with `navigate`, plain and task-ranked `orient`, and `mcp` (also `[PATH] --mcp --scip=PATH`). MCP retains the loaded overlay for the session. Unreadable or malformed indexes fail explicitly without an unpinned fallback.
   `--scip` is global: it can appear before or after the subcommand. Multiline calls match the callee identifier's line in the index; reported call-site lines stay at the call expression's start.

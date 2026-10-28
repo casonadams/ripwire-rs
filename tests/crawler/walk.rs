@@ -216,3 +216,17 @@ fn test_classify_skipped_item_all_branches() {
         ("src/large.rs".to_string(), 5000, "rs".to_string())
     );
 }
+
+#[test]
+fn test_cache_tag_separates_option_sets_but_not_exclude_order() {
+    let excluding = |globs: &[&str]| CrawlerOptions {
+        custom_excludes: globs.iter().map(|g| (*g).to_string()).collect(),
+        ..CrawlerOptions::default()
+    };
+    let tags = (
+        CrawlerOptions::default().cache_tag(),
+        excluding(&["dist", "vendor"]).cache_tag() == excluding(&["vendor", "dist"]).cache_tag(),
+        excluding(&["dist"]).cache_tag() == excluding(&["dist", "vendor"]).cache_tag(),
+    );
+    assert_eq!(tags, (String::new(), true, false));
+}

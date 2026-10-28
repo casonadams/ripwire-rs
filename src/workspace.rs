@@ -162,9 +162,10 @@ fn try_load_cached_analysis(
     cache_path: Option<&Path>,
     cacheable: bool,
     no_cache: bool,
+    options_tag: &str,
 ) -> Option<(crate::domain::IngestResult, Graph, PageRankResult, Interner)> {
     if cacheable && !no_cache {
-        crate::cache::load_cached_analysis(root, cache_path)
+        crate::cache::load_cached_analysis(root, cache_path, options_tag)
     } else {
         None
     }
@@ -196,7 +197,7 @@ fn run_analysis(
 }
 
 /// Crawl, ingest, and resolve `root`; a SCIP index pins the call sites it covers and bypasses
-/// the cache, whose key does not cover the index.
+/// the cache, whose key covers crawler options but not the index.
 pub fn load_repo_analysis_with_options(
     root: &str,
     cache_path: Option<&Path>,
@@ -204,16 +205,21 @@ pub fn load_repo_analysis_with_options(
     opts: &crate::crawler::CrawlerOptions,
     scip_index: Option<&Path>,
 ) -> io::Result<(crate::domain::IngestResult, Graph, PageRankResult, Interner)> {
-    let cacheable = is_analysis_cacheable(opts, scip_index);
-    if let Some(cached) = try_load_cached_analysis(root, cache_path, cacheable, no_cache) {
+    let cacheable = scip_index.is_none();
+    let tag = opts.cache_tag();
+    if let Some(cached) = try_load_cached_analysis(root, cache_path, cacheable, no_cache, &tag) {
         return Ok(cached);
     }
     let scip_bytes = read_scip_bytes(scip_index)?;
     run_analysis(root, opts, scip_bytes.as_deref()).inspect(|analysis| {
         if cacheable {
             let (ingest, graph, pr, interner) = analysis;
-            let _ =
-                crate::cache::save_cached_analysis(root, cache_path, (ingest, graph, pr, interner));
+            let _ = crate::cache::save_cached_analysis(
+                root,
+                cache_path,
+                &tag,
+                (ingest, graph, pr, interner),
+            );
         }
     })
 }

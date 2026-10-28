@@ -27,6 +27,7 @@ fn run(run: &Run<'_>, args: &IndexOutArgs) -> io::Result<()> {
     crate::cache::save_cached_analysis(
         run.root,
         Some(Path::new(path)),
+        "",
         (&ingest, &graph, &pr, &interner),
     )?;
     writeln!(
