@@ -112,12 +112,17 @@ fn fit_rows(sizes: impl Iterator<Item = usize>, budget: usize) -> usize {
     fitted.max(1)
 }
 
-/// Bytes `write` emits; the measure a row costs against the output budget.
+/// Bytes `write` emits within the default minified output, where whitespace around a row's tags
+/// is dropped; the measure a row costs against the output budget.
 #[must_use]
 pub fn row_bytes(write: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()>) -> usize {
-    let mut counter = CountingWriter::new(std::io::sink());
-    let _ = write(&mut counter);
-    counter.count
+    use std::io::Write as _;
+    let mut buf = Vec::new();
+    let mut minified = writer::MinifyingWriter::new(&mut buf);
+    let _ = write(&mut minified);
+    let _ = minified.flush();
+    drop(minified);
+    buf.trim_ascii().len()
 }
 
 /// Bytes a row costs when its cost is the text of its parts (names, paths, numbers).

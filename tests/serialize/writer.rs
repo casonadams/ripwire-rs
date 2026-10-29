@@ -328,3 +328,14 @@ fn recall_renderer_finishes_as_a_text_json_envelope() {
             .contains("<r>\n  <child/>\n</r>\n<!-- keep -->")
     );
 }
+
+#[test]
+fn test_row_bytes_measure_rows_as_minified_output_emits_them() {
+    let row = |w: &mut dyn std::io::Write| {
+        writeln!(w, "  <file p=\"src/a.rs\">")?;
+        writeln!(w, "    <f p=\"src/b.rs\" deps=\"2\"/>")?;
+        writeln!(w, "  </file>")
+    };
+    let minified = "<file p=\"src/a.rs\"><f p=\"src/b.rs\" deps=\"2\"/></file>";
+    assert_eq!(ripwire_rs::serialize::row_bytes(row), minified.len());
+}
