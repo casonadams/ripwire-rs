@@ -39,23 +39,78 @@ struct Reachable {
     /// Every name some reference uses: bound, declined or unresolved calls, reads, values, macro
     /// arguments. Matched by name, so this is a floor.
     referenced: HashSet<lasso::Spur>,
-    /// Types that implement or extend another, whose methods may be reached by dispatch.
-    dispatched_types: HashSet<lasso::Spur>,
+    /// Supertypes per type: the traits it implements and the classes it extends.
+    supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>>,
+    /// Member names per indexed type, to tell which methods a supertype declares.
+    members: HashMap<lasso::Spur, HashSet<lasso::Spur>>,
+    /// Trait implementation blocks per file with their trait: `impl Trait for T { .. }`.
+    trait_impls: HashMap<u32, Vec<(u32, u32, lasso::Spur)>>,
+    /// Types with an implementation record in a file: their trait methods are told by span.
+    implemented_in: HashSet<(u32, lasso::Spur)>,
 }
 
 impl Reachable {
     fn of(ingest: &IngestResult) -> Self {
-        let referenced = ingest.references.iter().map(|r| r.callee_name).collect();
-        let dispatched_types = ingest
-            .references
-            .iter()
-            .filter(|r| r.role == crate::domain::RefRole::Extends)
-            .filter_map(|r| r.receiver_type.or(r.qualifier))
-            .collect();
-        Self {
-            referenced,
-            dispatched_types,
+        let mut supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>> = HashMap::new();
+        for r in &ingest.references {
+            if r.role == crate::domain::RefRole::Extends
+                && let Some(ty) = r.receiver_type.or(r.qualifier)
+            {
+                supertypes.entry(ty).or_default().push(r.callee_name);
+            }
         }
+        let mut trait_impls: HashMap<u32, Vec<(u32, u32, lasso::Spur)>> = HashMap::new();
+        let mut implemented_in = HashSet::new();
+        for imp in &ingest.implementations {
+            implemented_in.insert((imp.file_id, imp.subject));
+            if let Some(trait_name) = imp.trait_name {
+                supertypes.entry(imp.subject).or_default().push(trait_name);
+                trait_impls.entry(imp.file_id).or_default().push((
+                    imp.start_byte,
+                    imp.end_byte,
+                    trait_name,
+                ));
+            }
+        }
+        let mut members: HashMap<lasso::Spur, HashSet<lasso::Spur>> = HashMap::new();
+        for s in &ingest.symbols {
+            if let Some(scope) = s.scope {
+                members.entry(scope).or_default().insert(s.name);
+            }
+        }
+        Self {
+            referenced: ingest.references.iter().map(|r| r.callee_name).collect(),
+            supertypes,
+            members,
+            trait_impls,
+            implemented_in,
+        }
+    }
+
+    /// A supertype reaches `name` when it lies outside the tree (its members are unknown) or
+    /// declares a member of that name.
+    fn supertype_declares(&self, supertype: lasso::Spur, name: lasso::Spur) -> bool {
+        self.members
+            .get(&supertype)
+            .is_none_or(|declared| declared.contains(&name))
+    }
+
+    /// A member of `scope` reached by dispatch through a supertype. Where the type has an
+    /// implementation record in the file, only methods inside a trait implementation count, so
+    /// inherent methods stay checked.
+    fn dispatches_to(&self, sym: &crate::domain::Symbol, scope: lasso::Spur) -> bool {
+        if self.implemented_in.contains(&(sym.file_id, scope)) {
+            return self.trait_impls.get(&sym.file_id).is_some_and(|impls| {
+                impls.iter().any(|&(start, end, trait_name)| {
+                    start <= sym.sig_start_byte
+                        && sym.end_byte <= end
+                        && self.supertype_declares(trait_name, sym.name)
+                })
+            });
+        }
+        self.supertypes
+            .get(&scope)
+            .is_some_and(|supers| supers.iter().any(|&s| self.supertype_declares(s, sym.name)))
     }
 }
 
@@ -79,15 +134,18 @@ fn is_unreferenced_callable(
     let semantics = sym.lang.semantics();
     let name = &interner[sym.name];
     let scope = sym.scope.map(|sc| &interner[sc]);
-    let method_reached = sym.kind == SymKind::Method
-        && sym
-            .scope
-            .is_none_or(|sc| reachable.dispatched_types.contains(&sc));
+    let is_dunder = name.len() > 4 && name.starts_with("__") && name.ends_with("__");
+    let method_reached = is_dunder
+        || match sym.scope {
+            None => sym.kind == SymKind::Method,
+            Some(sc) => reachable.dispatches_to(sym, sc),
+        };
     matches!(sym.kind, SymKind::Function | SymKind::Method)
         && sym.sig_end_byte < sym.end_byte
         && graph.in_degree(sym.id) == 0
         && !reachable.referenced.contains(&sym.name)
         && !method_reached
+        && !sym.registered
         && !is_constructor(name, scope)
         && !semantics.is_entrypoint_symbol(name, scope, sym.kind, path)
         && !semantics.is_header_file(path)

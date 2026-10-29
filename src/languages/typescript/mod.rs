@@ -184,6 +184,11 @@ impl LanguageSemantics for TypeScriptLanguage {
         true
     }
 
+    fn def_is_registered(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
+        ctx.def_node
+            .is_some_and(|def| super::has_registering_decorator(def, ctx.source_bytes))
+    }
+
     fn has_class_inheritance(&self) -> bool {
         true
     }

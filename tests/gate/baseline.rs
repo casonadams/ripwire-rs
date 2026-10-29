@@ -72,3 +72,33 @@ fn test_snapshot_dead_symbols_are_unreferenced_callables_in_any_language() {
         ]
     );
 }
+
+#[test]
+fn test_snapshot_exempts_only_methods_a_supertype_dispatches_to() {
+    use ripwire_rs::Lang::{Python, Rust, TypeScript};
+    let rust = "struct Shown;\n\nimpl std::fmt::Display for Shown {\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n        write!(f, \"x\")\n    }\n}\n\nimpl Shown {\n    fn stale(&self) -> u32 {\n        1\n    }\n}\n";
+    let ts = "interface Store {\n  load(): number;\n}\n\nexport class Disk implements Store {\n  load(): number {\n    return 1;\n  }\n\n  unused(): number {\n    return 2;\n  }\n}\n";
+    let py = "from base import Handler\n\n\nclass Echo(Handler):\n    def handle(self):\n        return 1\n\n    def __repr__(self):\n        return \"echo\"\n\n\nclass Plain:\n    def orphan(self):\n        return 2\n";
+    let dead = dead_symbols(&[
+        ("src/shown.rs", Rust, rust),
+        ("src/disk.ts", TypeScript, ts),
+        ("src/echo.py", Python, py),
+    ]);
+    assert_eq!(
+        dead,
+        [
+            "src/disk.ts::Disk::unused",
+            "src/echo.py::Plain::orphan",
+            "src/shown.rs::Shown::stale"
+        ]
+    );
+}
+
+#[test]
+fn test_snapshot_exempts_registered_and_protocol_callables() {
+    use ripwire_rs::Lang::{Python, TypeScript};
+    let py = "from flask import Blueprint\n\nbp = Blueprint(\"blog\", __name__)\n\n\n@bp.route(\"/\")\ndef index():\n    return \"ok\"\n\n\n@staticmethod\ndef helper():\n    return 1\n\n\ndef __getattr__(name):\n    return name\n";
+    let ts = "export class Api {\n  @Get(\"/\")\n  list(): number {\n    return 1;\n  }\n\n  stale(): number {\n    return 2;\n  }\n}\n";
+    let dead = dead_symbols(&[("src/blog.py", Python, py), ("src/api.ts", TypeScript, ts)]);
+    assert_eq!(dead, ["src/api.ts::Api::stale", "src/blog.py::helper"]);
+}

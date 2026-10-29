@@ -25,6 +25,7 @@ pub struct RawDef {
     pub contract_member: bool,
     pub takes_self: bool,
     pub accessor: bool,
+    pub registered: bool,
 }
 
 impl RawDef {
@@ -46,6 +47,7 @@ impl RawDef {
             contract_member: false,
             takes_self: false,
             accessor: false,
+            registered: false,
         }
     }
 }
@@ -605,6 +607,7 @@ fn record_def_item(
         contract_member,
         takes_self: lang.semantics().def_takes_self(&gate_ctx),
         accessor: lang.semantics().def_is_accessor(&gate_ctx),
+        registered: lang.semantics().def_is_registered(&gate_ctx),
     });
 }
 

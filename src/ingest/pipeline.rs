@@ -368,6 +368,7 @@ pub fn build_file_symbols(
         sym.contract_member = def.contract_member;
         sym.takes_self = def.takes_self;
         sym.accessor = def.accessor;
+        sym.registered = def.registered;
         file_symbols.push(sym);
     }
     file_symbols

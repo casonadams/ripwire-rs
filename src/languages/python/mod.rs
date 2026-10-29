@@ -355,6 +355,15 @@ impl LanguageSemantics for PythonLanguage {
             })
     }
 
+    fn def_is_registered(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
+        ctx.def_node
+            .and_then(|def| def.parent())
+            .is_some_and(|p| {
+                p.kind() == "decorated_definition"
+                    && super::has_registering_decorator(p, ctx.source_bytes)
+            })
+    }
+
     fn member_call_needs_self(&self) -> bool {
         true
     }

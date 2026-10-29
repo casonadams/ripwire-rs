@@ -272,6 +272,9 @@ pub struct Symbol {
     /// A getter or property: reading it as a member runs it.
     #[serde(default)]
     pub accessor: bool,
+    /// Registered by a decorator (a route, a hook, a task): reached without a call by name.
+    #[serde(default)]
+    pub registered: bool,
 }
 
 impl Symbol {
@@ -309,6 +312,7 @@ impl Symbol {
             contract_member: false,
             takes_self: false,
             accessor: false,
+            registered: false,
         }
     }
 
