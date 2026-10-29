@@ -230,7 +230,7 @@ Re-rank the architecture map toward git-changed files so recent work automatical
 Discover untested cross-module call boundaries (integration seams) across directory and subsystem boundaries.
 .TP
 .BI \-\-pr\-context [=BASE]
-Generate a composite pull request review context bundle against base reference \fIBASE\fR (default: \fBmain\fR or \fBmaster\fR), including changed symbols, impact, tests, co-change, and authors.
+Generate a composite pull request review context bundle against base reference \fIBASE\fR (default: \fBmain\fR or \fBmaster\fR), including changed symbols, impact, tests, co-change, and authors. A value that is no revision but an existing directory names the repository path instead (\fB\-\-pr\-context .\fR).
 .TP
 .BI \-\-merge\-scout= REFS
 Symbol-level overlap of each ref in \fIREFS\fR against HEAD: the functions, methods and types each ref changed since its merge base with HEAD, the symbols two refs both changed (conflicts), files both changed without a shared symbol (risks), each arm's overlap with HEAD, and a landing order (fewest conflicts first). Read-only; an unknown ref exits with code \fB1\fR.
