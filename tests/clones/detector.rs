@@ -167,3 +167,47 @@ fn clone_report_honors_limit_and_offset() {
         (1, Some("1".into()), Some("0".into()))
     );
 }
+
+#[test]
+fn test_clones_touching_a_file_keep_only_groups_with_a_member_there() {
+    let interner = Interner::new();
+    let registry = LanguageRegistry::new().unwrap();
+    let near = |name: &str, last: &str| {
+        format!(
+            "fn {name}(a: i32, b: i32) -> i32 {{\n    let sum = a + b;\n    let prod = a * b;\n    let diff = a - b;\n    let quot = a / b;\n    return sum + prod + diff + quot + {last};\n}}\n"
+        )
+    };
+    let other = |name: &str| {
+        format!(
+            "fn {name}(items: &[u8]) -> usize {{\n    let mut count = 0;\n    for item in items {{\n        if *item > 10 {{\n            count += 1;\n        }}\n    }}\n    count\n}}\n"
+        )
+    };
+    let files = [
+        ("src/changed.rs", near("edited", "1")),
+        ("src/peer.rs", near("peer", "2")),
+        ("src/c.rs", other("count_big")),
+        ("src/d.rs", other("count_large")),
+    ];
+    let sources: HashMap<String, Vec<u8>> = files
+        .iter()
+        .map(|(p, s)| ((*p).to_string(), s.as_bytes().to_vec()))
+        .collect();
+    let slices: Vec<_> = files
+        .iter()
+        .map(|(p, s)| (*p, Lang::Rust, s.as_bytes()))
+        .collect();
+    let ingest = ingest_in_memory_files(&slices, &registry, &interner);
+    let focus: std::collections::HashSet<u32> = [0].into_iter().collect();
+    let groups =
+        ripwire_rs::find_clones_touching(&ingest, &interner, 10, Some(&sources), None, &focus);
+    let names: Vec<Vec<&str>> = groups
+        .iter()
+        .map(|g| {
+            g.members
+                .iter()
+                .map(|&m| interner.resolve(&ingest.symbols[m as usize].name))
+                .collect()
+        })
+        .collect();
+    assert_eq!(names, vec![vec!["edited", "peer"]]);
+}

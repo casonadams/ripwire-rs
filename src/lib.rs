@@ -22,7 +22,7 @@ pub mod workspace;
 pub use cli::{Cli, parse_from, run_cli, run_cli_args};
 pub use clones::{
     CloneGroup, CloneIdiom, CloneType, DEFAULT_MIN_CLONE_TOKENS, execute_clones_command,
-    find_clones, find_clones_in_root, render_clones_xml,
+    find_clones, find_clones_in_root, find_clones_touching, render_clones_xml,
 };
 pub use crawler::{
     CrawledFile, CrawlerOptions, DEFAULT_MAX_FILE_SIZE, DENYLIST_DIRS, crawl_directory,

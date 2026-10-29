@@ -1416,20 +1416,34 @@ fn load_quality_acks(root: &str) -> Option<QualityAcks> {
     }
 }
 
+/// Clone groups with a member in a changed file; nothing when the tree has not changed.
 fn collect_delta_clones(
     state: &QueryContext<'_>,
     root: &str,
-    has_changes: bool,
+    changed_files: &[String],
 ) -> Vec<crate::clones::CloneGroup> {
-    if !has_changes {
+    if changed_files.is_empty() {
         return Vec::new();
     }
-    crate::clones::find_clones_in_root(
+    let focus: std::collections::HashSet<u32> = state
+        .ingest
+        .files
+        .iter()
+        .filter(|f| {
+            let path = state.interner.resolve(&f.path);
+            changed_files
+                .iter()
+                .any(|cf| path == cf || path.ends_with(cf.as_str()))
+        })
+        .map(|f| f.id)
+        .collect();
+    crate::clones::find_clones_touching(
         state.ingest,
         state.interner,
         crate::clones::DEFAULT_MIN_CLONE_TOKENS,
         None,
         Some(Path::new(root)),
+        &focus,
     )
 }
 
@@ -1448,7 +1462,7 @@ pub fn evaluate_quality_delta_with_basis(
     let (baseline, source_name, head_basis) =
         resolve_quality_baseline(root, state, basis, &working, &changed_files)?;
     let acks = load_quality_acks(root);
-    let clones = collect_delta_clones(state, root, !changed_files.is_empty());
+    let clones = collect_delta_clones(state, root, &changed_files);
 
     let facts = QualityDeltaFacts {
         working: &working,
@@ -1505,7 +1519,7 @@ pub fn evaluate_quality_delta_since_ref(
         (snap, None)
     };
     let acks = load_quality_acks(root);
-    let clones = collect_delta_clones(state, root, !changed_files.is_empty());
+    let clones = collect_delta_clones(state, root, &changed_files);
 
     let facts = QualityDeltaFacts {
         working: &working,

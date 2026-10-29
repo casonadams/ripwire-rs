@@ -338,7 +338,9 @@ fn collect_type3_survivor_pairs(
 ) -> Vec<u64> {
     let mut seen: HashSet<u64> = HashSet::new();
     let mut survivors = Vec::new();
-    for bucket in index.into_values() {
+    let mut buckets: Vec<(u64, Vec<u32>)> = index.into_iter().collect();
+    buckets.sort_unstable_by_key(|(kgram, _)| *kgram);
+    for (_, bucket) in buckets {
         if bucket.len() < 2 || bucket.len() > TYPE3_MAX_BUCKET {
             continue;
         }
@@ -354,10 +356,32 @@ fn collect_type3_survivor_pairs(
     survivors
 }
 
-fn find_type3_pairs(candidates: &[BodyTokens]) -> Vec<CloneGroup> {
-    let index = build_dedup_kgram_index(candidates);
-    let pairs = collect_type3_survivor_pairs(candidates, index);
+/// Survivor pairs with at least one side in `focus`, walking each focus body's k-grams in order.
+fn collect_focused_survivor_pairs(
+    candidates: &[BodyTokens],
+    index: &HashMap<u64, Vec<u32>>,
+    focus: &[bool],
+) -> Vec<u64> {
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut survivors = Vec::new();
+    for (ia, c) in candidates.iter().enumerate().filter(|(i, _)| focus[*i]) {
+        for kg in &c.kgrams {
+            let Some(bucket) = index.get(kg).filter(|b| b.len() <= TYPE3_MAX_BUCKET) else {
+                continue;
+            };
+            for &ib in bucket.iter().filter(|&&ib| ib as usize != ia) {
+                if survivors.len() >= TYPE3_MAX_PAIRS {
+                    return survivors;
+                }
+                let (lo, hi) = (ia.min(ib as usize) as u32, ia.max(ib as usize) as u32);
+                try_stage_pair(candidates, lo, hi, &mut seen, &mut survivors);
+            }
+        }
+    }
+    survivors
+}
 
+fn evaluate_pairs(candidates: &[BodyTokens], pairs: Vec<u64>) -> Vec<CloneGroup> {
     let mut gapped: Vec<CloneGroup> = pairs
         .into_par_iter()
         .filter_map(|key| {
@@ -366,13 +390,48 @@ fn find_type3_pairs(candidates: &[BodyTokens]) -> Vec<CloneGroup> {
             evaluate_candidate_pair(&candidates[ia], &candidates[ib])
         })
         .collect();
-
     gapped.sort_by(|a, b| {
         a.members
             .cmp(&b.members)
             .then_with(|| b.token_count.cmp(&a.token_count))
     });
     gapped
+}
+
+/// Clone groups with a member in `focus_files`. Every body can be a partner, but only pairs that
+/// touch a focus body are compared, so the pair cap is reached on the change, not the whole tree.
+#[must_use]
+pub fn find_clones_touching(
+    ingest: &IngestResult,
+    interner: &Interner,
+    min_tokens: usize,
+    sources: Option<&HashMap<String, Vec<u8>>>,
+    root: Option<&std::path::Path>,
+    focus_files: &HashSet<u32>,
+) -> Vec<CloneGroup> {
+    let mut candidates = extract_candidate_bodies(ingest, interner, min_tokens, sources, root);
+    candidates.sort_unstable_by_key(|c| c.id);
+    let in_focus = |id: NodeId| {
+        ingest
+            .symbols
+            .get(id as usize)
+            .is_some_and(|s| focus_files.contains(&s.file_id))
+    };
+    let focus: Vec<bool> = candidates.iter().map(|c| in_focus(c.id)).collect();
+    let mut groups = group_exact_clones(&candidates);
+    groups.retain(|g| g.members.iter().any(|&m| in_focus(m)));
+    let index = build_dedup_kgram_index(&candidates);
+    groups.extend(evaluate_pairs(
+        &candidates,
+        collect_focused_survivor_pairs(&candidates, &index, &focus),
+    ));
+    groups
+}
+
+fn find_type3_pairs(candidates: &[BodyTokens]) -> Vec<CloneGroup> {
+    let index = build_dedup_kgram_index(candidates);
+    let pairs = collect_type3_survivor_pairs(candidates, index);
+    evaluate_pairs(candidates, pairs)
 }
 
 /// Detect all Type-1, Type-2, and Type-3 clones across the codebase.
