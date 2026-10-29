@@ -877,3 +877,27 @@ fn test_idiom_ladders_sharing_no_identifier_are_minor_and_shared_ones_gate() {
         )
     );
 }
+
+#[test]
+fn test_baseline_paths_include_deleted_files_by_extension_and_skip_unknown_ones() {
+    use ripwire_rs::gate::quality_delta::baseline_paths_to_read;
+    let registry =
+        ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
+    let interner = Interner::new();
+    let ingest = ripwire_rs::ingest_in_memory_files(
+        &[("src/kept.rs", Lang::Rust, b"fn kept() {}\n".as_slice())],
+        &registry,
+        &interner,
+    );
+    let changed: std::collections::HashSet<&str> =
+        ["src/kept.rs", "src/removed.py", "notes.unknownext"]
+            .into_iter()
+            .collect();
+    assert_eq!(
+        baseline_paths_to_read(&ingest, &interner, &changed),
+        vec![
+            ("src/kept.rs", Lang::Rust),
+            ("src/removed.py", Lang::Python)
+        ]
+    );
+}

@@ -676,32 +676,48 @@ fn resolve_rev_tree<'a>(repo: &'a gix::Repository, rev: &str) -> Option<gix::Tre
     }
 }
 
-/// The baseline blob of each changed path, deleted ones included, with its language: the working
-/// index's when the file still exists, else the path's.
+/// The changed paths whose baseline versions to read, in path order, each with its language: the
+/// working index's when the file still exists, else its extension's (a deleted file). Paths of no
+/// known language are left out.
+#[must_use]
+pub fn baseline_paths_to_read<'a>(
+    ingest: &IngestResult,
+    interner: &Interner,
+    changed_set: &std::collections::HashSet<&'a str>,
+) -> Vec<(&'a str, crate::domain::Lang)> {
+    let indexed: std::collections::HashMap<&str, crate::domain::Lang> = ingest
+        .files
+        .iter()
+        .map(|f| (interner.resolve(&f.path), f.lang))
+        .collect();
+    let mut paths: Vec<(&str, crate::domain::Lang)> = changed_set
+        .iter()
+        .map(|&rel_path| {
+            let lang = indexed
+                .get(rel_path)
+                .copied()
+                .unwrap_or_else(|| crate::domain::Lang::from_path(Path::new(rel_path)));
+            (rel_path, lang)
+        })
+        .filter(|&(_, lang)| lang != crate::domain::Lang::Unknown)
+        .collect();
+    paths.sort_unstable_by_key(|&(path, _)| path);
+    paths
+}
+
+/// The baseline blob of each changed path [`baseline_paths_to_read`] names.
 fn collect_tree_blobs(
     tree: &gix::Tree<'_>,
     ingest: &IngestResult,
     interner: &Interner,
     changed_set: &std::collections::HashSet<&str>,
 ) -> Vec<(String, crate::domain::Lang, Vec<u8>)> {
-    let indexed: std::collections::HashMap<&str, crate::domain::Lang> = ingest
-        .files
-        .iter()
-        .map(|f| (interner.resolve(&f.path), f.lang))
-        .collect();
-    let mut paths: Vec<&str> = changed_set.iter().copied().collect();
-    paths.sort_unstable();
-    paths
+    baseline_paths_to_read(ingest, interner, changed_set)
         .into_iter()
-        .filter_map(|rel_path| {
-            let lang = indexed
-                .get(rel_path)
-                .copied()
-                .unwrap_or_else(|| crate::domain::Lang::from_path(Path::new(rel_path)));
+        .filter_map(|(rel_path, lang)| {
             let entry = tree.lookup_entry_by_path(rel_path).ok().flatten()?;
             let obj = entry.object().ok()?;
-            (lang != crate::domain::Lang::Unknown)
-                .then(|| (rel_path.to_string(), lang, obj.data.to_vec()))
+            Some((rel_path.to_string(), lang, obj.data.to_vec()))
         })
         .collect()
 }
