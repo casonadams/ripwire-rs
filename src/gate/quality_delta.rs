@@ -6,7 +6,7 @@ use crate::gate::baseline::{
 use crate::gate::rename::{RenameMap, RenamePair, attach_body_fingerprints, pair_renames};
 use crate::query::commands::QueryContext;
 use crate::serialize::XmlEscapeExt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -108,6 +108,8 @@ pub struct QualityRegression {
     pub is_new_symbol: bool,
     /// Clone kinds name the whole group: every member's name, in group order.
     pub members: Vec<String>,
+    /// The recognized body shape every member of a clone group spells (`idiom=`).
+    pub idiom: Option<&'static str>,
     /// The baseline name this symbol was renamed from, when `pair_renames` paired it; `None` otherwise.
     pub renamed_from: Option<String>,
 }
@@ -170,8 +172,11 @@ fn numeric_bar(kind: &str) -> Option<u32> {
 /// with `bar=` on the numeric kinds.
 fn regression_subject(r: &QualityRegression) -> String {
     if r.kind == "duplication" {
+        let idiom = r
+            .idiom
+            .map_or_else(String::new, |i| format!(" idiom=\"{i}\""));
         return format!(
-            " members=\"{}\" tokens=\"{}\"",
+            " members=\"{}\" tokens=\"{}\"{idiom}",
             r.members.join(" | ").xml_escaped(),
             r.now_val
         );
@@ -475,24 +480,19 @@ pub fn compute_quality_delta(
     compute_quality_delta_with_acks(working, baseline, baseline_source, None)
 }
 
-fn apply_quality_acks(regressions: &mut [QualityRegression], ledger: &QualityAcks) -> usize {
-    let mut acked = 0usize;
-    for r in regressions {
+/// Suppresses the rows the ledger acknowledges, as upstream does, and returns how many.
+fn apply_quality_acks(regressions: &mut Vec<QualityRegression>, ledger: &QualityAcks) -> usize {
+    let before = regressions.len();
+    regressions.retain(|r| {
         let file = r.file_path.split(':').next().unwrap_or(&r.file_path);
-        if ledger.is_acknowledged(&r.kind, &r.sym_name, r.now_val)
+        !(ledger.is_acknowledged(&r.kind, &r.sym_name, r.now_val)
             || r.renamed_from
                 .as_deref()
                 .is_some_and(|old| ledger.is_acknowledged(&r.kind, old, r.now_val))
             || ledger.is_acknowledged(&r.kind, &r.file_path, r.now_val)
-            || ledger.is_acknowledged(&r.kind, file, r.now_val)
-        {
-            if r.is_gating {
-                acked += 1;
-            }
-            r.is_gating = false;
-        }
-    }
-    acked
+            || ledger.is_acknowledged(&r.kind, file, r.now_val))
+    });
+    before - regressions.len()
 }
 
 fn collect_stale_acks(
@@ -554,15 +554,15 @@ fn compute_delta_and_renames(
     check_structural_regressions(working, baseline, &renames, &mut regressions);
 
     let (acked_count, stale_acks, acked_by_rename) = match acks {
-        Some(ledger) => (
-            apply_quality_acks(&mut regressions, ledger),
-            collect_stale_acks(ledger, &regressions, &renames),
-            ledger
+        Some(ledger) => {
+            let stale = collect_stale_acks(ledger, &regressions, &renames);
+            let carried = ledger
                 .entries
                 .iter()
                 .filter(|e| renames.carries(&e.key))
-                .count(),
-        ),
+                .count();
+            (apply_quality_acks(&mut regressions, ledger), stale, carried)
+        }
         None => (0, Vec::new(), 0),
     };
     let api_new_surface = working
@@ -999,6 +999,56 @@ fn member_name(sym: &crate::domain::Symbol, state: &QueryContext<'_>) -> String 
     }
 }
 
+/// Identifiers a symbol's definition uses, from its parse tree; keywords are not identifier nodes.
+fn member_identifiers(sym: &crate::domain::Symbol, state: &QueryContext<'_>) -> HashSet<String> {
+    use crate::domain::CorpusView;
+    let mut names = HashSet::new();
+    let path = state.sym_path(sym);
+    let Ok(bytes) = state.sources.read(path) else {
+        return names;
+    };
+    let Some(tree) = crate::ingest::identifiers::parse_file_tree(sym.lang, path, &bytes) else {
+        return names;
+    };
+    if let Some(node) = tree
+        .root_node()
+        .descendant_for_byte_range(sym.sig_start_byte as usize, sym.end_byte as usize)
+    {
+        sym.lang
+            .semantics()
+            .for_each_identifier(node, &bytes, &mut |text| {
+                names.insert(text.to_string());
+            });
+    }
+    names
+}
+
+/// An idiom collision rather than a copy, as upstream reads it: every member spells one recognized
+/// shape, the group is under 80 tokens, the members sit in distinct enclosing contexts, and no two
+/// share an identifier.
+fn is_idiom_collision(
+    cg: &crate::clones::CloneGroup,
+    members: &[&crate::domain::Symbol],
+    state: &QueryContext<'_>,
+) -> bool {
+    if cg.idiom.as_str().is_none() || cg.token_count >= 80 {
+        return false;
+    }
+    let contexts: HashSet<(u32, Option<lasso::Spur>)> =
+        members.iter().map(|s| (s.file_id, s.scope)).collect();
+    if contexts.len() < members.len() {
+        return false;
+    }
+    let names: Vec<HashSet<String>> = members
+        .iter()
+        .map(|s| member_identifiers(s, state))
+        .collect();
+    names
+        .iter()
+        .enumerate()
+        .all(|(i, a)| names[i + 1..].iter().all(|b| a.is_disjoint(b)))
+}
+
 /// Duplication rows for the clone groups a change made: a group with no new or touched member
 /// already existed. A group is `new-symbol` only when every member is new; otherwise it gates.
 /// A group that copies an untouched helper with two or more callers adds a
@@ -1022,15 +1072,19 @@ pub fn collect_changed_clone_regressions(
         }
         members.sort_by(|a, b| a.0.cmp(&b.0));
         let all_new = members.iter().all(|m| m.2 == MemberStatus::New);
+        let syms: Vec<&crate::domain::Symbol> = members.iter().map(|m| m.1).collect();
+        let collision = !all_new && is_idiom_collision(cg, &syms, state);
         let first = members[0].1;
         let row = QualityRegression {
             kind: "duplication".to_string(),
             file_path: state.sym_path(first).to_string(),
             line: first.line,
             now_val: cg.token_count as u32,
-            is_gating: !all_new,
+            is_gating: !all_new && !collision,
+            is_minor: collision,
             is_new_symbol: all_new,
             members: members.iter().map(|m| m.0.clone()).collect(),
+            idiom: cg.idiom.as_str(),
             ..QualityRegression::default()
         };
         let reused_callers = members
@@ -1043,7 +1097,7 @@ pub fn collect_changed_clone_regressions(
             regressions.push(QualityRegression {
                 kind: "new-clone-of-reused-helper".to_string(),
                 now_val: callers as u32,
-                is_gating: true,
+                is_gating: !collision,
                 is_new_symbol: false,
                 ..row.clone()
             });
@@ -1369,7 +1423,7 @@ pub fn assemble_quality_delta_report(
         );
         check_source_and_clone_regressions(state, facts, &renames, &mut report.regressions);
         if let Some(ledger) = facts.acks {
-            let _ = apply_quality_acks(&mut report.regressions, ledger);
+            report.acked_count += apply_quality_acks(&mut report.regressions, ledger);
         }
     }
     update_report_counts(&mut report);

@@ -171,9 +171,7 @@ fn ack_keyed_by_old_name_acknowledges_a_renamed_regression() {
 
     let report = delta(&base, &work, Some("ack complexity compute_total 34\n"));
 
-    let rows = complexity_rows(&report);
-    assert_eq!(rows.len(), 1);
-    assert!(!rows[0].is_gating);
+    assert!(complexity_rows(&report).is_empty());
     assert_eq!(report.acked_count, 1);
     assert!(!report.has_gating_failures());
     assert!(report.stale_acks.is_empty());

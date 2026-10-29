@@ -464,9 +464,14 @@ fn test_quality_delta_acks_suppression() {
     let acks = parse_acks_content(acks_content);
 
     let report = compute_quality_delta_with_acks(&working, &baseline, "test-baseline", Some(&acks));
-    assert_eq!(report.regressions.len(), 1);
-    assert_eq!(report.gating_count, 0);
-    assert!(!report.has_gating_failures());
+    assert_eq!(
+        (
+            report.regressions.len(),
+            report.acked_count,
+            report.gating_count
+        ),
+        (0, 1, 0)
+    );
 }
 
 #[test]
@@ -806,4 +811,69 @@ fn test_removing_the_last_caller_in_another_file_makes_a_function_newly_dead() {
             "{before:?} -> {after:?}"
         );
     }
+}
+
+/// (gating, minor, idiom) of the duplication row for two threshold ladders in different files.
+fn ladder_row(first: &str, second: &str) -> (bool, bool, Option<&'static str>) {
+    let registry =
+        ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
+    let interner = Interner::new();
+    let files = [("src/grade.rs", first), ("src/bucket.rs", second)];
+    let slices: Vec<_> = files
+        .iter()
+        .map(|(p, s)| (*p, Lang::Rust, s.as_bytes()))
+        .collect();
+    let ingest = ripwire_rs::ingest_in_memory_files(&slices, &registry, &interner);
+    let graph = Graph::build(&ingest, &interner);
+    let pr = graph.page_rank(&ripwire_rs::PageRankConfig::default());
+    let sources: Vec<(&str, &[u8])> = files.iter().map(|(p, s)| (*p, s.as_bytes())).collect();
+    let state = QueryContext {
+        root: ":memory:",
+        ingest: &ingest,
+        graph: &graph,
+        pr: &pr,
+        interner: &interner,
+        sources: &sources.as_slice(),
+        commits: None,
+        at: None,
+    };
+    let group = CloneGroup {
+        members: ingest
+            .symbols
+            .iter()
+            .filter(|s| s.kind == SymKind::Function)
+            .map(|s| s.id)
+            .collect(),
+        clone_type: CloneType::Type2,
+        token_count: 40,
+        similarity: 1.0,
+        idiom: CloneIdiom::ThresholdLadder,
+        tokens_saved: 40,
+    };
+    let status = |s: &Symbol| {
+        if ingest.file_path(s.file_id, &interner) == "src/grade.rs" {
+            MemberStatus::New
+        } else {
+            MemberStatus::Untouched
+        }
+    };
+    let mut regs = Vec::new();
+    collect_changed_clone_regressions(&[group], &state, &status, &mut regs);
+    let r = &regs[0];
+    (r.is_gating, r.is_minor, r.idiom)
+}
+
+#[test]
+fn test_idiom_ladders_sharing_no_identifier_are_minor_and_shared_ones_gate() {
+    let grade = "fn grade(score: u32) -> u32 {\n    if score > 90 {\n        return 1;\n    }\n    if score > 50 {\n        return 2;\n    }\n    3\n}\n";
+    let bucket = "fn bucket(size: u32) -> u32 {\n    if size > 9 {\n        return 4;\n    }\n    if size > 5 {\n        return 5;\n    }\n    6\n}\n";
+    let shared = "fn bucket(limit: u32) -> u32 {\n    if limit > 9 {\n        return 4;\n    }\n    if limit > 5 {\n        return 5;\n    }\n    6\n}\n";
+    let grade_shared = "fn grade(limit: u32) -> u32 {\n    if limit > 90 {\n        return 1;\n    }\n    if limit > 50 {\n        return 2;\n    }\n    3\n}\n";
+    assert_eq!(
+        (ladder_row(grade, bucket), ladder_row(grade_shared, shared)),
+        (
+            (false, true, Some("threshold-ladder")),
+            (true, false, Some("threshold-ladder"))
+        )
+    );
 }
