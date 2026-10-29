@@ -564,3 +564,52 @@ fn test_triage_external_declined_and_unresolved_counts() {
     assert_eq!(res.unresolved, 1);
     assert_eq!(res.declined, 1);
 }
+
+/// Each caller's name and the `scope::name` of every symbol it calls, for one in-memory file.
+fn call_edges(path: &str, lang: Lang, source: &str) -> Vec<(String, String)> {
+    use ripwire_rs::domain::CorpusView;
+    let registry =
+        ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
+    let interner = Interner::new();
+    let ingest = ripwire_rs::ingest_in_memory_files(
+        &[(path, lang, source.as_bytes())],
+        &registry,
+        &interner,
+    );
+    let graph = ripwire_rs::Graph::build(&ingest, &interner);
+    let view = (&ingest, &interner);
+    let label = |s: &Symbol| match s.scope {
+        Some(sc) => format!("{}::{}", interner.resolve(&sc), view.sym_name(s)),
+        None => view.sym_name(s).to_string(),
+    };
+    let mut edges: Vec<(String, String)> = ingest
+        .symbols
+        .iter()
+        .flat_map(|callee| {
+            graph
+                .callers(callee.id)
+                .map(|(caller, _)| (label(&ingest.symbols[caller as usize]), label(callee)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    edges.sort();
+    edges
+}
+
+#[test]
+fn test_bare_calls_reach_module_functions_and_nested_defs_not_class_members() {
+    let py = "class Client:\n    def load(self):\n        return 1\n\n    def run(self):\n        def helper():\n            return 2\n        return helper()\n\n\ndef load():\n    return 3\n\n\ndef use():\n    return load()\n";
+    let ts = "class Client {\n  load(): number {\n    return 1;\n  }\n}\n\nfunction load(): number {\n  return 2;\n}\n\nexport function use(): number {\n  return load();\n}\n";
+    let observed = (
+        call_edges("src/client.py", Lang::Python, py),
+        call_edges("src/client.ts", Lang::TypeScript, ts),
+    );
+    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
+    assert_eq!(
+        observed,
+        (
+            vec![edge("Client::run", "Client::helper"), edge("use", "load")],
+            vec![edge("use", "load")],
+        )
+    );
+}

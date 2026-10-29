@@ -367,6 +367,11 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 };
 
 impl LanguageSemantics for JavaScriptLanguage {
+    /// Class members are reached through `this.` or a qualifier; a bare `f()` never names one.
+    fn bare_calls_skip_type_members(&self) -> bool {
+        true
+    }
+
     fn env_reads(&self) -> &'static [crate::languages::common::flags::EnvRead] {
         &[crate::languages::common::flags::EnvRead::Member("process.env")]
     }

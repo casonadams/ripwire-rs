@@ -796,18 +796,50 @@ pub trait ResolutionLookup {
         self.is_owner_compatible(r, sym)
     }
 
+    /// A bare call reaches `sym` unless it is a member of a type. A definition nested in a function
+    /// body is no member: it is in lexical scope wherever that function's body is.
     #[must_use]
     fn bare_call_reachable(&self, r: &Reference, sym: &Symbol) -> bool {
         if r.qualifier.is_some() || r.member_call {
             return true;
         }
         let symbols = self.symbols();
-        !sym.scope.is_some_and(|scope| {
+        let type_scoped = sym.scope.is_some_and(|scope| {
             self.by_name().get(&scope).is_some_and(|ids| {
                 ids.iter()
                     .any(|&id| symbols[id as usize].kind.is_type_container())
             })
-        })
+        });
+        !type_scoped
+            || self.enclosing_function(sym).is_some_and(|f| {
+                f.file_id == r.file_id && (f.sig_start_byte..f.end_byte).contains(&r.start_byte)
+            })
+    }
+
+    /// The innermost function or method of `sym`'s file whose span encloses `sym`. A file's symbols
+    /// hold a contiguous id range, so only that range is scanned.
+    #[must_use]
+    fn enclosing_function(&self, sym: &Symbol) -> Option<&Symbol> {
+        let symbols = self.symbols();
+        let id = sym.id as usize;
+        let same_file = |i: &usize| symbols[*i].file_id == sym.file_id;
+        let first = (0..id).rev().take_while(same_file).last().unwrap_or(id);
+        let last = (id..symbols.len())
+            .take_while(same_file)
+            .last()
+            .unwrap_or(id);
+        symbols[first..=last]
+            .iter()
+            .filter(|s| {
+                s.id != sym.id
+                    && matches!(
+                        s.kind,
+                        crate::domain::SymKind::Function | crate::domain::SymKind::Method
+                    )
+                    && s.sig_start_byte <= sym.sig_start_byte
+                    && sym.end_byte <= s.end_byte
+            })
+            .min_by_key(|s| s.end_byte - s.sig_start_byte)
     }
 
     /// Language and arity compatibility, without the std-member name filter.

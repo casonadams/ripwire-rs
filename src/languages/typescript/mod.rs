@@ -188,6 +188,11 @@ impl LanguageSemantics for TypeScriptLanguage {
         true
     }
 
+    /// Class members are reached through `this.` or a qualifier; a bare `f()` never names one.
+    fn bare_calls_skip_type_members(&self) -> bool {
+        true
+    }
+
     fn unindexed_receiver_type_uses_names(&self, receiver_type: &str) -> bool {
         // Object-literal and plain-name types the index does not know: name resolution, as before.
         receiver_type.starts_with('{')

@@ -337,6 +337,11 @@ impl LanguageSemantics for PythonLanguage {
         true
     }
 
+    /// Class members are reached through `self.` or a qualifier; a bare `f()` never names one.
+    fn bare_calls_skip_type_members(&self) -> bool {
+        true
+    }
+
     fn qualifier_must_be_indexed(&self) -> bool {
         true
     }
