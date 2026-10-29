@@ -916,6 +916,15 @@ pub trait ResolutionLookup {
         )
     }
 
+    /// The last segment of a path qualifier (`writer::MinifyingWriter` -> `MinifyingWriter`), when it
+    /// is one and is interned.
+    #[must_use]
+    fn qualifier_leaf(&self, q: Spur) -> Option<Spur> {
+        let interner = self.interner()?;
+        let (_, leaf) = interner.try_resolve(&q)?.rsplit_once("::")?;
+        interner.get(leaf)
+    }
+
     /// Candidates a qualified reference can mean: those scoped by the qualifier, else those in the module
     /// file the qualifier is bound to by an import, else all of them unless the qualifier is std/builtin.
     #[must_use]
@@ -926,7 +935,12 @@ pub trait ResolutionLookup {
         q: Spur,
     ) -> Option<(CandBuffer, Narrowing)> {
         let symbols = self.symbols();
-        let qualified = filter_matching_scope(&cands, symbols, q);
+        let mut qualified = filter_matching_scope(&cands, symbols, q);
+        if qualified.is_empty()
+            && let Some(leaf) = self.qualifier_leaf(q)
+        {
+            qualified = filter_matching_scope(&cands, symbols, leaf);
+        }
         if !qualified.is_empty() {
             let caller_scope = symbols.get(r.from_symbol as usize).and_then(|cs| cs.scope);
             let narrowing = if caller_scope == Some(q) {

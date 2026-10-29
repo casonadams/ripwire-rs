@@ -636,3 +636,13 @@ fn test_python_property_reads_bind_to_the_property_but_plain_and_standard_names_
         ]
     );
 }
+
+#[test]
+fn test_a_path_qualified_call_binds_to_the_type_its_last_segment_names() {
+    let src = "mod writer {\n    pub struct Minify;\n    impl Minify {\n        pub fn new() -> Self {\n            Minify\n        }\n    }\n    pub struct Plain;\n    impl Plain {\n        pub fn new() -> Self {\n            Plain\n        }\n    }\n}\n\nfn build() -> writer::Minify {\n    writer::Minify::new()\n}\n";
+    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
+    assert_eq!(
+        call_edges("src/lib.rs", Lang::Rust, src),
+        vec![edge("build", "Minify::new")]
+    );
+}
