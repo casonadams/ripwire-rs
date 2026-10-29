@@ -352,7 +352,9 @@ fn is_unpinned_std_member_blocked<L: ResolutionLookup + ?Sized>(
     }
     match sym.kind {
         crate::domain::SymKind::Field | crate::domain::SymKind::Var => true,
-        crate::domain::SymKind::Method => {
+        crate::domain::SymKind::Method | crate::domain::SymKind::Function
+            if lookup.is_type_member(sym) =>
+        {
             is_method_std_member_blocked(lookup, r, sym, caller_scope)
         }
         crate::domain::SymKind::Function => {
@@ -800,20 +802,32 @@ pub trait ResolutionLookup {
     /// body is no member: it is in lexical scope wherever that function's body is.
     #[must_use]
     fn bare_call_reachable(&self, r: &Reference, sym: &Symbol) -> bool {
-        if r.qualifier.is_some() || r.member_call {
+        if r.qualifier.is_some() || r.member_call || !self.type_scoped(sym) {
             return true;
         }
+        self.enclosing_function(sym).is_some_and(|f| {
+            f.file_id == r.file_id && (f.sig_start_byte..f.end_byte).contains(&r.start_byte)
+        })
+    }
+
+    /// Whether `sym`'s scope names an indexed type.
+    #[must_use]
+    fn type_scoped(&self, sym: &Symbol) -> bool {
         let symbols = self.symbols();
-        let type_scoped = sym.scope.is_some_and(|scope| {
+        sym.scope.is_some_and(|scope| {
             self.by_name().get(&scope).is_some_and(|ids| {
                 ids.iter()
                     .any(|&id| symbols[id as usize].kind.is_type_container())
             })
-        });
-        !type_scoped
-            || self.enclosing_function(sym).is_some_and(|f| {
-                f.file_id == r.file_id && (f.sig_start_byte..f.end_byte).contains(&r.start_byte)
-            })
+        })
+    }
+
+    /// A member of a type: scoped to one and not nested in a function body. Python tags its methods
+    /// as functions, so the kind alone does not say this.
+    #[must_use]
+    fn is_type_member(&self, sym: &Symbol) -> bool {
+        sym.kind == crate::domain::SymKind::Method
+            || (self.type_scoped(sym) && self.enclosing_function(sym).is_none())
     }
 
     /// The innermost function or method of `sym`'s file whose span encloses `sym`. A file's symbols

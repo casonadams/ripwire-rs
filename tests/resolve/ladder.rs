@@ -613,3 +613,13 @@ fn test_bare_calls_reach_module_functions_and_nested_defs_not_class_members() {
         )
     );
 }
+
+#[test]
+fn test_python_method_named_like_a_container_method_needs_its_type_on_an_unknown_receiver() {
+    let py = "class Jar:\n    def get(self, name):\n        return name\n\n    def lookup(self, name):\n        return self.get(name)\n\n\ndef read(headers):\n    return headers.get(\"Host\")\n";
+    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
+    assert_eq!(
+        call_edges("src/jar.py", Lang::Python, py),
+        vec![edge("Jar::lookup", "Jar::get")]
+    );
+}
