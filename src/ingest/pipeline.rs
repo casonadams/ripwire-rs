@@ -110,6 +110,7 @@ pub fn ingest_crawled_files(
     for (file_info, index) in processed {
         append_file(&mut ingest, file_info, index);
     }
+    retain_accessor_reads(&mut ingest);
     ingest.import_aliases = files
         .iter()
         .filter_map(|f| {
@@ -162,6 +163,7 @@ pub fn ingest_in_memory_files(
         let index = index_file(parsed, &dummy_crawled, file_id, interner);
         append_file(&mut ingest, file_info, index);
     }
+    retain_accessor_reads(&mut ingest);
 
     ingest.import_aliases = files
         .iter()
@@ -289,6 +291,19 @@ fn intern_implementations(
         .collect()
 }
 
+/// Drops member reads that name no accessor in the corpus, so plain property reads cost nothing.
+fn retain_accessor_reads(ingest: &mut IngestResult) {
+    let accessors: std::collections::HashSet<lasso::Spur> = ingest
+        .symbols
+        .iter()
+        .filter(|s| s.accessor)
+        .map(|s| s.name)
+        .collect();
+    ingest
+        .references
+        .retain(|r| r.role != crate::domain::RefRole::Access || accessors.contains(&r.callee_name));
+}
+
 /// Append a file, rebasing its file-local node ids onto the global symbol table.
 fn append_file(ingest: &mut IngestResult, file_info: FileInfo, mut index: FileIndex) {
     let offset = ingest.symbols.len() as NodeId;
@@ -352,6 +367,7 @@ pub fn build_file_symbols(
         sym.binding = def.binding;
         sym.contract_member = def.contract_member;
         sym.takes_self = def.takes_self;
+        sym.accessor = def.accessor;
         file_symbols.push(sym);
     }
     file_symbols

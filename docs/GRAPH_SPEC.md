@@ -12,7 +12,7 @@ Each extracted definition produces a `Symbol` vertex in `IngestResult::symbols` 
 - `src/languages/<lang>/tags.scm` must use only the closed capture set parsed by `classify_capture` (`src/ingest/extract.rs`):
   - `@name`: Primary symbol identifier token.
   - `@definition.<kind>`: Symbol definition role (`function`, `cjsexport`, `method`, `protomethod`, `class`, `object`, `specialization`, `struct`, `interface`, `constant`, `enummember`, `type`, `var`, `attribute`, `property`, `macro`, `testmacroblock`, `yamlkey`, `module`, `section`, `field`).
-  - `@reference.<role>`: Symbol reference role (`call`, `bare`, `operator`, `read`, `attribute`, `write`, `import`, `extends`, `implementation`, `class`, `macro`, `type`, `value`, `through`).
+  - `@reference.<role>`: Symbol reference role (`call`, `bare`, `operator`, `read`, `attribute`, `write`, `import`, `extends`, `implementation`, `class`, `macro`, `type`, `value`, `through`, `access`). An `access` reference is a member read that may run an accessor (a Python `@property` or `@cached_property`): it binds only to an accessor of that name, and needs receiver evidence (the accessor's own class, or a file naming it) when the name is a standard attribute or more than one accessor shares it; reads that name no accessor are dropped at ingest. TypeScript and JavaScript getters are not modeled: their property reads mostly target interface fields, and binding them by name measured worse against scip-typescript.
   - `@import.path`: Module/header specifier token for file dependency resolution.
 - Language-prefixed capture tags are forbidden.
 

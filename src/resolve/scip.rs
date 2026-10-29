@@ -109,7 +109,7 @@ impl<'a> Overlay<'a> {
             calls: ingest
                 .references
                 .iter()
-                .filter(|r| matches!(r.role, RefRole::Call | RefRole::Macro))
+                .filter(|r| matches!(r.role, RefRole::Call | RefRole::Macro | RefRole::Access))
                 .map(|r| (r.file_id, r.name_line, r.callee_name))
                 .collect(),
             names: HashMap::new(),

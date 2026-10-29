@@ -583,6 +583,12 @@ pub trait LanguageSemantics: Sync {
         &[]
     }
 
+    /// Standard library / builtin property names: a member read of one binds to an in-tree
+    /// accessor only with receiver evidence.
+    fn std_property_names(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Standard library / runtime namespace qualifiers classified as `External`.
     fn std_qualifier_names(&self) -> &'static [&'static str] {
         &[]
@@ -617,6 +623,11 @@ pub trait LanguageSemantics: Sync {
     /// True if a captured definition is a bodyless member an interface declares by contract (a
     /// TypeScript function-typed interface property): typed dispatch reaches it, a by-name call never does.
     fn is_contract_member(&self, _ctx: &DefCaptureGateContext<'_>) -> bool {
+        false
+    }
+
+    /// A getter or property, run by reading it as a member.
+    fn def_is_accessor(&self, _ctx: &DefCaptureGateContext<'_>) -> bool {
         false
     }
 

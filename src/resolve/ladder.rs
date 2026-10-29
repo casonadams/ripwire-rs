@@ -635,6 +635,9 @@ fn classify_rejected_with_interner(r: &Reference, interner: &Interner) -> RefOut
 }
 
 fn classify_rejected_candidates(r: &Reference, interner: Option<&Interner>) -> RefOutcome {
+    if r.role == RefRole::Access {
+        return RefOutcome::Ignored;
+    }
     if matches!(r.role, RefRole::Read | RefRole::Write) {
         return if r.lang.semantics().is_table_read_write_target() {
             RefOutcome::External
@@ -761,6 +764,31 @@ pub trait ResolutionLookup {
 
     #[must_use]
     fn is_compatible_target(&self, r: &Reference, sym: &Symbol) -> bool {
+        if r.role == RefRole::Access {
+            let caller_scope = self
+                .symbols()
+                .get(r.from_symbol as usize)
+                .and_then(|cs| cs.scope);
+            let semantics = r.lang.semantics();
+            let standard = self
+                .interner()
+                .and_then(|i| i.try_resolve(&r.callee_name))
+                .is_some_and(|name| {
+                    semantics.is_std_or_builtin_member(name)
+                        || semantics.std_property_names().contains(&name)
+                });
+            let symbols = self.symbols();
+            let ambiguous = self.by_name().get(&r.callee_name).is_some_and(|ids| {
+                ids.iter()
+                    .filter(|&&id| symbols[id as usize].accessor)
+                    .count()
+                    > 1
+            });
+            return sym.accessor
+                && sym.lang.is_compatible(r.lang)
+                && !((standard || ambiguous)
+                    && is_method_std_member_blocked(self, r, sym, caller_scope));
+        }
         if sym.lang.semantics().is_table_read_write_target()
             && matches!(r.role, RefRole::Read | RefRole::Write)
         {
@@ -1068,6 +1096,7 @@ pub trait ResolutionLookup {
             RefRole::Call | RefRole::Macro => true,
             RefRole::Read | RefRole::Write => r.lang.semantics().is_table_read_write_target(),
             RefRole::Type => r.lang.semantics().type_mentions_are_edges(),
+            RefRole::Access => true,
             _ => false,
         }
     }

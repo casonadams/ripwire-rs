@@ -623,3 +623,16 @@ fn test_python_method_named_like_a_container_method_needs_its_type_on_an_unknown
         vec![edge("Jar::lookup", "Jar::get")]
     );
 }
+
+#[test]
+fn test_python_property_reads_bind_to_the_property_but_plain_and_standard_names_need_evidence() {
+    let py = "class Jar:\n    @property\n    def contents(self):\n        return 1\n\n    @property\n    def name(self):\n        return \"jar\"\n\n    def label(self):\n        return self.name\n\n\ndef inspect(jar, path):\n    return (jar.contents, jar.other, path.name)\n";
+    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
+    assert_eq!(
+        call_edges("src/jar.py", Lang::Python, py),
+        vec![
+            edge("Jar::label", "Jar::name"),
+            edge("inspect", "Jar::contents")
+        ]
+    );
+}

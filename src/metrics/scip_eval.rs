@@ -101,7 +101,7 @@ fn ratio(num: usize, den: usize) -> Option<f64> {
 }
 
 fn is_scored_call(r: &Reference) -> bool {
-    r.from_symbol != NO_NODE && matches!(r.role, RefRole::Call | RefRole::Macro)
+    r.from_symbol != NO_NODE && matches!(r.role, RefRole::Call | RefRole::Macro | RefRole::Access)
 }
 
 #[must_use]

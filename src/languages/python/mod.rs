@@ -8,6 +8,12 @@ use std::collections::HashMap;
 pub struct PythonLanguage;
 pub static PYTHON_LANG: PythonLanguage = PythonLanguage;
 
+/// Attributes of standard Python types (paths, exceptions, numbers, enums, functions).
+const PYTHON_STD_PROPERTIES: &[&str] = &[
+    "name", "args", "value", "path", "stem", "suffix", "parent", "parts", "real", "imag",
+    "closed", "mode", "encoding", "errno", "strerror", "filename",
+];
+
 const PYTHON_STD_MEMBERS: &[&str] = &[
     "append",
     "extend",
@@ -333,6 +339,22 @@ impl LanguageSemantics for PythonLanguage {
             .is_some_and(|owner| owner.kind() == "class_definition")
     }
 
+    /// A `@property` or `@cached_property` method: reading `x.name` runs it.
+    fn def_is_accessor(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
+        let Some(decorated) = ctx.def_node.and_then(|def| def.parent()) else {
+            return false;
+        };
+        let mut cursor = decorated.walk();
+        decorated.kind() == "decorated_definition"
+            && decorated.children(&mut cursor).any(|d| {
+                d.kind() == "decorator"
+                    && d.utf8_text(ctx.source_bytes).is_ok_and(|text| {
+                        let name = text.trim_start_matches('@').trim();
+                        name == "property" || name.ends_with("cached_property")
+                    })
+            })
+    }
+
     fn member_call_needs_self(&self) -> bool {
         true
     }
@@ -437,6 +459,10 @@ impl LanguageSemantics for PythonLanguage {
 
     fn std_member_names(&self) -> &'static [&'static str] {
         PYTHON_STD_MEMBERS
+    }
+
+    fn std_property_names(&self) -> &'static [&'static str] {
+        PYTHON_STD_PROPERTIES
     }
 
     fn std_qualifier_names(&self) -> &'static [&'static str] {

@@ -149,13 +149,16 @@ pub enum RefRole {
     Type,
     Value,
     Through,
+    /// A member read that may run an accessor (`x.prop` of a getter or `@property`).
+    Access,
 }
 
 impl RefRole {
     #[inline]
     pub const fn tag(self) -> &'static str {
-        const TAGS: [&str; 9] = [
+        const TAGS: [&str; 10] = [
             "call", "read", "write", "import", "extends", "macro", "type", "value", "through",
+            "access",
         ];
         TAGS[self as usize]
     }
@@ -266,6 +269,9 @@ pub struct Symbol {
     /// conformance, never by a by-name call (its name is not evidence of the callee).
     pub contract_member: bool,
     pub takes_self: bool,
+    /// A getter or property: reading it as a member runs it.
+    #[serde(default)]
+    pub accessor: bool,
 }
 
 impl Symbol {
@@ -302,6 +308,7 @@ impl Symbol {
             binding: Binding::Mutable,
             contract_member: false,
             takes_self: false,
+            accessor: false,
         }
     }
 

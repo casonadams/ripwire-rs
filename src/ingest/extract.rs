@@ -24,6 +24,7 @@ pub struct RawDef {
     /// Set by the language plugin for bodyless members reached only by typed dispatch (see `is_contract_member`).
     pub contract_member: bool,
     pub takes_self: bool,
+    pub accessor: bool,
 }
 
 impl RawDef {
@@ -44,6 +45,7 @@ impl RawDef {
             binding: crate::domain::Binding::Mutable,
             contract_member: false,
             takes_self: false,
+            accessor: false,
         }
     }
 }
@@ -129,6 +131,7 @@ pub fn classify_capture(name: &str) -> Option<Capture> {
             "type" => RefRole::Type,
             "value" => RefRole::Value,
             "through" => RefRole::Through,
+            "access" => RefRole::Access,
             "call" | "bare" | "operator" => RefRole::Call,
             _ => return None,
         }))
@@ -601,6 +604,7 @@ fn record_def_item(
         binding,
         contract_member,
         takes_self: lang.semantics().def_takes_self(&gate_ctx),
+        accessor: lang.semantics().def_is_accessor(&gate_ctx),
     });
 }
 
@@ -617,6 +621,7 @@ fn ref_is_skipped(
             .and_then(|n| n.next_sibling())
             .is_some_and(|s| s.kind() == ".");
     is_pkg_prefix_extends
+        || (role == RefRole::Access && ext.name_node.is_some_and(is_call_or_write_member))
         || lang.semantics().is_builtin_keyword(name)
         || (role == RefRole::Call && lang.semantics().should_ignore_call(ext.name_node, name))
         || (role == RefRole::Read
@@ -743,6 +748,19 @@ fn record_ref_item(
                 .is_some_and(|n| lang.semantics().is_macro_argument(n)),
         member_call: ext.name_node.is_some_and(is_member_access),
     });
+}
+
+/// Whether the member expression `name_node` names is called (a call reference covers it) or
+/// assigned (a setter, not a read).
+fn is_call_or_write_member(name_node: tree_sitter::Node<'_>) -> bool {
+    let Some(member) = name_node.parent() else {
+        return false;
+    };
+    member.parent().is_some_and(|outer| {
+        let field = |f: &str| outer.child_by_field_name(f) == Some(member);
+        (outer.kind().starts_with("call") && field("function"))
+            || (outer.kind().contains("assignment") && field("left"))
+    })
 }
 
 fn is_member_access(name_node: tree_sitter::Node<'_>) -> bool {

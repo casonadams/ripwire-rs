@@ -74,3 +74,6 @@
 
 ; Value-position and lexical-binding rules live in languages/python.rs.
 (identifier) @name @reference.read
+
+; An attribute read may run a @property; resolution binds it only to accessors.
+(attribute attribute: (identifier) @name) @reference.access
