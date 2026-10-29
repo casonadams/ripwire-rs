@@ -646,3 +646,13 @@ fn test_a_path_qualified_call_binds_to_the_type_its_last_segment_names() {
         vec![edge("build", "Minify::new")]
     );
 }
+
+#[test]
+fn test_a_receiver_typed_by_its_constructor_binds_only_that_types_method() {
+    let src = "struct Minify;\nimpl Minify {\n    fn new() -> Self {\n        Minify\n    }\n    fn flush(&self) {}\n}\n\nstruct Plain;\nimpl Plain {\n    fn flush(&self) {}\n}\n\nfn emit() {\n    let out = Minify::new();\n    out.flush();\n}\n";
+    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
+    assert_eq!(
+        call_edges("src/lib.rs", Lang::Rust, src),
+        vec![edge("emit", "Minify::flush"), edge("emit", "Minify::new")]
+    );
+}

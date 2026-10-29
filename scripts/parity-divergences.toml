@@ -337,3 +337,12 @@ case = ""
 kind = "fixes-upstream-defect"
 why = "An untyped receiver calling an interface method now reaches its implementors, so the exemplar's callee list names the refine_dialect implementations the call can run instead of the declaration alone."
 evidence = "tests/resolve/trait_dispatch.rs::an_untyped_receiver_of_an_interface_method_reaches_every_implementor"
+
+[[divergence]]
+id = "callees-typed-receiver-binds-exactly"
+command = "--callees=row_bytes"
+case = ""
+kind = "smaller"
+omits = ["flush:via", "dc", "stdm"]
+why = "row_bytes calls flush on a local its constructor types and new through a path naming its type. Upstream binds flush by name to every flush in the tree, so its rows carry via=\"name\"; ours binds the receiver type's one flush and the named type's new, so no row is bound by name alone and none carries via=. Its .len() on a byte slice is a standard-library method to ours, not a declined call, so there is no <dc gate=\"std\"> row and no <stdm> tally. Pinned by tests/resolve/ladder.rs::test_a_receiver_typed_by_its_constructor_binds_only_that_types_method."
+evidence = "measured: ours 2 callee rows (MinifyingWriter::new, MinifyingWriter::flush); upstream 4 (new, and flush at writer.rs:172, writer.rs:380, xml.rs:141 by name)."
