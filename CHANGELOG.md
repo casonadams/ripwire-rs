@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.6.7](https://github.com/casonadams/ripwire-rs/compare/v0.6.6...v0.6.7) (2026-10-29)
+
+
+### Features
+
+* **gate:** actionable PR context and ref-based quality delta ([78c6f9f](https://github.com/casonadams/ripwire-rs/commit/78c6f9fc3cbc19155b8b0a4989d49a06e697c322))
+* **resolve:** Python property reads bind to their [@property](https://github.com/property) ([628d66b](https://github.com/casonadams/ripwire-rs/commit/628d66b4dc82617a4f109d40c7600d30c2bab4e2))
+
+
+### Bug Fixes
+
+* **cli:** --pr-context . names the path when . is no revision ([fccd9e3](https://github.com/casonadams/ripwire-rs/commit/fccd9e3d9dcfceafc8f7d4b33facc8f2b8b4c7fb))
+* **gate,rank:** match upstream gating and report dead code accurately ([a400ef2](https://github.com/casonadams/ripwire-rs/commit/a400ef2562492231148c3e588035766328fb6249))
+* **gate:** clone groups in the quality delta use the --clones 40-token floor ([f0a7e69](https://github.com/casonadams/ripwire-rs/commit/f0a7e699b0ab911a2be2df653f130d56ffa85658))
+* **gate:** dead code exempts only dispatched, registered and protocol methods ([106a87e](https://github.com/casonadams/ripwire-rs/commit/106a87e78903d7cc88867a545d73dd578774ee39))
+* **gate:** suppress acknowledged rows and demote idiom collisions, as upstream ([f884ae3](https://github.com/casonadams/ripwire-rs/commit/f884ae3d7c07a6a6ccc781c061be70a602d49e66))
+* **resolve:** a path-qualified call binds to the type its last segment names ([a4a7cae](https://github.com/casonadams/ripwire-rs/commit/a4a7caeb7a29bb5ba393abd2b4324a1efafff26c))
+* **resolve:** bare calls never reach class members in Python, TypeScript and JavaScript ([2f49f08](https://github.com/casonadams/ripwire-rs/commit/2f49f08833b85587d2499152161dbd702a99de9f))
+* **resolve:** Python methods named like container methods need their type on an unknown receiver ([44ccc7b](https://github.com/casonadams/ripwire-rs/commit/44ccc7b030c109072534842db484e81032b9cc2d))
+* **serialize:** row_bytes measures rows as the minified output emits them ([4fa594b](https://github.com/casonadams/ripwire-rs/commit/4fa594b652dd6497de01c67cff5cbf8b6c9d68e2))
+
+
+### Performance Improvements
+
+* **cache:** key the analysis cache on crawler options ([c1f0465](https://github.com/casonadams/ripwire-rs/commit/c1f0465071769c0ac9ec24abf46d60a39760d31f))
+* **clones:** the quality delta compares only pairs that touch a changed body ([280d520](https://github.com/casonadams/ripwire-rs/commit/280d520fef61d9df0e7197613b5205d96f534ea5))
+
 ## [0.6.6](https://github.com/casonadams/ripwire-rs/compare/v0.6.5...v0.6.6) (2026-10-27)
 
 
