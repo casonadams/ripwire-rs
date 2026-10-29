@@ -1427,7 +1427,7 @@ fn collect_delta_clones(
     crate::clones::find_clones_in_root(
         state.ingest,
         state.interner,
-        20,
+        crate::clones::DEFAULT_MIN_CLONE_TOKENS,
         None,
         Some(Path::new(root)),
     )

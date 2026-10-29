@@ -10,7 +10,7 @@ pub struct CloneArgs {
     pub clones: bool,
 
     /// Minimum token length for clone detection
-    #[arg(long, default_value_t = 40)]
+    #[arg(long, default_value_t = crate::clones::DEFAULT_MIN_CLONE_TOKENS)]
     pub min_tokens: usize,
 }
 
