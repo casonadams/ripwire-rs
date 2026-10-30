@@ -13,6 +13,9 @@ pub struct Workspace {
     pub pr: PageRankResult,
     pub at: Option<String>,
     pub commits: Option<Vec<crate::git::history::CommitInfo>>,
+    /// Working-tree stamp the index was built from; `None` for in-memory workspaces.
+    stamp: Option<String>,
+    scip_index: Option<std::path::PathBuf>,
 }
 
 impl Workspace {
@@ -21,6 +24,7 @@ impl Workspace {
         no_cache: bool,
         scip_index: Option<&std::path::Path>,
     ) -> std::io::Result<Self> {
+        let stamp = crate::cache::compute_cache_key(root);
         let (ingest, graph, pr, interner) = load_repo_analysis_with_options(
             root,
             None,
@@ -30,7 +34,30 @@ impl Workspace {
         )?;
         let mut state = Self::from_analysis(root, ingest, graph, pr, interner);
         state.at = crate::git::history::compute_git_at_stamp(root);
+        state.stamp = Some(stamp);
+        state.scip_index = scip_index.map(std::path::Path::to_path_buf);
         Ok(state)
+    }
+
+    /// Whether a compiler-backed SCIP overlay pins this workspace's call sites.
+    #[must_use]
+    pub fn has_scip(&self) -> bool {
+        self.scip_index.is_some()
+    }
+
+    /// Re-index when the working tree changed since this workspace was built; `Ok(true)` if it did.
+    /// The stamp is taken before loading, so an edit racing the load triggers one more refresh.
+    pub fn refresh_if_stale(&mut self) -> std::io::Result<bool> {
+        let Some(stamp) = self.stamp.as_deref() else {
+            return Ok(false);
+        };
+        if crate::cache::compute_cache_key(&self.root) == stamp {
+            return Ok(false);
+        }
+        let mut fresh = Self::load_with_cache(&self.root, false, self.scip_index.as_deref())?;
+        fresh.commits = self.commits.take();
+        *self = fresh;
+        Ok(true)
     }
 
     #[must_use]
@@ -99,6 +126,8 @@ impl Workspace {
             pr,
             at: None,
             commits: None,
+            stamp: None,
+            scip_index: None,
         }
     }
 

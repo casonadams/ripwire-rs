@@ -69,33 +69,30 @@ and 65536 bytes. Rank signals: `pagerank`, `authority`, `hub`, `degree`, `ccx`,
 `stable`; unknown signals (including `churn`) error. Slice shares the CLI
 workspace root and flow/depth validation.
 
-Every tool also accepts the envelope arguments `path`, `paths` and `legend` (`compact` default, or `none` to drop
-the leading schema comment). A `path` subdirectory scopes tools that take `in_scope` (`for`); elsewhere `path` and
-`paths` are accepted client hints, since the server root is fixed, except where a tool declares its own `path`
-filter. Dataform `.sqlx` models index as table symbols, with `ref()` and `dependencies` as reads.
+Every tool also accepts the envelope arguments `path`, `paths`, `root` and `legend` (`compact` default, or `none` to
+drop the leading schema comment). A `path` subdirectory scopes tools that take `in_scope` (`for`); elsewhere `path` and
+`paths` are accepted client hints, except where a tool declares its own `path` filter. `root` is the directory of the
+repository or worktree to query for that call; omit it for the server's launch root. The server keeps one workspace,
+so alternating roots reloads from the analysis cache. After `/clear` or a worktree switch, pass the new worktree as
+`root` on every call: the server's launch root does not follow the session. A `--scip` server rejects other roots.
+Dataform `.sqlx` models index as table symbols, with `ref()` and `dependencies` as reads.
 
 ## The read verbs + fetch_body (and when each beats the CLI form)
 
-Every verb takes `path` (the repo root; `memory_recall` takes the docs/memory dir). For a split
-service+client checkout, pass `paths: [dir1, dir2, ...]` instead — the additive multi-root array (`path` and
-`paths` together is a usage error; the 3 edit verbs accept it too, and land a write in the correct root's
-real file via its label). The server keeps ONE cached workspace per canonical root set: a `paths` list is
-deduped and ordered before it's used as the cache key, so calling with the same roots in a different order
-still hits the warm cache instead of re-parsing; a genuinely different root set gets its own cache entry, not
-a shared/stale one.
+Every verb accepts `root` (the repository or worktree to query; see above). `path` is a scope hint, or a file filter
+on the verbs that declare it (`grep`, `owners`, `cochange`, the edit verbs). An absolute `path` or `paths` entry outside
+the loaded root is refused with a pointer to `root`; it is never silently ignored. There is no multi-root array: query
+each repository with its own `root`.
 
 **Line-seeded addressing — `@FILE:LINE` in any resolver-backed selector.** Holding a LOCATION (a diff hunk,
-a compiler error, a stack frame) instead of a name? Pass `@src/foo.cpp:120` (1-based line) as the selector
-and it resolves to the innermost definition enclosing that line — accepted by `find_symbol` /
-`find_referencing_symbols` / `impact` / `edit_check` / `path_between` (`from`/`to`) / `connect` (each entry) /
-`lego` (`type`) / `fetch_body` (`handle`), and by `uses` (which serves the enclosing definition's NAME —
-its sites stay name-matched, `of=` echoes the seed as typed). A bad seed — malformed spec, unmatched or
-ambiguous path, line past EOF, a line no definition spans, two definitions sharing the line — is **refused
-with the same specific diagnosis the CLI's `--at`/selector arms speak**, never guessed. The NAME-matching
-scan verbs (`owners`, `mentions`) do not resolve seeds; a resolvable seed there refuses by naming the
-definition it resolves to, so the retry is in the message. CLI twin: `--at=FILE:LINE` (the bare
-enclosing-chain report) and `@FILE:LINE` in any SYM selector; contract gate: `test/atcheck.sh` +
-`test/mcpverbscheck.sh` §7.
+a compiler error, a stack frame) instead of a name? Pass `@src/foo.rs:120` (1-based line) as the selector
+and it resolves to the innermost definition enclosing that line, pinned by its `FILE:LINE` so a shared name cannot
+bind the wrong definition. Accepted by `find_symbol` / `find_referencing_symbols` / `callers` / `callees` /
+`impact` / `edit_check` / `fetch_body` (`symbol`), `path_between` (`from`/`to`), `connect` (each `symbols`
+entry), `lego` (`interface`), and `uses` (which takes the definition's NAME). A bad seed — malformed spec, unmatched or
+ambiguous file, a line no definition spans, two definitions sharing the line — is refused with the specific cause,
+never guessed. The name-matching verbs (`mentions`, `whereis`) refuse a seed and name the definition to retry with.
+CLI twin: `--at=FILE:LINE` reports the enclosing chain; the CLI selectors take names, not seeds.
 
 | Verb | CLI twin | Ask it for |
 |---|---|---|
@@ -104,16 +101,16 @@ enclosing-chain report) and `@FILE:LINE` in any SYM selector; contract gate: `te
 | `find_symbol` (`symbol`) | `--find-symbol=SYM` | canonical symbol neighborhood with definition groups, callers, callees, and provenance |
 | `find_referencing_symbols` (`symbol`) | `--callers=SYM` | canonical direct caller report |
 | `grep` (`pattern`) | `--grep=STR` | parallel literal scan + enclosing symbol + matched line |
-| `cochange` (`file`) | `--cochange=FILE` | the lockstep git partners of one file |
+| `cochange` (`path`) | `--cochange=FILE` | the lockstep git partners of one file |
 | `memory_recall` (`task`, `top_k` + `budget_tokens` optional) | `--recall=TASK [--top-k=N] [--max-tokens=N]` | full bodies of the few relevant docs/memory notes, bounded by the SAME default 8000-token body ceiling as the CLI (the header discloses `max_tokens=` and every cut). `budget_tokens` raises the ceiling explicitly when you want everything; `top_k` (default 8) shapes how many docs |
-| `situational_awareness` (`diff`/`files` optional) | `--situ` | canonical `ripwire-rs.situ/v1` XML: blast radius, tests, forgotten co-change partners, and hotspots; defaults to `git diff HEAD` |
+| `situational_awareness` (`files` optional) | `--situ` | canonical `ripwire-rs.situ/v1` XML: blast radius, tests, forgotten co-change partners, and hotspots; without `files` it reads the working-tree diff against `git HEAD` |
 | `mentions` (`symbol`) | `--mentions=SYM` | which markdown plans/designs discuss a symbol |
-| `owners` (`symbol` optional) | `--owners[=SYM]` | bus-factor: recency-weighted author ownership |
-| `lego` (`type`) | `--lego=TYPE` | an interface's method contract + every implementor (own-language) |
-| `fetch_body` (`handle`) | `--expand=SYM` | full symbol definition source addressed by symbol selector or a supplied handle |
+| `owners` (`path` optional) | `--owners` | bus-factor: recency-weighted author ownership, optionally for one file |
+| `lego` (`interface`) | `--lego=TYPE` | an interface's method contract + every implementor (own-language) |
+| `fetch_body` (`symbol`; `start_line`/`end_line`/`outline`/`compress` optional) | `--expand=SYM` | full or partial-range symbol definition source |
 | `batch` (`queries`) | `--batch=FILE` | up to 16 shared read queries; more is a whole-batch error, while individual failures remain `{tool,error}` MCP / `<error>` CLI. Recursive batch and writes (including quality baseline and quality-delta acknowledgment options) fail per item. CLI accepts `name:argument` or `name:{JSON arguments}`, ignoring blank/comment lines |
 
-**The flagship-reflex verbs** (added 2026-07 so an MCP-only agent gets the same reflexes as the CLI) — these are the moments an agent most often skips the tool for; reach for the verb, not a grep:
+**The flagship-reflex verbs** (so an MCP-only agent gets the same reflexes as the CLI) — these are the moments an agent most often skips the tool for; reach for the verb, not a grep:
 
 | Verb | CLI twin | The moment |
 |---|---|---|
@@ -122,9 +119,9 @@ enclosing-chain report) and `@FILE:LINE` in any SYM selector; contract gate: `te
 | `quality_baseline` (`path`) | `--quality-baseline` | pin the quality floor (writes the HEAD-stamped `.ripwire-rs_quality_baseline`) — a side-effect verb |
 | `impact` (`symbol`, `limit`/`offset`/`max_depth` optional) | `--impact=SYM [--limit=N --offset=M --impact-depth=N]` | canonical transitive blast radius; `max_depth` and CLI global `--impact-depth` set the same optional traversal limit, including `navigate --impact`; default unchanged |
 | `uses` (`symbol`) | `--uses=SYM` | the resolvable USE-SITES — call/read/write/import/extends, not just calls (`count=0` is a real answer; `counts_floor="1"` — a floor, never a total) |
-| `path_between` (`from`, `to`) | `--path=A,B` | does A reach B, and the shortest call path (named `path_between` — `path` is the root-arg key) |
+| `path_between` (`from`, `to`) | `--path=A,B` | does A reach B, and the shortest call path (named `path_between` because `path` is a scope hint) |
 | `connect` (`symbols`) | `--connect=A,B,C` | canonical connecting subgraph for 2..16 symbols; default radius 2 |
-| `explore` (`task`, `budget_tokens` + `partition` optional) | `--pack-task=TASK [--partition=N]` | canonical task pack: ranking, bodies, callers, notes, and tests under one byte budget (default 6000 tokens); `partition: 2..16` requests community-based agent slices, with budget per agent |
+| `explore` (`task`, `budget_tokens` + `partition` optional) | `--pack-task=TASK [--partition=N]` | with `task`: the canonical task pack — ranking, bodies, callers, notes, and tests under one byte budget (default 6000 tokens); `partition: 2..16` requests community-based agent slices. Without `task`: the ranked map |
 | `from_trace` (`trace`, `budget_tokens` optional) | `--from-trace=FILE` | paste a stack trace / sanitizer report / compiler error → the frames mapped onto indexed symbols, ranked INNERMOST-first, with the innermost in-corpus symbol's FULL body. `trace` = the raw trace TEXT (no stdin/file arg over MCP — paste it, don't hand-translate it into a query) |
 | `edit_check` (`symbol`) | `--edit-check=SYM` | just edited a symbol? did its CONTRACT (params/publicness) change vs git HEAD, and which 1-hop callers are now PROVABLY incompatible? Fast targeted check — for the same question over a whole diff use `quality_delta` instead |
 
@@ -182,8 +179,8 @@ newline rule + the safety contract for not-found / ambiguous / stale-index / ins
 atomic-write guarantee) or when you need server internals (`_index` staleness
 stamps, warm content-hash rebuilds, working-set PageRank personalization, the background `qsnap` HEAD-warm on
 large workspaces). Short version: every edit-verb failure leaves the file byte-for-byte unchanged, writes are
-atomic (`tmp` + `rename(2)`), and the server never goes stale silently — it rebuilds warm from mtime checks
-before every verb call. **Lead with this MCP form when the body already came from `fetch_body` this
+atomic (`tmp` + `rename(2)`), and the server never goes stale silently — before every tool call it compares
+git HEAD plus the mtime/size of dirty and untracked files with the indexed state and re-indexes on change. **Lead with this MCP form when the body already came from `fetch_body` this
 session**; after a CLI `--expand`, keep the zero-standing-schema CLI path and use `--edit-payload=-`.
 Several harnesses' native Edit tool
 needs a fresh Read of the file immediately before the edit, even when you already have the body from

@@ -160,10 +160,14 @@ the rows of each declared option to every tool of the command, so a tool never l
 `Budget(text)` adds `budget_tokens` worded as given. `CliPaged` windows the CLI report only; `McpPaged` exposes the
 parameters for a tool whose report the CLI does not window.
 
-Every tool also gets the envelope parameters `path`, `paths` and `legend` it does not declare itself
+Every tool also gets the envelope parameters `path`, `paths`, `legend` and `root` it does not declare itself
 (`ENVELOPE_ROWS` in `query/commands.rs`). `query::commands::dispatch` honors `legend: "none"` by dropping the leading
 schema comment of a string report, and carries a `path` subdirectory into `in_scope` for a tool that takes
-`in_scope`. Elsewhere `path` and `paths` are accepted client hints.
+`in_scope`. Elsewhere `path` and `paths` are accepted client hints. `root` is handled one layer up, in
+`mcp::dispatch::handle_tools_call`: the server holds one `Workspace`, reloads it when a call names a different
+directory (the on-disk analysis cache makes a revisit cheap), re-indexes it when the working tree changed since it was
+built (`Workspace::refresh_if_stale`), and refuses a root switch when a `--scip` overlay pins it. A `batch` takes one
+`root` for all its queries; a `root` inside a query is an error.
 
 To add another shared option (for example `--since`): add a variant to `SharedOption`, one field on `TopModifierArgs`,
 and one gated accessor on `Run`; commands then opt in with one `options` entry and never read the flag directly.

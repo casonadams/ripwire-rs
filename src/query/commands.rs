@@ -140,7 +140,9 @@ pub fn dispatch(
         .ok_or_else(|| format!("unknown query: {name}"))?;
     validate_arguments(command, args)?;
     let legend = legend_posture(args)?;
-    let args = scoped_args(command, args);
+    check_envelope_scope(command, context.root, args)?;
+    let seeded = resolve_seeds(command, context, args)?;
+    let args = scoped_args(command, &seeded);
     let result = (command.handler)(context, &args)?;
     Ok(match (legend, result) {
         (Legend::None, Value::String(text)) => Value::String(strip_legend_comment(text)),
@@ -149,26 +151,106 @@ pub fn dispatch(
 }
 
 /// Envelope parameters every MCP tool accepts unless it declares the name itself (`path` filters grep, owners and
-/// the edit verbs). `path` and `paths` are client scope hints: the workspace root is fixed by the server, so
-/// `paths` is accepted and not acted on, and `path` only scopes tools that take `in_scope` (see [`scoped_args`]).
-/// `legend` is honored by [`dispatch`].
-pub const ENVELOPE_ROWS: [(&str, &str, &str); 3] = [
+/// the edit verbs). `path` and `paths` are client scope hints: `paths` is accepted and not acted on, and `path`
+/// only scopes tools that take `in_scope` (see [`scoped_args`]). `root` selects the workspace the MCP server
+/// indexes for that call (see `mcp::dispatch`). `legend` is honored by [`dispatch`].
+pub const ENVELOPE_ROWS: [(&str, &str, &str); 4] = [
     (
         "path",
         "string",
-        "Client path hint: a subdirectory scopes tools that take in_scope; the server root is fixed",
+        "Client path hint: a subdirectory scopes tools that take in_scope",
     ),
-    (
-        "paths",
-        "string[]",
-        "Client workspace path hints; the server root is fixed",
-    ),
+    ("paths", "string[]", "Client workspace path hints"),
     (
         "legend",
         "string",
         "Schema legend posture: compact (default) or none",
     ),
+    (
+        "root",
+        "string",
+        "Directory of the repository or worktree to query for this call; default is the server's launch root",
+    ),
 ];
+
+const SEED_PARAMS: [&str; 4] = ["symbol", "from", "to", "interface"];
+
+fn is_seed(value: &Value) -> bool {
+    value.as_str().is_some_and(|s| s.starts_with('@'))
+}
+
+/// Replace each `@FILE:LINE` selector with the definition it names: the `FILE:LINE` pin, or the bare name for
+/// `uses`. The name-matching scans (`owners`, `mentions`, `whereis`) refuse a seed and say which name to retry.
+fn resolve_seeds<'a>(
+    command: &CommandDescriptor,
+    context: &QueryContext<'_>,
+    args: &'a Value,
+) -> Result<std::borrow::Cow<'a, Value>, String> {
+    let listed = args.get("symbols").and_then(Value::as_array);
+    let has_seed = SEED_PARAMS
+        .iter()
+        .any(|key| args.get(key).is_some_and(is_seed))
+        || listed.is_some_and(|items| items.iter().any(is_seed));
+    if !has_seed {
+        return Ok(std::borrow::Cow::Borrowed(args));
+    }
+    let resolve = |value: &mut Value| -> Result<(), String> {
+        let Some(spec) = value.as_str().filter(|s| s.starts_with('@')) else {
+            return Ok(());
+        };
+        let seed = crate::navigate::resolve_seed(spec, context.ingest, context.interner)?;
+        *value = match command.name {
+            "owners" | "mentions" | "whereis" => {
+                return Err(format!(
+                    "{} matches by name and does not take a seed; '{spec}' is definition '{}'",
+                    command.name, seed.name
+                ));
+            }
+            "uses" => Value::from(seed.name),
+            _ => Value::from(seed.pin),
+        };
+        Ok(())
+    };
+    let mut resolved = args.clone();
+    for key in SEED_PARAMS {
+        if let Some(value) = resolved.get_mut(key) {
+            resolve(value)?;
+        }
+    }
+    if let Some(Value::Array(items)) = resolved.get_mut("symbols") {
+        items.iter_mut().try_for_each(resolve)?;
+    }
+    Ok(std::borrow::Cow::Owned(resolved))
+}
+
+/// Refuse an envelope `path` or `paths` entry that is an absolute directory outside the loaded root: it asks for
+/// another repository, which only `root` can select, and ignoring it would answer from the wrong one.
+fn check_envelope_scope(
+    command: &CommandDescriptor,
+    root: &str,
+    args: &Value,
+) -> Result<(), String> {
+    let envelope_path = command.params.iter().any(|row| *row == ENVELOPE_ROWS[0]);
+    let own_path = args.get("path").filter(|_| envelope_path);
+    let listed = args.get("paths").and_then(Value::as_array);
+    for entry in own_path.into_iter().chain(listed.into_iter().flatten()) {
+        let Some(path) = entry.as_str().map(std::path::Path::new) else {
+            continue;
+        };
+        if path.is_absolute() && !path_within(path, root) {
+            return Err(format!(
+                "'{}' is outside the loaded root '{root}'; select a repository with the root argument",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn path_within(path: &std::path::Path, root: &str) -> bool {
+    let canon = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    path.starts_with(root) || canon(path).starts_with(canon(std::path::Path::new(root)))
+}
 
 /// `args` with the envelope `path` subdirectory carried into `in_scope` for a tool that takes `in_scope` and
 /// does not declare its own `path`.
@@ -266,7 +348,9 @@ pub fn execute_batch_item(
     name: &str,
     arguments: &Value,
 ) -> Value {
-    let result = if batch_read_only(name, arguments) {
+    let result = if arguments.get("root").is_some() {
+        Err("root applies to the whole batch: pass it on the batch call".to_string())
+    } else if batch_read_only(name, arguments) {
         dispatch(context, tools, name, arguments)
     } else {
         Err(format!(

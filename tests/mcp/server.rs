@@ -58,6 +58,160 @@ fn protocol_errors_preserve_request_identity_and_notifications_do_not_reply() {
 }
 
 #[test]
+fn root_argument_must_name_a_directory_and_keeps_the_loaded_workspace() {
+    let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
+    let call = |state: &mut Option<Workspace>, arguments: Value| -> Value {
+        let request = json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+            "params":{"name":"find_symbol","arguments":arguments}});
+        serde_json::from_str(&dispatch_json_rpc(&request.to_string(), state, ":memory:").unwrap())
+            .unwrap()
+    };
+    let rejected = call(
+        &mut state,
+        json!({"symbol":"alpha","root":"/nonexistent/ripwire-root"}),
+    );
+    assert_eq!(rejected["error"]["code"], -32602);
+    assert!(
+        rejected["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("not a directory")
+    );
+    let served = call(&mut state, json!({"symbol":"alpha"}));
+    assert!(
+        served["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("alpha")
+    );
+
+    let batch = call_batch_with_root(&mut state);
+    assert!(batch.contains("root applies to the whole batch"));
+}
+
+fn call_batch_with_root(state: &mut Option<Workspace>) -> String {
+    let request = json!({"jsonrpc":"2.0","id":2,"method":"tools/call",
+        "params":{"name":"batch","arguments":{"queries":[
+            {"tool":"find_symbol","symbol":"alpha","root":"/tmp"}]}}});
+    dispatch_json_rpc(&request.to_string(), state, ":memory:").unwrap()
+}
+
+fn call_tool(state: &mut Option<Workspace>, name: &str, arguments: Value) -> Value {
+    let request = json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":name,"arguments":arguments}});
+    serde_json::from_str(&dispatch_json_rpc(&request.to_string(), state, ":memory:").unwrap())
+        .unwrap()
+}
+
+fn text_of(response: &Value) -> &str {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default()
+}
+
+#[test]
+fn file_line_seed_selects_the_enclosing_definition_and_refuses_what_it_cannot_resolve() {
+    let mut state = workspace(&[(
+        "src/lib.rs",
+        Lang::Rust,
+        b"pub fn alpha() {\n    beta();\n}\npub fn beta() {}\n",
+    )]);
+    let by_seed = call_tool(&mut state, "callers", json!({"symbol":"@src/lib.rs:4"}));
+    let by_name = call_tool(&mut state, "callers", json!({"symbol":"beta"}));
+    assert!(text_of(&by_seed).contains("alpha"), "{by_seed}");
+    assert!(text_of(&by_name).contains("alpha"));
+
+    for (seed, reason) in [
+        ("@src/lib.rs", "malformed"),
+        ("@src/lib.rs:0", "malformed"),
+        ("@nowhere.rs:1", "no indexed file"),
+        ("@src/lib.rs:99", "no indexed definition"),
+    ] {
+        let refused = call_tool(&mut state, "callers", json!({"symbol":seed}));
+        assert_eq!(refused["error"]["code"], -32602, "{seed}");
+        assert!(
+            refused["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains(reason),
+            "{seed}"
+        );
+    }
+    let scan = call_tool(&mut state, "mentions", json!({"symbol":"@src/lib.rs:4"}));
+    assert!(
+        scan["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("'beta'")
+    );
+}
+
+#[test]
+fn envelope_path_outside_the_loaded_root_is_refused_instead_of_ignored() {
+    let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
+    let wrong = call_tool(
+        &mut state,
+        "find_symbol",
+        json!({"symbol":"alpha","path":"/other/repo"}),
+    );
+    assert!(
+        wrong["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("root argument")
+    );
+    let listed = call_tool(
+        &mut state,
+        "find_symbol",
+        json!({"symbol":"alpha","paths":["/other/repo"]}),
+    );
+    assert!(
+        listed["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("root argument")
+    );
+    let scoped = call_tool(
+        &mut state,
+        "find_symbol",
+        json!({"symbol":"alpha","path":"src"}),
+    );
+    assert!(text_of(&scoped).contains("alpha"));
+}
+
+#[test]
+fn explore_takes_a_task_and_partition_needs_one() {
+    let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
+    let bundle = call_tool(&mut state, "explore", json!({"task":"alpha"}));
+    assert!(bundle.get("error").is_none(), "{bundle}");
+    let orphan = call_tool(&mut state, "explore", json!({"partition":2}));
+    assert!(
+        orphan["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("needs a task")
+    );
+    let range = call_tool(
+        &mut state,
+        "explore",
+        json!({"task":"alpha","partition":99}),
+    );
+    assert!(
+        range["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("between 2 and 16")
+    );
+}
+
+#[test]
+fn situational_awareness_without_files_is_not_an_argument_error() {
+    let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
+    let report = call_tool(&mut state, "situational_awareness", json!({}));
+    assert!(report.get("error").is_none(), "{report}");
+}
+
+#[test]
 fn lsp_locations_use_zero_based_lines_and_keep_reference_direction() {
     let mut state = workspace(&[(
         "src/lib.rs",

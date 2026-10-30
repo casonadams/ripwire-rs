@@ -182,7 +182,7 @@ ripwire-rs . --note-add="src/pool.h: 128-byte cache line on Apple, never hardcod
 
 The TARGET is **a symbol name or a path**. A symbol resolves through the same resolver the read verbs use,
 so every spelling they accept works here — a bare name, `file:name`, `Scope::name`, the canonical id
-`path::scope::name`, `@FILE:LINE` — and is **canonicalised to the canonical id on write** (that is the id
+`path::scope::name` — and is **canonicalised to the canonical id on write** (that is the id
 notes are keyed by; the rewrite is echoed on stderr). A name matching several definitions is refused, naming
 each; a name matching none is refused with a did-you-mean. A path is written even when nothing indexed
 matches it yet — a note on a file you are about to add is legal — with a loud warning that it is dangling.

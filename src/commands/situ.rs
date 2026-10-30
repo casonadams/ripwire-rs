@@ -36,11 +36,19 @@ pub static SITU: Plugin<SituArgs> = Plugin {
     tools: &[mcp_tool!(
         "situational_awareness",
         "The 5 things to know about a diff: blast_radius, tests_to_run, forgotten co-change files, hotspots",
-        &[("files", "string[]", "Changed file paths")],
-        &["files"],
+        &[(
+            "files",
+            "string[]",
+            "Changed file paths; omitted means the working-tree diff against git HEAD"
+        )],
+        &[],
         |s, a| {
             let commits = resolve_state_commits(s, 18);
-            let files = a.str_vec("files");
+            let files = if a.get("files").is_some() {
+                a.str_vec("files")
+            } else {
+                super::common::changes::resolve_changed_or_spec_files(s.root, None)
+            };
             let report = crate::query::safety::SituationalReport {
                 root: s.root,
                 files: &files,

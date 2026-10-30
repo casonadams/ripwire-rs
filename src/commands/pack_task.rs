@@ -9,7 +9,7 @@ use clap::Args;
 use std::io::{self, Write};
 
 /// The token ceiling a bundle takes when no budget flag is given.
-const DEFAULT_PACK_TOKENS: usize = 6000;
+pub(crate) const DEFAULT_PACK_TOKENS: usize = 6000;
 
 pub fn execute<W: Write>(
     query: &QueryContext<'_>,

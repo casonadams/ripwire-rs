@@ -36,6 +36,36 @@ fn call_explore(state: &QueryContext<'_>, args: &Value) -> Result<Value, String>
     })
 }
 
+/// `explore`: with `task`, the task bundle (partitioned when `partition` is given); without, the ranked map.
+fn call_orient(state: &QueryContext<'_>, args: &Value) -> Result<Value, String> {
+    let partition = args.opt_usize("partition");
+    let Some(task) = args.opt_str("task") else {
+        return match partition {
+            Some(_) => Err("partition needs a task".to_string()),
+            None => call_explore(state, args),
+        };
+    };
+    if let Some(parts) = partition {
+        if !(2..=16).contains(&parts) {
+            return Err("partition must be between 2 and 16".to_string());
+        }
+        return render_xml(|out| {
+            crate::navigate::execute_pack_task_partitioned(
+                task,
+                state.root,
+                parts,
+                state.ingest,
+                state.graph,
+                state.interner,
+                out,
+            )
+        });
+    }
+    let tokens = args
+        .opt_usize("budget_tokens")
+        .unwrap_or(crate::commands::pack_task::DEFAULT_PACK_TOKENS);
+    render_xml(|out| crate::navigate::execute_pack_task(task, state, tokens, out))
+}
 pub(super) static TOOLS: &[&CommandDescriptor] = &[
     mcp_tool!(
         "analyze",
@@ -55,6 +85,8 @@ pub(super) static TOOLS: &[&CommandDescriptor] = &[
         "explore",
         "ONE-call task orientation: ranked symbols, files, and architecture map",
         &[
+            ("task", "string", "Task to orient on; omitted returns the ranked map"),
+            ("partition", "integer", "2..16 community slices of the task bundle; needs task"),
             ("top_k", "integer", "Maximum symbols"),
             (
                 "rank_by",
@@ -63,7 +95,7 @@ pub(super) static TOOLS: &[&CommandDescriptor] = &[
             ),
         ],
         &[],
-        call_explore
+        call_orient
     ),
     mcp_tool!(
         "rank_by",

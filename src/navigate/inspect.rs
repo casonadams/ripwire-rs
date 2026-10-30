@@ -36,6 +36,60 @@ pub fn resolve_symbol_at<'a>(
         .last()
 }
 
+/// A `@FILE:LINE` selector resolved to the innermost definition enclosing that line.
+pub struct ResolvedSeed {
+    /// `FILE:LINE` of the definition: pins one definition even when its name is shared.
+    pub pin: String,
+    pub name: String,
+}
+
+/// Resolve a `@FILE:LINE` seed (1-based line). Every failure names its cause; nothing is guessed.
+pub fn resolve_seed(
+    spec: &str,
+    ingest: &IngestResult,
+    interner: &Interner,
+) -> Result<ResolvedSeed, String> {
+    let (file, line) = spec
+        .strip_prefix('@')
+        .and_then(|body| body.rsplit_once(':'))
+        .and_then(|(file, line)| Some((file, line.parse::<u32>().ok().filter(|n| *n > 0)?)))
+        .filter(|(file, _)| !file.is_empty())
+        .ok_or_else(|| {
+            format!("seed '{spec}' is malformed: expected @FILE:LINE with a 1-based line")
+        })?;
+    let paths: Vec<&str> = ingest
+        .files
+        .iter()
+        .map(|f| interner.resolve(&f.path))
+        .filter(|p| *p == file || p.ends_with(file))
+        .collect();
+    let path = match paths.as_slice() {
+        [] => return Err(format!("seed '{spec}' named no indexed file")),
+        [only] => *only,
+        many if many.contains(&file) => file,
+        many => return Err(format!("seed '{spec}' is ambiguous: {}", many.join(", "))),
+    };
+    let chain: Vec<_> = resolve_symbol_chain_at(path, line, ingest, interner)
+        .into_iter()
+        .filter(|s| interner.resolve(&ingest.files[s.file_id as usize].path) == path)
+        .collect();
+    let Some(&innermost) = chain.last() else {
+        return Err(format!(
+            "seed '{spec}': no indexed definition spans line {line}"
+        ));
+    };
+    if let [.., prev, last] = chain.as_slice()
+        && prev.line == last.line
+        && prev.loc == last.loc
+    {
+        return Err(format!("seed '{spec}': two definitions share line {line}"));
+    }
+    Ok(ResolvedSeed {
+        pin: format!("{path}:{}", innermost.line),
+        name: interner.resolve(&innermost.name).to_string(),
+    })
+}
+
 pub fn serialize_at_xml<W: Write>(
     file_spec: &str,
     line_num: u32,
