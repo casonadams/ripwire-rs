@@ -72,9 +72,11 @@ workspace root and flow/depth validation.
 Every tool also accepts the envelope arguments `path`, `paths`, `root` and `legend` (`compact` default, or `none` to
 drop the leading schema comment). A `path` subdirectory scopes tools that take `in_scope` (`for`); elsewhere `path` and
 `paths` are accepted client hints, except where a tool declares its own `path` filter. `root` is the directory of the
-repository or worktree to query for that call; omit it for the server's launch root. The server keeps one workspace,
-so alternating roots reloads from the analysis cache. After `/clear` or a worktree switch, pass the new worktree as
-`root` on every call: the server's launch root does not follow the session. A `--scip` server rejects other roots.
+repository or worktree to query for that call; omit it for the server's launch root. The server keeps two
+workspaces warm (the active root and the previous one), so alternating between two roots does not re-index; a
+third root evicts the older one, except that a `--scip` launch root is kept. After `/clear` or a worktree switch,
+pass the new worktree as `root` on every call: the server's launch root does not follow the session. The `--scip`
+overlay applies to the launch root only; other roots are indexed without it.
 Dataform `.sqlx` models index as table symbols, with `ref()` and `dependencies` as reads.
 
 ## The read verbs + fetch_body (and when each beats the CLI form)

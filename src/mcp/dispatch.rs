@@ -25,32 +25,14 @@ fn requested_root(args: &Value, default_root: &str) -> Result<String, String> {
     Ok(root.to_string())
 }
 
-fn same_root(a: &str, b: &str) -> bool {
-    a == b
-        || std::fs::canonicalize(a)
-            .and_then(|a| std::fs::canonicalize(b).map(|b| a == b))
-            .unwrap_or(false)
-}
-
-/// Point `state` at the root this call names, loading it when it is not the loaded one. A server pinned by a
-/// SCIP overlay serves only its launch root, since the overlay would be lost on a switch.
+/// Point `state` at the root this call names, loading it when it is not the loaded or parked one.
 fn select_workspace(
     state: &mut Option<Workspace>,
     args: &Value,
     default_root: &str,
 ) -> Result<(), String> {
     let target = requested_root(args, default_root)?;
-    match state.as_ref() {
-        Some(ws) if same_root(&ws.root, &target) => Ok(()),
-        Some(ws) if ws.has_scip() => Err(format!(
-            "this server is pinned to '{}' by --scip; a per-call root is unavailable",
-            ws.root
-        )),
-        _ => {
-            *state = Workspace::load(&target);
-            Ok(())
-        }
-    }
+    Workspace::select_root(state, &target)
 }
 
 #[must_use]

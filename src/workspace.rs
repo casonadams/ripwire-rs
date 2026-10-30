@@ -16,6 +16,9 @@ pub struct Workspace {
     /// Working-tree stamp the index was built from; `None` for in-memory workspaces.
     stamp: Option<String>,
     scip_index: Option<std::path::PathBuf>,
+    /// The workspace of the previous root, kept so alternating between two roots, or leaving a `--scip` launch
+    /// root and coming back, does not re-index.
+    parked: Option<Box<Workspace>>,
 }
 
 impl Workspace {
@@ -39,6 +42,40 @@ impl Workspace {
         Ok(state)
     }
 
+    /// Point `slot` at `target`, loading it when neither the active nor the parked workspace is for it. The
+    /// displaced workspace is parked; of the two previously held, a SCIP-pinned one outlives a plain one. A failed
+    /// load leaves `slot` untouched.
+    pub fn select_root(slot: &mut Option<Self>, target: &str) -> Result<(), String> {
+        if slot.as_ref().is_some_and(|ws| same_root(&ws.root, target)) {
+            return Ok(());
+        }
+        let Some(mut current) = slot.take() else {
+            *slot = Some(Self::load(target).ok_or_else(|| format!("failed to index '{target}'"))?);
+            return Ok(());
+        };
+        let mut older = current.parked.take();
+        if older.as_ref().is_some_and(|ws| same_root(&ws.root, target)) {
+            if let Some(mut hit) = older {
+                hit.parked = Some(Box::new(current));
+                *slot = Some(*hit);
+            }
+            return Ok(());
+        }
+        let Some(mut fresh) = Self::load(target) else {
+            current.parked = older;
+            *slot = Some(current);
+            return Err(format!("failed to index '{target}'"));
+        };
+        let keep_older = !current.has_scip() && older.as_ref().is_some_and(|ws| ws.has_scip());
+        fresh.parked = if keep_older {
+            older.take()
+        } else {
+            Some(Box::new(current))
+        };
+        *slot = Some(fresh);
+        Ok(())
+    }
+
     /// Whether a compiler-backed SCIP overlay pins this workspace's call sites.
     #[must_use]
     pub fn has_scip(&self) -> bool {
@@ -56,6 +93,7 @@ impl Workspace {
         }
         let mut fresh = Self::load_with_cache(&self.root, false, self.scip_index.as_deref())?;
         fresh.commits = self.commits.take();
+        fresh.parked = self.parked.take();
         *self = fresh;
         Ok(true)
     }
@@ -128,6 +166,7 @@ impl Workspace {
             commits: None,
             stamp: None,
             scip_index: None,
+            parked: None,
         }
     }
 
@@ -136,6 +175,13 @@ impl Workspace {
         self.commits = Some(commits);
         self
     }
+}
+
+fn same_root(a: &str, b: &str) -> bool {
+    a == b
+        || std::fs::canonicalize(a)
+            .and_then(|a| std::fs::canonicalize(b).map(|b| a == b))
+            .unwrap_or(false)
 }
 
 impl<'a> crate::domain::CorpusView<'a> for &'a Workspace {
