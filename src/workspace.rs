@@ -46,33 +46,41 @@ impl Workspace {
     /// displaced workspace is parked; of the two previously held, a SCIP-pinned one outlives a plain one. A failed
     /// load leaves `slot` untouched.
     pub fn select_root(slot: &mut Option<Self>, target: &str) -> Result<(), String> {
+        Self::select_root_with(slot, target, Self::load)
+    }
+
+    /// [`Self::select_root`] with the loader for an unseen root supplied by the caller.
+    pub fn select_root_with(
+        slot: &mut Option<Self>,
+        target: &str,
+        load: impl FnOnce(&str) -> Option<Self>,
+    ) -> Result<(), String> {
         if slot.as_ref().is_some_and(|ws| same_root(&ws.root, target)) {
             return Ok(());
         }
-        let Some(mut current) = slot.take() else {
-            *slot = Some(Self::load(target).ok_or_else(|| format!("failed to index '{target}'"))?);
-            return Ok(());
+        let mut current = slot.take();
+        let mut older = current.as_mut().and_then(|ws| ws.parked.take());
+        let revived = older.as_ref().is_some_and(|ws| same_root(&ws.root, target));
+        let next = if revived {
+            older.take().map(|ws| *ws)
+        } else {
+            load(target)
         };
-        let mut older = current.parked.take();
-        if older.as_ref().is_some_and(|ws| same_root(&ws.root, target)) {
-            if let Some(mut hit) = older {
-                hit.parked = Some(Box::new(current));
-                *slot = Some(*hit);
-            }
-            return Ok(());
-        }
-        let Some(mut fresh) = Self::load(target) else {
-            current.parked = older;
-            *slot = Some(current);
+        let Some(mut next) = next else {
+            *slot = current.map(|mut ws| {
+                ws.parked = older;
+                ws
+            });
             return Err(format!("failed to index '{target}'"));
         };
-        let keep_older = !current.has_scip() && older.as_ref().is_some_and(|ws| ws.has_scip());
-        fresh.parked = if keep_older {
-            older.take()
+        let keep_older = current.as_ref().is_some_and(|ws| !ws.has_scip())
+            && older.as_ref().is_some_and(|ws| ws.has_scip());
+        next.parked = if keep_older {
+            older
         } else {
-            Some(Box::new(current))
+            current.map(Box::new)
         };
-        *slot = Some(fresh);
+        *slot = Some(next);
         Ok(())
     }
 

@@ -164,62 +164,48 @@ fn file_line_seed_selects_the_enclosing_definition_and_refuses_what_it_cannot_re
     );
 }
 
+fn error_text(response: &Value) -> &str {
+    response["error"]["message"].as_str().unwrap_or_default()
+}
+
 #[test]
-fn envelope_path_outside_the_loaded_root_is_refused_instead_of_ignored() {
+fn arguments_that_name_no_servable_request_are_refused_with_their_cause() {
     let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
-    let wrong = call_tool(
-        &mut state,
-        "find_symbol",
-        json!({"symbol":"alpha","path":"/other/repo"}),
-    );
-    assert!(
-        wrong["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("root argument")
-    );
-    let listed = call_tool(
-        &mut state,
-        "find_symbol",
-        json!({"symbol":"alpha","paths":["/other/repo"]}),
-    );
-    assert!(
-        listed["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("root argument")
-    );
+    let cases = [
+        (
+            "find_symbol",
+            json!({"symbol":"alpha","path":"/other/repo"}),
+            "root argument",
+        ),
+        (
+            "find_symbol",
+            json!({"symbol":"alpha","paths":["/other/repo"]}),
+            "root argument",
+        ),
+        ("explore", json!({"partition":2}), "needs a task"),
+        (
+            "explore",
+            json!({"task":"alpha","partition":99}),
+            "between 2 and 16",
+        ),
+    ];
+    for (tool, args, cause) in cases {
+        let refused = call_tool(&mut state, tool, args);
+        assert!(error_text(&refused).contains(cause), "{tool}: {refused}");
+    }
+}
+
+#[test]
+fn relative_path_scopes_and_explore_task_are_served() {
+    let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
     let scoped = call_tool(
         &mut state,
         "find_symbol",
         json!({"symbol":"alpha","path":"src"}),
     );
     assert!(text_of(&scoped).contains("alpha"));
-}
-
-#[test]
-fn explore_takes_a_task_and_partition_needs_one() {
-    let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
     let bundle = call_tool(&mut state, "explore", json!({"task":"alpha"}));
     assert!(bundle.get("error").is_none(), "{bundle}");
-    let orphan = call_tool(&mut state, "explore", json!({"partition":2}));
-    assert!(
-        orphan["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("needs a task")
-    );
-    let range = call_tool(
-        &mut state,
-        "explore",
-        json!({"task":"alpha","partition":99}),
-    );
-    assert!(
-        range["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("between 2 and 16")
-    );
 }
 
 #[test]

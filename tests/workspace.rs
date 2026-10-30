@@ -97,3 +97,56 @@ fn test_workspace_builder_and_query_context() {
     assert_eq!(qc.root, "dummy_root");
     assert_eq!(qc.ingest.files.len(), 0);
 }
+
+fn named(root: &str) -> Workspace {
+    Workspace::from_ingest(
+        root,
+        ripwire_rs::domain::IngestResult::new(),
+        Interner::new(),
+    )
+}
+
+/// Select `target`, counting loads; the loader hands back an empty workspace named for the root.
+fn select(
+    slot: &mut Option<Workspace>,
+    target: &str,
+    loads: &mut Vec<String>,
+) -> Result<(), String> {
+    Workspace::select_root_with(slot, target, |root| {
+        loads.push(root.to_string());
+        (root != "/missing").then(|| named(root))
+    })
+}
+
+#[test]
+fn alternating_between_two_roots_loads_each_once() {
+    let (mut slot, mut loads) = (Some(named("/a")), Vec::new());
+    for root in ["/b", "/a", "/b", "/a", "/a"] {
+        select(&mut slot, root, &mut loads).unwrap();
+        assert_eq!(slot.as_ref().unwrap().root, root);
+    }
+    assert_eq!(loads, ["/b"]);
+}
+
+#[test]
+fn a_third_root_evicts_the_oldest_and_a_failed_load_changes_nothing() {
+    let (mut slot, mut loads) = (Some(named("/a")), Vec::new());
+    for root in ["/b", "/c", "/a"] {
+        select(&mut slot, root, &mut loads).unwrap();
+    }
+    assert_eq!(loads, ["/b", "/c", "/a"], "/a was evicted when /c arrived");
+
+    let err = select(&mut slot, "/missing", &mut loads).unwrap_err();
+    assert!(err.contains("/missing"));
+    assert_eq!(slot.as_ref().unwrap().root, "/a");
+    select(&mut slot, "/c", &mut loads).unwrap();
+    assert_eq!(loads.len(), 4, "/c stayed parked through the failed load");
+}
+
+#[test]
+fn selecting_into_an_empty_slot_loads_the_root() {
+    let (mut slot, mut loads) = (None, Vec::new());
+    select(&mut slot, "/a", &mut loads).unwrap();
+    assert_eq!(slot.unwrap().root, "/a");
+    assert!(select(&mut None, "/missing", &mut loads).is_err());
+}
