@@ -176,7 +176,7 @@ pub const ENVELOPE_ROWS: [(&str, &str, &str); 4] = [
 const SEED_PARAMS: [&str; 4] = ["symbol", "from", "to", "interface"];
 
 fn is_seed(value: &Value) -> bool {
-    value.as_str().is_some_and(|s| s.starts_with('@'))
+    value.as_str().is_some_and(crate::navigate::is_seed)
 }
 
 /// Check each `@FILE:LINE` selector resolves, so a bad one is refused with its cause. The resolver binds the
@@ -196,7 +196,7 @@ fn resolve_seeds<'a>(
         return Ok(std::borrow::Cow::Borrowed(args));
     }
     let resolve = |value: &mut Value| -> Result<(), String> {
-        let Some(spec) = value.as_str().filter(|s| s.starts_with('@')) else {
+        let Some(spec) = value.as_str().filter(|s| crate::navigate::is_seed(s)) else {
             return Ok(());
         };
         let seed = crate::navigate::resolve_seed(spec, context.ingest, context.interner)?;

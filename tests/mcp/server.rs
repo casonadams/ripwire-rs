@@ -129,6 +129,16 @@ fn seed_lookup_matches_name_lookup_and_refuses_unspanned_lines() {
     assert_eq!(scan("@src/lib.rs:4"), "beta");
     assert_eq!(scan("beta"), "beta");
     assert_eq!(scan("@src/lib.rs:99"), "@src/lib.rs:99");
+    for (selector, seed) in [
+        ("@src/lib.rs:4", true),
+        ("@src/lib.rs:0", true),
+        ("@bar", false),
+        ("@src/lib.rs:x", false),
+        ("@:4", false),
+        ("src/lib.rs:4", false),
+    ] {
+        assert_eq!(ripwire_rs::navigate::is_seed(selector), seed, "{selector}");
+    }
 }
 
 #[test]
@@ -144,7 +154,6 @@ fn file_line_seed_selects_the_enclosing_definition_and_refuses_what_it_cannot_re
     assert!(text_of(&by_name).contains("alpha"));
 
     for (seed, reason) in [
-        ("@src/lib.rs", "malformed"),
         ("@src/lib.rs:0", "malformed"),
         ("@nowhere.rs:1", "no indexed file"),
         ("@src/lib.rs:99", "no indexed definition"),

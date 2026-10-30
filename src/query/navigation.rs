@@ -208,7 +208,7 @@ pub fn execute_nav_symbol_query_in_root<W: Write>(
 
 fn symbol_not_found(mode: NavMode, sym: &str, ctx: &NavContext<'_>) -> io::Error {
     let flag = mode.cli_flag();
-    if sym.starts_with('@')
+    if crate::navigate::is_seed(sym)
         && let Err(cause) = crate::navigate::resolve_seed(sym, ctx.ingest, ctx.interner)
     {
         return io::Error::other(format!("ripwire-rs: {flag} {cause}"));

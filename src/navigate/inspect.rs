@@ -36,12 +36,24 @@ pub fn resolve_symbol_at<'a>(
         .last()
 }
 
+/// Whether `selector` is shaped like a `@FILE:LINE` seed. A name that merely starts with `@` (a decorator or an
+/// instance variable) is not one, and stays an ordinary name selector.
+#[must_use]
+pub fn is_seed(selector: &str) -> bool {
+    selector
+        .strip_prefix('@')
+        .and_then(|body| body.rsplit_once(':'))
+        .is_some_and(|(file, line)| {
+            !file.is_empty() && !line.is_empty() && line.bytes().all(|b| b.is_ascii_digit())
+        })
+}
+
 /// `selector` as the bare definition name a name-matching scan needs: a `@FILE:LINE` seed becomes the name of the
 /// definition it resolves to, anything else (or an unresolvable seed) is returned unchanged.
 #[must_use]
 pub fn scan_name(selector: &str, ingest: &IngestResult, interner: &Interner) -> String {
     Some(selector)
-        .filter(|s| s.starts_with('@'))
+        .filter(|s| is_seed(s))
         .and_then(|s| resolve_seed(s, ingest, interner).ok())
         .map_or_else(|| selector.to_string(), |seed| seed.name)
 }

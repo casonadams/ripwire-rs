@@ -105,7 +105,7 @@ pub trait SymbolLookup<'a>: crate::domain::CorpusView<'a> {
     fn find_symbols(&self, selector: &str) -> Vec<NodeId> {
         let ingest = self.ingest();
         let interner = self.interner();
-        if selector.starts_with('@') {
+        if is_seed(selector) {
             return resolve_seed(selector, ingest, interner)
                 .map(|seed| vec![seed.id])
                 .unwrap_or_default();

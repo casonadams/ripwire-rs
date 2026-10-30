@@ -245,7 +245,7 @@ fn implementor_json<'a>(
 fn lego_not_found(selector: &str, ingest: &IngestResult, interner: &Interner) -> String {
     let cause = crate::navigate::resolve_seed(selector, ingest, interner)
         .err()
-        .filter(|_| selector.starts_with('@'))
+        .filter(|_| crate::navigate::is_seed(selector))
         .unwrap_or_else(|| format!("type not found: {selector}"));
     format!("ripwire-rs: --lego {cause}")
 }
