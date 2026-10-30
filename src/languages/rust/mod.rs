@@ -715,27 +715,33 @@ fn rust_binding_target(parent: tree_sitter::Node<'_>, node: tree_sitter::Node<'_
     super::reads::in_field(parent, node, field)
 }
 
-fn rust_binding_scope(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+/// The scope `node` is bound in, given its ancestors from the root down to its parent.
+fn rust_binding_scope_in<'a>(
+    node: tree_sitter::Node<'a>,
+    ancestors: &[tree_sitter::Node<'a>],
+) -> Option<tree_sitter::Node<'a>> {
     if node.kind() != "identifier" {
         return None;
     }
-    let mut ancestor = node.parent();
-    while let Some(parent) = ancestor {
+    for (depth, &parent) in ancestors.iter().enumerate().rev() {
         if rust_binding_target(parent, node) {
-            let owner = if matches!(
+            let above = if matches!(
                 parent.kind(),
                 "const_item" | "static_item" | "function_item"
             ) {
-                parent
+                &ancestors[..depth]
             } else {
-                node
+                ancestors
             };
-            return super::reads::enclosing_scope(owner, rust_scope);
+            return above
+                .iter()
+                .rev()
+                .copied()
+                .find(|scope| rust_scope(scope.kind()));
         }
         if rust_scope(parent.kind()) {
             break;
         }
-        ancestor = parent.parent();
     }
     None
 }
@@ -832,19 +838,20 @@ fn rust_read_position(node: tree_sitter::Node<'_>) -> bool {
     expression && super::reads::value_position(node, rust_non_value, rust_scope)
 }
 
-fn rust_binding_range(node: tree_sitter::Node<'_>) -> Option<std::ops::Range<usize>> {
-    let scope = rust_binding_scope(node)?;
+fn rust_binding_range_in(
+    node: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
+) -> Option<std::ops::Range<usize>> {
+    let scope = rust_binding_scope_in(node, ancestors)?;
     let mut span = scope.byte_range();
-    let mut ancestor = node.parent();
-    while let Some(parent) = ancestor {
+    for parent in ancestors.iter().rev() {
         if parent.kind() == "let_declaration" {
             span.start = parent.end_byte();
             break;
         }
-        if parent == scope {
+        if *parent == scope {
             break;
         }
-        ancestor = parent.parent();
     }
     Some(span)
 }
@@ -1528,10 +1535,10 @@ fn is_self_binding(node: tree_sitter::Node<'_>) -> bool {
 
 /// The name of a `const` or `static` item. The item is the definition that reads of the name reach, not a
 /// local binding that shadows them, so reads inside its scope stay references to the item.
-fn is_item_name(node: tree_sitter::Node<'_>) -> bool {
-    node.parent().is_some_and(|parent| {
+fn is_item_name(node: tree_sitter::Node<'_>, ancestors: &[tree_sitter::Node<'_>]) -> bool {
+    ancestors.last().is_some_and(|parent| {
         matches!(parent.kind(), "const_item" | "static_item")
-            && super::reads::in_field(parent, node, "name")
+            && super::reads::in_field(*parent, node, "name")
     })
 }
 
@@ -1541,18 +1548,18 @@ fn collect_rust_read_bindings<'a>(
 ) -> super::reads::ReadBindings<'a> {
     let cx = TypeCx::new(root, source);
     let mut bindings = super::reads::ReadBindings::default();
-    for node in super::reads::nodes(root) {
+    super::reads::walk_with_ancestors(root, |node, ancestors| {
         if is_self_binding(node) {
             if let Some(func) = super::reads::enclosing_scope(node, rust_scope) {
                 bindings.insert("self", func.byte_range(), self_binding_type(&cx, node));
             }
-        } else if let Some(range) = rust_binding_range(node)
-            && !is_item_name(node)
+        } else if let Some(range) = rust_binding_range_in(node, ancestors)
+            && !is_item_name(node, ancestors)
             && let Ok(name) = node.utf8_text(source)
         {
             bindings.insert(name, range, binding_type(&cx, node));
         }
-    }
+    });
     bindings
 }
 

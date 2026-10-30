@@ -35,6 +35,24 @@ impl<'a> ReadBindings<'a> {
         }
     }
 
+    /// [`Self::collect`] for a scope finder that needs the node's ancestors. They are kept on a stack from the
+    /// one top-down walk, because `Node::parent` re-descends from the root on every call.
+    pub fn collect_with_ancestors(
+        root: Node<'_>,
+        source: &'a [u8],
+        binding_scope: impl Fn(Node<'_>, &[Node<'_>]) -> Option<std::ops::Range<usize>>,
+    ) -> Self {
+        let mut result = Self::default();
+        walk_with_ancestors(root, |node, ancestors| {
+            if let Some(scope) = binding_scope(node, ancestors)
+                && let Ok(name) = node.utf8_text(source)
+            {
+                result.insert(name, scope, None);
+            }
+        });
+        result
+    }
+
     pub fn insert(&mut self, name: &'a str, range: std::ops::Range<usize>, ty: Option<String>) {
         let spans = self.scopes.entry(name).or_default();
         if let Some(existing) = spans.iter_mut().find(|s| s.range == range) {
@@ -94,6 +112,30 @@ pub(crate) fn advance(cursor: &mut tree_sitter::TreeCursor<'_>) -> bool {
         }
     }
     true
+}
+
+/// Visit every node under `root` in document order with its ancestors (root first, parent last), kept on a stack
+/// by the walk itself, because `Node::parent` re-descends from the root on every call.
+pub(crate) fn walk_with_ancestors<'t>(
+    root: Node<'t>,
+    mut visit: impl FnMut(Node<'t>, &[Node<'t>]),
+) {
+    let mut cursor = root.walk();
+    let mut ancestors: Vec<Node<'t>> = Vec::new();
+    loop {
+        let node = cursor.node();
+        visit(node, &ancestors);
+        if cursor.goto_first_child() {
+            ancestors.push(node);
+            continue;
+        }
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                return;
+            }
+            ancestors.pop();
+        }
+    }
 }
 
 pub(crate) fn nodes(root: Node<'_>) -> impl Iterator<Item = Node<'_>> {

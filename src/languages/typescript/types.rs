@@ -4,7 +4,7 @@
 //! class field types for `this.client.m()` chains, and same-file function result types.
 
 use crate::languages::{Implementation, is_plain_type_name};
-use crate::languages::javascript::javascript_binding_scope;
+use crate::languages::javascript::{javascript_binding_scope, javascript_binding_scope_in};
 use crate::languages::reads::{ReadBindings, nodes};
 use crate::languages::typed::implementation;
 use std::collections::{HashMap, HashSet};
@@ -61,8 +61,8 @@ fn heritage_names<'s>(class: Node<'_>, source: &'s [u8], clauses: &[&str]) -> Ve
 /// Read bindings with declared types: typed parameters, annotated declarators, `const x = new C()`,
 /// `this` inside a class body, class field types, and same-file function result types.
 pub(super) fn typed_read_bindings<'a>(root: Node<'_>, source: &'a [u8]) -> ReadBindings<'a> {
-    let mut bindings = ReadBindings::collect(root, source, |node| {
-        javascript_binding_scope(node).map(|scope| scope.byte_range())
+    let mut bindings = ReadBindings::collect_with_ancestors(root, source, |node, ancestors| {
+        javascript_binding_scope_in(node, ancestors).map(|scope| scope.byte_range())
     });
     for node in nodes(root) {
         if matches!(node.kind(), "class_declaration" | "abstract_class_declaration") {
