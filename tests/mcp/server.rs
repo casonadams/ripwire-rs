@@ -110,6 +110,24 @@ fn text_of(response: &Value) -> &str {
 }
 
 #[test]
+fn seed_lookup_matches_name_lookup_and_refuses_unspanned_lines() {
+    let registry = LanguageRegistry::new().unwrap();
+    let interner = Interner::new();
+    let files: &[(&str, Lang, &[u8])] = &[(
+        "src/lib.rs",
+        Lang::Rust,
+        b"pub fn alpha() {\n    beta();\n}\npub fn beta() {}\n",
+    )];
+    let ingest = ingest_in_memory_files(files, &registry, &interner);
+    let by_seed = ripwire_rs::navigate::find_symbols_by_name("@src/lib.rs:4", &ingest, &interner);
+    let by_name = ripwire_rs::navigate::find_symbols_by_name("beta", &ingest, &interner);
+    assert_eq!(by_seed, by_name);
+    assert!(
+        ripwire_rs::navigate::find_symbols_by_name("@src/lib.rs:99", &ingest, &interner).is_empty()
+    );
+}
+
+#[test]
 fn file_line_seed_selects_the_enclosing_definition_and_refuses_what_it_cannot_resolve() {
     let mut state = workspace(&[(
         "src/lib.rs",

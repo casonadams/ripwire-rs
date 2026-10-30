@@ -179,8 +179,9 @@ fn is_seed(value: &Value) -> bool {
     value.as_str().is_some_and(|s| s.starts_with('@'))
 }
 
-/// Replace each `@FILE:LINE` selector with the definition it names: the `FILE:LINE` pin, or the bare name for
-/// `uses`. The name-matching scans (`owners`, `mentions`, `whereis`) refuse a seed and say which name to retry.
+/// Check each `@FILE:LINE` selector resolves, so a bad one is refused with its cause. The resolver binds the
+/// definition itself; `uses` takes the bare name. The name-matching scans (`owners`, `mentions`, `whereis`) refuse a
+/// seed and say which name to retry.
 fn resolve_seeds<'a>(
     command: &CommandDescriptor,
     context: &QueryContext<'_>,
@@ -199,16 +200,16 @@ fn resolve_seeds<'a>(
             return Ok(());
         };
         let seed = crate::navigate::resolve_seed(spec, context.ingest, context.interner)?;
-        *value = match command.name {
+        match command.name {
             "owners" | "mentions" | "whereis" => {
                 return Err(format!(
                     "{} matches by name and does not take a seed; '{spec}' is definition '{}'",
                     command.name, seed.name
                 ));
             }
-            "uses" => Value::from(seed.name),
-            _ => Value::from(seed.pin),
-        };
+            "uses" => *value = Value::from(seed.name),
+            _ => {}
+        }
         Ok(())
     };
     let mut resolved = args.clone();

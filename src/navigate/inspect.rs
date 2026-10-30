@@ -38,8 +38,7 @@ pub fn resolve_symbol_at<'a>(
 
 /// A `@FILE:LINE` selector resolved to the innermost definition enclosing that line.
 pub struct ResolvedSeed {
-    /// `FILE:LINE` of the definition: pins one definition even when its name is shared.
-    pub pin: String,
+    pub id: crate::domain::NodeId,
     pub name: String,
 }
 
@@ -85,7 +84,7 @@ pub fn resolve_seed(
         return Err(format!("seed '{spec}': two definitions share line {line}"));
     }
     Ok(ResolvedSeed {
-        pin: format!("{path}:{}", innermost.line),
+        id: innermost.id,
         name: interner.resolve(&innermost.name).to_string(),
     })
 }

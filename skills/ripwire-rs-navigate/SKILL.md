@@ -90,9 +90,10 @@ two hops away, a read/write that never calls SYM, or an `#include` that pulls it
   whether a def executes is never a row.
 - **"I have a FILE:LINE, not a name"** (a compiler error, a diff hunk, a stack frame) →
   `ripwire-rs <dir> --at=FILE:LINE --legend=compact` — the enclosing-definition chain at that location, outermost→innermost;
-  `sym=` names the innermost; pass that name to the SYM selector you need (`--callers=NAME`). A location on a
-  blank top-level line, an ambiguous path, or a line no definition spans is refused with a specific diagnosis,
-  never guessed. Over MCP the same location composes directly as `@FILE:LINE` in any resolver-backed selector.
+  `sym=` names the innermost. The SAME seed composes into the symbol selectors as `@FILE:LINE`
+  (`--callers=@src/f.rs:120`, `--expand=@…`, `--edit-check=@…`) and resolves to that innermost definition, pinned by
+  location so a shared name cannot bind the wrong one. A location on a blank top-level line, an ambiguous path, or
+  no definition spanning the line is refused with a specific diagnosis, never guessed. `--slice` does not take seeds.
 - **"Trace a FLOW: how does A reach B"** → `--path=A,B` (shortest call-path) or `--around=SYM
   [--around-depth=2]` (bounded neighborhood). Not `--for` — `--for` returns a ranked *set* of relevant
   signatures for a task, it does not trace a path between two named points.

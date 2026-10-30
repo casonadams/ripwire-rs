@@ -92,7 +92,7 @@ bind the wrong definition. Accepted by `find_symbol` / `find_referencing_symbols
 entry), `lego` (`interface`), and `uses` (which takes the definition's NAME). A bad seed — malformed spec, unmatched or
 ambiguous file, a line no definition spans, two definitions sharing the line — is refused with the specific cause,
 never guessed. The name-matching verbs (`mentions`, `whereis`) refuse a seed and name the definition to retry with.
-CLI twin: `--at=FILE:LINE` reports the enclosing chain; the CLI selectors take names, not seeds.
+CLI twin: `--at=FILE:LINE` reports the enclosing chain, and the symbol selectors (`--callers`, `--callees`, `--impact`, `--uses`, `--find-symbol`, `--expand`, `--edit-check`) accept the same `@FILE:LINE`.
 
 | Verb | CLI twin | Ask it for |
 |---|---|---|
