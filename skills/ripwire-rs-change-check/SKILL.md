@@ -169,8 +169,7 @@ callers), the deep detail trims deepest-first, and `truncated=`/`est_tokens=` on
     someone depends on" without waiting for a full diff. Reports exactly one of `status="unchanged"` /
     `"new-symbol"` / `"contract-change"` (with `params_was`/`params_now`/`public_was`/`public_now` on the
     latter) vs git HEAD, plus SYM's 1-hop callers with any call-site whose argument count is now provably
-    incompatible flagged `incompatible="1"`. Warm (cache-hit) on ripwire's own tree. A `.ripwire-rs_notes` entry
-    on SYM (or its file) rides along as a `<note>` child, the same row `--for`/`--expand` surface.
+    incompatible flagged `incompatible="1"`. Warm (cache-hit) on ripwire's own tree.
 
 11. **"Can I delete this?" for one symbol** — `ripwire-rs <dir> --safe-delete=SYM --legend=compact` (file:name disambiguates,
     same grammar as `--edit-check`/`--around`/`--lego`). The removal-side sibling of step 10: composes

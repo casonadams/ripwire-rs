@@ -180,15 +180,11 @@ ripwire-rs . --note-add="Bar::compute: recompute is NOT idempotent — reset the
 ripwire-rs . --note-add="src/pool.h: 128-byte cache line on Apple, never hardcode 64"   # a file also works
 ```
 
-The TARGET is **a symbol name or a path**. A symbol resolves through the same resolver the read verbs use,
-so every spelling they accept works here — a bare name, `file:name`, `Scope::name`, the canonical id
-`path::scope::name` — and is **canonicalised to the canonical id on write** (that is the id
-notes are keyed by; the rewrite is echoed on stderr). A name matching several definitions is refused, naming
-each; a name matching none is refused with a did-you-mean. A path is written even when nothing indexed
-matches it yet — a note on a file you are about to add is legal — with a loud warning that it is dangling.
-Notes live in committed `.ripwire-rs_notes` and **surface on their own** — whenever `--for`/`--expand` emit that
-symbol/file, the note rides along as a `<note d="date">…</note>` child. `ripwire-rs . --notes` lists every note
-(`dangling="1"` = target no longer in the tree). `--recall=TASK` is the doc-level complement.
+The note is free text: `--note-add` appends the line you give it to `.ripwire-rs_notes` verbatim. Lead with the
+symbol or path it is about (`SYM: text`), by the name you would search for; ripwire does not resolve, canonicalise or
+validate the target. Notes live in committed `.ripwire-rs_notes`, and `ripwire-rs . --notes` lists every note. They do
+not attach to `--for`/`--expand` output, so read `--notes` yourself when you resume work. `--recall=TASK` is the
+doc-level complement.
 `--note-add` nudges (stderr, non-blocking) toward writing the decision, not a description — a note that
 keeps firing on the same symbol has outgrown a comment: graduate it into a `--quality-ack` reason or a
 standing `--arch` deny rule.
@@ -213,8 +209,8 @@ ripwire-rs . --notes                                         # 3. gotchas alread
 2. **`--situ`** (defaults to `git diff`) tells you what you had already changed, its blast radius, the tests
    to run, and the co-change partners you hadn't touched yet — i.e. where you actually stopped, and what you
    were about to break. This is the step that most often reveals work-in-flight you would otherwise redo.
-3. **`--notes`** lists every pinned gotcha (`dangling="1"` = its target is gone). Anything relevant will also
-   re-surface on its own once `--for`/`--expand` emit that symbol — see the section above.
+3. **`--notes`** lists every pinned gotcha (free-text lines). Read it for anything about the symbols you are about to
+   touch; no other report surfaces them.
 
 Then, and only then, escalate the ladder for whatever is still missing. Two honest cautions: `--recall`
 returns what the docs **claim**, not what is still true — a stale plan doc reads exactly as confidently as a

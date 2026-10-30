@@ -318,6 +318,10 @@ ripwire-rs . --batch=queries.txt
 # Resolve innermost symbol chain enclosing FILE:LINE
 ripwire-rs . --at="src/main.rs:25"
 
+# Use that location as a symbol selector: @FILE:LINE binds the innermost definition enclosing the line
+# (--callers --callees --impact --uses --find-symbol --expand --edit-check --connect --path --around --safe-delete --lego)
+ripwire-rs . --callers="@src/main.rs:25"
+
 # Formally verify relationship claim across 6 closed shapes (calls, uses, unused, contains, defines, reaches)
 ripwire-rs . --verify="calls(main,run_cli)"
 

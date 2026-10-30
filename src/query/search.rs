@@ -241,10 +241,19 @@ fn implementor_json<'a>(
     json!({ "name": view.sym_name(s), "kind": s.kind.tag(), "path": view.sym_path(s), "line": s.line })
 }
 
+/// Why `--lego` found nothing: a refused `@FILE:LINE` seed names its cause, a plain name says it was not found.
+fn lego_not_found(selector: &str, ingest: &IngestResult, interner: &Interner) -> String {
+    let cause = crate::navigate::resolve_seed(selector, ingest, interner)
+        .err()
+        .filter(|_| selector.starts_with('@'))
+        .unwrap_or_else(|| format!("type not found: {selector}"));
+    format!("ripwire-rs: --lego {cause}")
+}
+
 pub fn call_lego(ingest: &IngestResult, interner: &Interner, interface_name: &str) -> Value {
     let selected = crate::navigate::find_symbols_by_name(interface_name, ingest, interner);
     if selected.is_empty() {
-        return json!({ "error": format!("ripwire-rs: --lego type not found: {interface_name}") });
+        return json!({ "error": lego_not_found(interface_name, ingest, interner) });
     }
     let iface_defs: Vec<&crate::domain::Symbol> = selected
         .iter()

@@ -49,8 +49,8 @@ fast, accurate brief — not a wall of source code.
    Output: most relevant markdown docs (planning/design notes, READMEs) in full. Read and
    summarize the key decisions — why this design, not another. That's what the recipient most
    needs and least gets from reading code.
-   Also check `ripwire-rs <dir> --notes --legend=compact` for this subsystem's symbols/files — any gotcha a prior agent already
-   pinned (`<note d="date">…</note>`) surfaces automatically on the symbols step 1/2 emit; fold it into the
+   Also read `ripwire-rs <dir> --notes --legend=compact` — it lists every gotcha a prior agent pinned (free-text
+   lines; ripwire does not attach them to other reports, so scan them for this subsystem's symbols/files yourself); fold it into the
    brief instead of letting the recipient rediscover it. Before you hand off, `--note-add="SYM_or_path:
    text"` any trap you found yourself that isn't already written down — the cheapest thing you can leave
    the successor. If the same symbol has collected several notes across handoffs, that's a signal to

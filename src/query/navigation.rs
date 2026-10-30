@@ -138,7 +138,12 @@ pub fn execute_nav_symbol_query_in_root<W: Write>(
     use crate::domain::CorpusView;
     use crate::serialize::XmlReport;
     match mode {
-        NavMode::Uses => execute_uses_query(root, &uses_name(sym, ctx), ctx, out),
+        NavMode::Uses => execute_uses_query(
+            root,
+            &crate::navigate::scan_name(sym, ctx.ingest, ctx.interner),
+            ctx,
+            out,
+        ),
         NavMode::Impact => {
             let gauge_attrs = ctx.graph.xml_gauge_attrs();
             let impact = crate::navigate::transitive_impact_multi(
@@ -201,13 +206,6 @@ pub fn execute_nav_symbol_query_in_root<W: Write>(
     }
 }
 
-/// The name `--uses` matches: a `@FILE:LINE` seed's definition name, else `sym` as given.
-fn uses_name(sym: &str, ctx: &NavContext<'_>) -> String {
-    Some(sym)
-        .filter(|s| s.starts_with('@'))
-        .and_then(|s| crate::navigate::resolve_seed(s, ctx.ingest, ctx.interner).ok())
-        .map_or_else(|| sym.to_string(), |seed| seed.name)
-}
 fn symbol_not_found(mode: NavMode, sym: &str, ctx: &NavContext<'_>) -> io::Error {
     let flag = mode.cli_flag();
     if sym.starts_with('@')

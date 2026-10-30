@@ -125,6 +125,10 @@ fn seed_lookup_matches_name_lookup_and_refuses_unspanned_lines() {
     assert!(
         ripwire_rs::navigate::find_symbols_by_name("@src/lib.rs:99", &ingest, &interner).is_empty()
     );
+    let scan = |sel: &str| ripwire_rs::navigate::scan_name(sel, &ingest, &interner);
+    assert_eq!(scan("@src/lib.rs:4"), "beta");
+    assert_eq!(scan("beta"), "beta");
+    assert_eq!(scan("@src/lib.rs:99"), "@src/lib.rs:99");
 }
 
 #[test]

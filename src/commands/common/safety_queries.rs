@@ -181,7 +181,9 @@ pub fn execute_safe_delete_query<W: Write>(
     let impact =
         crate::navigate::transitive_impact_multi(&ids, ingest, graph, &ranks, interner, None);
     let (radius_tested, radius_untested) = crate::navigate::radius_split(&impact);
-    let uses = view.collect_symbol_uses(sym_name).len();
+    let uses = view
+        .collect_symbol_uses(&crate::navigate::scan_name(sym_name, ingest, interner))
+        .len();
     let gauge_attrs = graph.xml_gauge_attrs();
     use crate::serialize::XmlReport;
     crate::serialize::query_xml::SafeDeleteReport {

@@ -36,6 +36,16 @@ pub fn resolve_symbol_at<'a>(
         .last()
 }
 
+/// `selector` as the bare definition name a name-matching scan needs: a `@FILE:LINE` seed becomes the name of the
+/// definition it resolves to, anything else (or an unresolvable seed) is returned unchanged.
+#[must_use]
+pub fn scan_name(selector: &str, ingest: &IngestResult, interner: &Interner) -> String {
+    Some(selector)
+        .filter(|s| s.starts_with('@'))
+        .and_then(|s| resolve_seed(s, ingest, interner).ok())
+        .map_or_else(|| selector.to_string(), |seed| seed.name)
+}
+
 /// A `@FILE:LINE` selector resolved to the innermost definition enclosing that line.
 pub struct ResolvedSeed {
     pub id: crate::domain::NodeId,
