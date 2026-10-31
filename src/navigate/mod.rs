@@ -447,25 +447,52 @@ fn select_impact_seeds(
     }
 }
 
-fn enqueue_impact_callers(
+/// The callers of `curr` an impact walk follows, each with whether its edge binds by name alone.
+fn impact_callers(
     curr: NodeId,
     depth: u32,
     graph: &Graph,
-    visited: &mut HashSet<NodeId>,
-    queue: &mut VecDeque<(NodeId, u32, bool)>,
-) {
-    if depth >= 1 && graph.in_degree(curr) > 512 {
-        return;
-    }
+) -> impl Iterator<Item = (NodeId, bool)> + '_ {
     let min_weight = if depth == 0 { 0.1 } else { 0.2 };
-    for (caller_id, weight) in graph.callers(curr) {
-        if weight >= min_weight && visited.insert(caller_id) {
+    let too_busy = depth >= 1 && graph.in_degree(curr) > 512;
+    graph
+        .callers(curr)
+        .filter(move |&(_, weight)| !too_busy && weight >= min_weight)
+        .map(move |(caller, _)| {
             let by_name = graph
-                .edge_prov(caller_id, curr)
+                .edge_prov(caller, curr)
                 .is_some_and(crate::resolve::EdgeProv::is_by_name);
-            queue.push_back((caller_id, depth + 1, by_name));
+            (caller, by_name)
+        })
+}
+
+/// Breadth-first caller walk from `seeds` within `max_depth`, as `(node, hops)` in visit order. With
+/// `proven_only`, name-only edges are not followed: what it reaches is the proven reach.
+fn walk_callers(
+    seeds: &[NodeId],
+    graph: &Graph,
+    max_depth: Option<u32>,
+    proven_only: bool,
+) -> Vec<(NodeId, u32)> {
+    let mut visited = HashSet::new();
+    let mut order = Vec::new();
+    let mut queue: VecDeque<(NodeId, u32)> = seeds
+        .iter()
+        .filter(|&&seed| visited.insert(seed))
+        .map(|&seed| (seed, 0))
+        .collect();
+    while let Some((curr, depth)) = queue.pop_front() {
+        order.push((curr, depth));
+        if max_depth.is_some_and(|limit| depth >= limit) {
+            continue;
+        }
+        for (caller, by_name) in impact_callers(curr, depth, graph) {
+            if !(proven_only && by_name) && visited.insert(caller) {
+                queue.push_back((caller, depth + 1));
+            }
         }
     }
+    order
 }
 
 #[must_use]
@@ -478,31 +505,23 @@ pub fn transitive_impact_multi(
     max_depth: Option<u32>,
 ) -> Vec<ImpactNode> {
     let effective_seeds = select_impact_seeds(seed_ids, ingest, interner);
-    let mut visited = HashSet::new();
-    let mut queue = VecDeque::new();
-    let mut results = Vec::new();
     let seeds: HashSet<NodeId> = effective_seeds.iter().copied().collect();
-
-    for &seed_id in &effective_seeds {
-        if visited.insert(seed_id) {
-            queue.push_back((seed_id, 0u32, false));
-        }
-    }
-
+    let proven: HashSet<NodeId> = walk_callers(&effective_seeds, graph, max_depth, true)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
     let tested_mask = compute_tested_node_mask(ingest, graph, interner);
-    while let Some((curr, depth, by_name)) = queue.pop_front() {
-        if !seeds.contains(&curr)
-            && let Some(mut node) = create_impact_node(curr, depth, ingest, ranks, interner)
-        {
-            node.by_name = by_name;
-            node.tested = tested_mask.get(curr as usize).copied().unwrap_or(false)
+    let mut results: Vec<ImpactNode> = walk_callers(&effective_seeds, graph, max_depth, false)
+        .into_iter()
+        .filter(|(id, _)| !seeds.contains(id))
+        .filter_map(|(id, depth)| {
+            let mut node = create_impact_node(id, depth, ingest, ranks, interner)?;
+            node.by_name = !proven.contains(&id);
+            node.tested = tested_mask.get(id as usize).copied().unwrap_or(false)
                 || crate::gate::affected::is_test_path(&node.path);
-            results.push(node);
-        }
-        if !max_depth.is_some_and(|limit| depth >= limit) {
-            enqueue_impact_callers(curr, depth, graph, &mut visited, &mut queue);
-        }
-    }
+            Some(node)
+        })
+        .collect();
 
     results.sort_by(|a, b| {
         a.hops
@@ -517,10 +536,11 @@ pub fn transitive_impact_multi(
 /// Split an impact reach into `(tested, untested)` counts. A node is tested when the test mask
 /// marked it or its file is a test path.
 #[must_use]
-pub fn radius_split(nodes: &[ImpactNode]) -> (usize, usize) {
-    let tested = nodes
-        .iter()
-        .filter(|n| n.tested || crate::gate::affected::is_test_path(&n.path))
-        .count();
-    (tested, nodes.len() - tested)
+pub fn radius_split<'a>(nodes: impl IntoIterator<Item = &'a ImpactNode>) -> (usize, usize) {
+    let (mut tested, mut total) = (0, 0);
+    for n in nodes {
+        total += 1;
+        tested += usize::from(n.tested || crate::gate::affected::is_test_path(&n.path));
+    }
+    (tested, total - tested)
 }

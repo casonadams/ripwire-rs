@@ -284,7 +284,7 @@ impl ImpactReport<'_> {
     fn by_depth_attr(&self) -> String {
         let mut depth_counts: std::collections::BTreeMap<u32, usize> =
             std::collections::BTreeMap::new();
-        for n in self.nodes {
+        for n in self.nodes.iter().filter(|n| !n.by_name) {
             *depth_counts.entry(n.hops).or_insert(0) += 1;
         }
         if depth_counts.is_empty() {
@@ -389,18 +389,25 @@ impl crate::serialize::XmlReport for ImpactReport<'_> {
         "impact",
         "ripwire-rs.impact/v1",
         root: false,
-        comment: "ripwire-rs impact schema=ripwire-rs.impact/v1: transitive blast radius of of=. via=name on <s>: the edge that first reached it binds by name alone, a hedge not a proven caller. declined_calls=K: call sites naming a reached def the resolver left unbound; <dc in= p= cands=>: one such site, NOT an edge; dc_shown=N rows printed (file-first)."
+        comment: "ripwire-rs impact schema=ripwire-rs.impact/v1: transitive blast radius of of=. via=name on <s>: reached only through an edge bound by name alone, a hedge not a proven caller; reaches=, by_depth= and radius_* count proven rows only and hedged=K counts the rest. declined_calls=K: call sites naming a reached def the resolver left unbound; <dc in= p= cands=>: one such site, NOT an edge; dc_shown=N rows printed (file-first)."
     );
     fn pr_iters(&self) -> Option<u32> {
         self.pr_iters
     }
     fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        let reaches = self.nodes.len();
-        let (radius_tested, radius_untested) = super::radius_split(self.nodes);
+        let proven = self.nodes.iter().filter(|n| !n.by_name);
+        let reaches = proven.clone().count();
+        let hedged = self.nodes.len() - reaches;
+        let hedged_attr = if hedged > 0 {
+            format!(" hedged=\"{hedged}\"")
+        } else {
+            String::new()
+        };
+        let (radius_tested, radius_untested) = super::radius_split(proven);
         let of = self.sym_name.xml_escaped();
         write!(
             out,
-            " of=\"{of}\" defs=\"{}\" reaches=\"{reaches}\"{}{} radius_tested=\"{radius_tested}\" radius_untested=\"{radius_untested}\"{} root=\"{}\"{} {} next=\"--safe-delete={of}\"",
+            " of=\"{of}\" defs=\"{}\" reaches=\"{reaches}\"{hedged_attr}{}{} radius_tested=\"{radius_tested}\" radius_untested=\"{radius_untested}\"{} root=\"{}\"{} {} next=\"--safe-delete={of}\"",
             self.defs.iter().map(|d| d.members.len()).sum::<usize>(),
             self.by_depth_attr(),
             self.importer_attrs(),

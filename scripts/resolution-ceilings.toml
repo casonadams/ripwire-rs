@@ -1,0 +1,13 @@
+# Resolver gauges on this repository, read by scripts/check-resolution.py (make resolution).
+# Ceilings sit about a tenth above the measured value. Raise one only with a reason in the commit;
+# lower one in the commit that improves resolution so the gain cannot be lost.
+# Measured with the three Python gate scripts indexed: graph_ambiguous=605, graph_unresolved=1062
+# (each script adds standard-library calls the resolver cannot bind).
+
+[[ceiling]]
+gauge = "graph_ambiguous"
+max = 670
+
+[[ceiling]]
+gauge = "graph_unresolved"
+max = 1170

@@ -94,5 +94,6 @@ more correct, or more honest.
   `ripwire-rs . --doc-drift`. Do not copy flag or tool lists into them.
 - **Required gate**: Run `make all` before finishing (enforces `clippy`,
   cognitive complexity `<= 15`, `--quality-delta` vs `git HEAD`, default answer
-  size ceilings (`make size`), test coverage CRAP `<= 30`, upstream parity, and
-  `fmt` as the final step).
+  size ceilings (`make size`), call-resolution ceilings (`make resolution`),
+  generated reference freshness (`make docs-check`), test coverage CRAP `<= 30`,
+  upstream parity, and `fmt` as the final step).

@@ -300,5 +300,6 @@ fn a_caller_bound_by_name_alone_is_marked_via_name() {
         impact_row(&xml, "stranger").contains("via=\"name\""),
         "{xml}"
     );
+    assert!(xml.contains(" reaches=\"1\" hedged=\"1\""), "{xml}");
     assert!(!impact_row(&xml, "sibling").contains("via="), "{xml}");
 }
