@@ -173,25 +173,69 @@ fn body_contains_term(body: &[u8], finder: &Finder<'_>) -> bool {
     })
 }
 
-/// Marks symbols whose own source text contains a query term (case-insensitive), not only callee names.
-/// Each file is read and lowercased once; bodies are searched as slices of that copy.
+/// Most line comments read above a definition as its documentation.
+const MAX_DOC_LINES: usize = 12;
+
+/// A `//` comment, or a `#` comment (`#` then whitespace, so `#include` and `#[attr]` are not comments).
+fn is_line_comment(line: &[u8]) -> bool {
+    let text = line.trim_ascii_start();
+    text.starts_with(b"//")
+        || (text.starts_with(b"#") && text.get(1).is_none_or(u8::is_ascii_whitespace))
+}
+
+/// The text documenting `sym`: its attached doc comment, else the run of line comments directly above it,
+/// which many codebases write instead of doc blocks. Indexing keeps an attached doc to the languages' own
+/// rules (an edit splices it with the definition); retrieval only reads, so it takes both.
+fn leading_doc<'a>(lower: &'a [u8], sym: &crate::domain::Symbol) -> &'a [u8] {
+    let sig = (sym.sig_start_byte as usize).min(lower.len());
+    if sym.doc_len > 0 {
+        return lower
+            .get(sig.saturating_sub(sym.doc_len as usize)..sig)
+            .unwrap_or_default();
+    }
+    let line_start = |before: usize| {
+        lower[..before]
+            .iter()
+            .rposition(|&b| b == b'\n')
+            .map_or(0, |i| i + 1)
+    };
+    let end = line_start(sig);
+    let mut start = end;
+    for _ in 0..MAX_DOC_LINES {
+        if start == 0 {
+            break;
+        }
+        let prev = line_start(start - 1);
+        if !is_line_comment(&lower[prev..start - 1]) {
+            break;
+        }
+        start = prev;
+    }
+    &lower[start..end]
+}
+
+/// The per-symbol query-term masks `add_body_text_masks` fills: `body` for source text and doc comment
+/// alike, `doc` for the doc comment alone.
+struct TextMasks<'a> {
+    body: &'a mut [u32],
+    doc: &'a mut [u32],
+}
+
+/// Marks symbols whose own source text, or the doc comment above it, contains a query term
+/// (case-insensitive), not only callee names. Each file is read and lowercased once; the text is searched
+/// as slices of that copy. A constant or a bodyless declaration carries its doc comment as evidence too.
 fn add_body_text_masks(
     ingest: &IngestResult,
     interner: &Interner,
     sources: &dyn crate::query::SourceReader,
     raw_terms: &[&str],
-    masks: &mut [u32],
+    masks: TextMasks<'_>,
 ) {
     let finders = body_term_finders(raw_terms);
     let mut by_file: std::collections::BTreeMap<u32, Vec<&crate::domain::Symbol>> =
         std::collections::BTreeMap::new();
-    for sym in &ingest.symbols {
-        if sym.is_code_symbol()
-            && sym.has_body()
-            && !matches!(sym.kind, SymKind::Var | SymKind::Field)
-        {
-            by_file.entry(sym.file_id).or_default().push(sym);
-        }
+    for sym in ingest.symbols.iter().filter(|sym| sym.is_code_symbol()) {
+        by_file.entry(sym.file_id).or_default().push(sym);
     }
     for syms in by_file.values() {
         let path = ingest.sym_file_path(syms[0], interner);
@@ -200,11 +244,21 @@ fn add_body_text_masks(
             .map(|bytes| bytes.to_ascii_lowercase())
             .unwrap_or_default();
         for sym in syms {
-            let body = sym.decl_bytes(&lower);
-            let slot = &mut masks[sym.id as usize];
+            let text = sym.has_body() || matches!(sym.kind, SymKind::Var | SymKind::Field);
+            let body = if text { sym.decl_bytes(&lower) } else { &[] };
+            let doc = leading_doc(&lower, sym);
+            let (body_slot, doc_slot) = (
+                &mut masks.body[sym.id as usize],
+                &mut masks.doc[sym.id as usize],
+            );
             for (i, term_finders) in finders.iter().enumerate() {
-                if term_finders.iter().any(|f| body_contains_term(body, f)) {
-                    *slot |= 1u32 << i;
+                let in_doc = term_finders.iter().any(|f| body_contains_term(doc, f));
+                let in_body = term_finders.iter().any(|f| body_contains_term(body, f));
+                if in_doc || in_body {
+                    *body_slot |= 1u32 << i;
+                }
+                if in_doc {
+                    *doc_slot |= 1u32 << i;
                 }
             }
         }
@@ -284,6 +338,8 @@ struct SymbolMatchCtx<'a> {
     scope: Option<&'a str>,
     file_path: &'a str,
     body_mask: u32,
+    doc_mask: u32,
+    loc: u32,
     terms: &'a [&'a str],
     idf_weights: &'a [f64],
     rank: f64,
@@ -292,6 +348,17 @@ struct SymbolMatchCtx<'a> {
 fn compute_match_synergy(direct_hits: usize, body_only_hits: usize, name_hits: usize) -> f64 {
     let eff_matches = direct_hits as f64 + (body_only_hits as f64) * 0.7;
     eff_matches.powi(3) * (1.0 + (name_hits.saturating_sub(1) as f64) * 0.75)
+}
+
+/// What a term in a doc comment is worth: the author wrote it to say what the code is for.
+const DOC_TERM_WEIGHT: f64 = 8.0;
+/// What a term in a body of `BODY_REFERENCE_LOC` lines or fewer is worth; a longer body contains terms by
+/// chance, so its weight falls with the square root of its length.
+const BODY_TERM_WEIGHT: f64 = 6.0;
+const BODY_REFERENCE_LOC: f64 = 30.0;
+
+fn body_term_weight(loc: u32) -> f64 {
+    BODY_TERM_WEIGHT * (BODY_REFERENCE_LOC / f64::from(loc).max(BODY_REFERENCE_LOC)).sqrt()
 }
 
 fn score_symbol_match_with_idf(ctx: &SymbolMatchCtx<'_>) -> f64 {
@@ -313,8 +380,11 @@ fn score_symbol_match_with_idf(ctx: &SymbolMatchCtx<'_>) -> f64 {
             t,
         );
         name_hits += usize::from(is_name_hit);
-        let body = if (ctx.body_mask & (1u32 << i.min(31))) != 0 {
-            6.0
+        let bit = 1u32 << i.min(31);
+        let body = if ctx.doc_mask & bit != 0 {
+            DOC_TERM_WEIGHT
+        } else if ctx.body_mask & bit != 0 {
+            body_term_weight(ctx.loc)
         } else {
             0.0
         };
@@ -349,7 +419,10 @@ fn score_symbol_match_with_idf(ctx: &SymbolMatchCtx<'_>) -> f64 {
 /// Per-query inputs shared by every candidate's score.
 struct ScoringInputs<'a> {
     ranks: &'a [f64],
+    /// Per symbol, the query terms its call targets or source text contain (doc comment included).
     body_masks: &'a [u32],
+    /// Per symbol, the query terms its doc comment contains; a subset of `body_masks`.
+    doc_masks: &'a [u32],
     raw_terms: &'a [&'a str],
     idf_weights: &'a [f64],
     conceptual: bool,
@@ -367,6 +440,7 @@ fn score_candidate_symbol(
     }
     let view = (ingest, interner);
     let file_path = view.sym_path(sym);
+    let body_mask = inputs.body_masks.get(sym.id as usize).copied().unwrap_or(0);
     let kind_factor = if matches!(sym.kind, SymKind::Var | SymKind::Field) {
         0.2
     } else if inputs.conceptual && sym.is_callable() && !sym.has_body() {
@@ -382,7 +456,9 @@ fn score_candidate_symbol(
         name: view.sym_name(sym),
         scope: view.sym_scope(sym),
         file_path,
-        body_mask: inputs.body_masks.get(sym.id as usize).copied().unwrap_or(0),
+        body_mask,
+        doc_mask: inputs.doc_masks.get(sym.id as usize).copied().unwrap_or(0),
+        loc: sym.loc,
         terms: inputs.raw_terms,
         idf_weights: inputs.idf_weights,
         rank: inputs.ranks.get(sym.id as usize).copied().unwrap_or(0.0),
@@ -479,13 +555,30 @@ pub fn compute_adaptive_cut(scores: &[f64], floor: usize, ceiling: usize) -> (us
     }
 }
 
+/// Longest signature a ranked row shows. A constant's signature is its whole initializer, which would
+/// otherwise take the budget of a dozen rows; `--expand` serves the rest.
+const MAX_SIGNATURE_BYTES: usize = 240;
+
+fn cap_signature(mut sig: String) -> String {
+    if sig.len() > MAX_SIGNATURE_BYTES {
+        let mut cut = MAX_SIGNATURE_BYTES;
+        while !sig.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        sig.truncate(cut);
+        sig.push('…');
+    }
+    sig
+}
+
 /// Bytes one ranked symbol row costs: its name, file path and signature span.
 fn symbol_row_bytes(
     sym: &crate::domain::Symbol,
     ingest: &IngestResult,
     interner: &Interner,
 ) -> usize {
-    let signature = sym.sig_end_byte.saturating_sub(sym.sig_start_byte) as usize;
+    let signature =
+        (sym.sig_end_byte.saturating_sub(sym.sig_start_byte) as usize).min(MAX_SIGNATURE_BYTES);
     crate::serialize::text_bytes(&[
         interner.resolve(&sym.name),
         ingest.sym_file_path(sym, interner),
@@ -528,7 +621,7 @@ fn build_for_symbol_entry<'s>(
     let bytes = sources
         .map(|sources| read_file_cached(sources, path, sym.file_id, file_cache))
         .unwrap_or_default();
-    let sig = extract_normalized_sig(sym, bytes, name);
+    let sig = cap_signature(extract_normalized_sig(sym, bytes, name));
     let in_deg = graph.map_or(0, |g| g.in_degree(sym.id));
     let end_line = sym.line.saturating_add(sym.loc.saturating_sub(1));
     let mut obj = json!({
@@ -783,13 +876,19 @@ pub fn call_for_task_with_options(
 
     let conceptual = !is_exact_name_query(ingest, interner, &raw_terms);
     let mut body_masks = build_body_term_masks(ingest, interner, &raw_terms);
+    let mut doc_masks = vec![0u32; ingest.symbols.len()];
     if let (true, Some(sources)) = (conceptual, opts.sources) {
-        add_body_text_masks(ingest, interner, sources, &raw_terms, &mut body_masks);
+        let masks = TextMasks {
+            body: &mut body_masks,
+            doc: &mut doc_masks,
+        };
+        add_body_text_masks(ingest, interner, sources, &raw_terms, masks);
     }
     let idf_weights = compute_term_idf_weights(ingest, interner, &raw_terms);
     let inputs = ScoringInputs {
         ranks,
         body_masks: &body_masks,
+        doc_masks: &doc_masks,
         raw_terms: &raw_terms,
         idf_weights: &idf_weights,
         conceptual,

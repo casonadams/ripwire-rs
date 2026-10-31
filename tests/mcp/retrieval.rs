@@ -532,3 +532,107 @@ fn name_exact_for_omits_callers_when_nothing_calls_it_or_the_name_is_ambiguous()
     );
     assert!(val["callers"].is_null(), "{xml}");
 }
+
+/// The symbol names a conceptual `--for` returns for `task`, in rank order, over TypeScript files.
+fn ranked_names(files: &[(&str, &str)], task: &str) -> Vec<String> {
+    let registry = LanguageRegistry::new().unwrap();
+    let interner = Interner::new();
+    let typed: Vec<(&str, Lang, &[u8])> = files
+        .iter()
+        .map(|&(path, code)| (path, Lang::TypeScript, code.as_bytes()))
+        .collect();
+    let ingest = ingest_in_memory_files(&typed, &registry, &interner);
+    let graph = Graph::build(&ingest, &interner);
+    let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
+    let sources: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|&(path, code)| (path, code.as_bytes()))
+        .collect();
+    let val = call_for_task_with_options(
+        &ingest,
+        &interner,
+        &ranks,
+        task,
+        ForTaskOptions {
+            sources: Some(&sources.as_slice()),
+            signatures_only: true,
+            ..Default::default()
+        },
+    );
+    val["symbols"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn a_line_comment_above_a_definition_is_evidence_for_the_query() {
+    let code = "// Counts bank transfers: recurring billing can run off a bank account.\nexport function pickDefault(): number {\n  return 1;\n}\n\nexport function renderRecurringPage(): number {\n  return 2;\n}\n";
+    let names = ranked_names(
+        &[("src/billing.ts", code)],
+        "recurring billing bank account",
+    );
+    assert_eq!(
+        names.first().map(String::as_str),
+        Some("pickDefault"),
+        "{names:?}"
+    );
+}
+
+#[test]
+fn a_constants_initializer_text_is_evidence_for_the_query() {
+    let code = "export const LIMITS = {\n  maxChangedFiles: 100,\n  maxFindingsPerAgent: 20,\n  reviewBudgetMs: 5000,\n};\n\nexport function describeThing(): number {\n  return 1;\n}\n";
+    let names = ranked_names(
+        &[("src/config.ts", code)],
+        "hard caps on changed files findings review budget",
+    );
+    assert!(names.iter().any(|n| n == "LIMITS"), "{names:?}");
+}
+
+#[test]
+fn a_long_body_does_not_outrank_a_short_one_by_mentioning_more_terms() {
+    let filler: String = (0..120).map(|i| format!("  total += {i};\n")).collect();
+    let long = format!(
+        "export function runEverything(): number {{\n  let total = 0;\n  // queue the invoice and refund, then notify\n{filler}  return total;\n}}\n"
+    );
+    let short = "export function settleInvoice(): number {\n  return refundInvoice();\n}\nfunction refundInvoice(): number {\n  return 1;\n}\n";
+    let names = ranked_names(
+        &[("src/long.ts", long.as_str()), ("src/short.ts", short)],
+        "settle invoice refund notify queue",
+    );
+    let pos = |name: &str| names.iter().position(|n| n == name);
+    assert!(pos("settleInvoice") < pos("runEverything"), "{names:?}");
+}
+
+#[test]
+fn a_ranked_signature_is_capped_so_a_wide_declaration_does_not_take_the_budget() {
+    let params: String = (0..60).map(|i| format!("argument{i}: string, ")).collect();
+    let code = format!("export function wide({params}): void {{\n  return;\n}}\n");
+    let registry = LanguageRegistry::new().unwrap();
+    let interner = Interner::new();
+    let ingest = ingest_in_memory_files(
+        &[("src/table.ts", Lang::TypeScript, code.as_bytes())],
+        &registry,
+        &interner,
+    );
+    let sources: Vec<(&str, &[u8])> = vec![("src/table.ts", code.as_bytes())];
+    let val = call_for_task_with_options(
+        &ingest,
+        &interner,
+        &[1.0],
+        "wide",
+        ForTaskOptions {
+            sources: Some(&sources.as_slice()),
+            signatures_only: true,
+            ..Default::default()
+        },
+    );
+    let sig = val["symbols"][0]["sig"].as_str().unwrap();
+    assert!(
+        sig.len() <= 244 && sig.ends_with('…'),
+        "{} bytes: {sig}",
+        sig.len()
+    );
+}
