@@ -51,3 +51,56 @@ fn python_member_calls_reach_class_members_not_other_modules_functions() {
     );
     assert_eq!(callees, ["Store.save"]);
 }
+
+/// A bare `len(raw)` is the builtin unless the module binds `len`; another module's `len` is no callee.
+#[test]
+fn python_bare_builtin_calls_do_not_bind_to_other_modules() {
+    let util =
+        b"def len(x):\n    return 0\n\ndef make_record(raw):\n    return {'raw': raw}\n".as_slice();
+    let store = b"from util import make_record\n\ndef build(raw):\n    n = len(raw)\n    return make_record(n)\n".as_slice();
+    let callees = |caller| {
+        owner_qualified_callees(
+            &[
+                ("pkg/util.py", Lang::Python, util),
+                ("pkg/store.py", Lang::Python, store),
+            ],
+            caller,
+        )
+    };
+    assert_eq!(callees("build"), [".make_record"]);
+}
+
+/// A module that defines a builtin's name itself keeps its own calls to that name.
+#[test]
+fn python_module_defined_builtin_name_still_binds_locally() {
+    let files =
+        b"def open(path):\n    return path\n\ndef load(path):\n    return open(path)\n".as_slice();
+    let callees =
+        |caller| owner_qualified_callees(&[("pkg/files.py", Lang::Python, files)], caller);
+    assert_eq!(callees("load"), [".open"]);
+}
+
+/// `@dec` is a call of `dec` from the file scope; `@property` names the builtin and edges to nothing.
+#[test]
+fn python_bare_decorators_are_calls_of_their_names() {
+    let module = b"def dec(f):\n    return f\n\nclass Shape:\n    @property\n    def area(self):\n        return 1\n\n@dec\ndef decorated():\n    return 1\n".as_slice();
+    let callees =
+        owner_qualified_callees(&[("pkg/shapes.py", Lang::Python, module)], "<file-scope>");
+    assert_eq!(callees, [".dec"]);
+    let area = owner_qualified_callees(&[("pkg/shapes.py", Lang::Python, module)], "area");
+    assert!(area.is_empty());
+}
+
+/// A receiver annotated or constructed as a class binds that class's method, not another's.
+#[test]
+fn python_typed_receivers_bind_their_declared_class() {
+    let module = b"class Cache:\n    def fetch_one(self, k):\n        return k\n\nclass Queue:\n    def fetch_one(self, k):\n        return k\n\ndef use(c: Cache):\n    return c.fetch_one(3)\n\ndef build():\n    cache = Cache()\n    return cache.fetch_one(1)\n\ndef mixed(c: Cache):\n    c = Queue()\n    return c.fetch_one(2)\n".as_slice();
+    let callees =
+        |caller| owner_qualified_callees(&[("pkg/cache.py", Lang::Python, module)], caller);
+    assert_eq!(callees("use"), ["Cache.fetch_one"]);
+    assert_eq!(callees("build"), [".Cache", "Cache.fetch_one"]);
+    assert_eq!(
+        callees("mixed"),
+        [".Queue", "Cache.fetch_one", "Queue.fetch_one"]
+    );
+}
