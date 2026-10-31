@@ -109,6 +109,7 @@ fn write_for_inner_body<W: Write>(
     write_for_lego_section(out, val, raw_task)?;
     write_for_compose_section(out, val, raw_task)?;
     write_for_tree_and_docs(out, val)?;
+    write_for_callers_section(out, val, page.nested())?;
     write_for_hops_section(out, val, page.nested())?;
     write_for_bodies(out, val, page.nested())
 }
@@ -260,7 +261,7 @@ fn write_for_compose_section<W: Write>(out: &mut W, val: &Value, raw_task: &str)
     write!(out, "</compose>")
 }
 
-fn write_for_hop_row<W: Write>(out: &mut W, h: &Value) -> io::Result<()> {
+fn write_for_hop_row(out: &mut dyn Write, h: &Value) -> io::Result<()> {
     let l = h.u64_or("line", 0);
     let p = h.str_or("path", "").xml_escaped();
     let name = h.str_or("name", "").xml_escaped();
@@ -282,21 +283,81 @@ fn write_for_hop_row<W: Write>(out: &mut W, h: &Value) -> io::Result<()> {
     write!(out, "</calls></h>")
 }
 
+/// The opening tag of a `<tag extra window-attrs>` section.
+struct SectionHead<'a> {
+    tag: &'a str,
+    extra: &'a str,
+}
+
+/// One windowed list of rows: `<tag extra shown= capped= ...>`, the rows in the window, `</tag>`.
+fn write_paged_section<T, W: Write>(
+    out: &mut W,
+    head: &SectionHead<'_>,
+    all: &[T],
+    page: PageRequest,
+    write_row: fn(&mut dyn Write, &T) -> io::Result<()>,
+) -> io::Result<()> {
+    let section = Paged::new(all, page, |row| row_bytes(|mut w| write_row(&mut w, row)));
+    write!(out, "<{}{}{}>", head.tag, head.extra, section.attrs())?;
+    section
+        .rows()
+        .iter()
+        .try_for_each(|row| write_row(out, row))?;
+    write!(out, "</{}>", head.tag)
+}
+
+fn write_for_caller_row(out: &mut dyn Write, c: &Value) -> io::Result<()> {
+    let via = if c.bool_or("by_name", false) {
+        " via=\"name\""
+    } else {
+        ""
+    };
+    write!(
+        out,
+        "<s t=\"{}\" n=\"{}\" p=\"{}:{}\"{via}/>",
+        c.str_or("kind", "fn").xml_escaped(),
+        c.str_or("name", "").xml_escaped(),
+        c.str_or("path", "").xml_escaped(),
+        c.u64_or("line", 0)
+    )
+}
+
+/// `<callers of= total=>`: who calls the one definition a name-exact `--for` answers; `next=` lists them all.
+fn write_for_callers_section<W: Write>(
+    out: &mut W,
+    val: &Value,
+    page: PageRequest,
+) -> io::Result<()> {
+    let callers = &val["callers"];
+    let Some(rows) = callers["rows"].as_array().filter(|a| !a.is_empty()) else {
+        return Ok(());
+    };
+    let of = callers.str_or("of", "");
+    let extra = format!(
+        " of=\"{}\" total=\"{}\" next=\"--callers={}\"",
+        of.xml_escaped(),
+        callers.u64_or("total", rows.len() as u64),
+        of.xml_escaped()
+    );
+    let head = SectionHead {
+        tag: "callers",
+        extra: &extra,
+    };
+    write_paged_section(out, &head, rows, page, write_for_caller_row)
+}
+
 fn write_for_hops_section<W: Write>(out: &mut W, val: &Value, page: PageRequest) -> io::Result<()> {
     let Some(hops) = val["hops"].as_array().filter(|a| !a.is_empty()) else {
         return Ok(());
     };
-    let hops = Paged::new(hops, page, |h| {
-        row_bytes(|mut w| write_for_hop_row(&mut w, h))
-    });
-    write!(out, "<hops{}>", hops.attrs())?;
-    for h in hops.rows() {
-        write_for_hop_row(out, h)?;
-    }
-    write!(out, "</hops>")
+    let head = SectionHead {
+        tag: "hops",
+        extra: "",
+    };
+    write_paged_section(out, &head, hops, page, write_for_hop_row)
 }
 
-fn write_for_body_row<W: Write>(out: &mut W, item: &Value) -> io::Result<()> {
+fn write_for_body_row(mut out: &mut dyn Write, item: &&Value) -> io::Result<()> {
     let Some(body) = item["body"].as_str() else {
         return Ok(());
     };
@@ -308,7 +369,7 @@ fn write_for_body_row<W: Write>(out: &mut W, item: &Value) -> io::Result<()> {
         item.str_or("path", "").xml_escaped(),
         item.str_or("name", "").xml_escaped()
     )?;
-    crate::serialize::write_cdata(out, body)?;
+    crate::serialize::write_cdata(&mut out, body)?;
     write!(out, "</b>")
 }
 
@@ -319,14 +380,12 @@ fn write_for_bodies<W: Write>(out: &mut W, val: &Value, page: PageRequest) -> io
         .iter()
         .filter(|item| item["body"].is_string())
         .collect();
-    let bodies = Paged::new(&items, page, |item| {
-        row_bytes(|mut w| write_for_body_row(&mut w, item))
-    });
-    write!(out, "<bodies{}>", bodies.attrs())?;
-    for item in bodies.rows() {
-        write_for_body_row(out, item)?;
-    }
-    writeln!(out, "</bodies>")
+    let head = SectionHead {
+        tag: "bodies",
+        extra: "",
+    };
+    write_paged_section(out, &head, &items, page, write_for_body_row)?;
+    writeln!(out)
 }
 
 fn write_grep_context<W: Write>(

@@ -83,6 +83,8 @@ row's own `p=` (or the `<f p=>` it sits under), `sc=` and `n=`. Every selector (
 `--for` **auto-routes** (default, no flag needed): a query that *names a symbol* (`--for="buildGraph"`) gets
 name-exact BM25 (recall@1 ~99% vs ~77% generic) — **know the name, query it verbatim**; a conceptual phrase
 uses subtoken+body BM25 instead. The header prints which ranker fired; `--no-route` forces the plain ranker.
+A name-exact answer for ONE definition also carries `<callers of= total=>`: up to 8 direct callers
+(`via="name"` marks a hedge) with `next=--callers=SYM` for the rest — no follow-up `--callers` for the common case.
 It also **anchors query mentions** by default — a file/module/`Type.method` literally named in the task text
 gets lifted near the top (+4.9pp held-out; a task naming nothing indexed is byte-identical); disable with
 `--no-mention-boost`. It also surfaces DOCS: a markdown design/plan doc that `backtick`-names one of the

@@ -484,3 +484,51 @@ mod beta {
     assert_eq!(result["methods"].as_array().unwrap().len(), 1);
     assert_eq!(result["methods"][0]["name"], "perform");
 }
+
+fn for_xml(code: &[u8], task: &str) -> (Value, String) {
+    let registry = LanguageRegistry::new().unwrap();
+    let interner = Interner::new();
+    let ingest = ingest_in_memory_files(&[("src/lib.rs", Lang::Rust, code)], &registry, &interner);
+    let graph = Graph::build(&ingest, &interner);
+    let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
+    let val = call_for_task_with_options(
+        &ingest,
+        &interner,
+        &ranks,
+        task,
+        ForTaskOptions {
+            graph: Some(&graph),
+            ..Default::default()
+        },
+    );
+    let mut out = Vec::new();
+    serialize_for_xml(&val, &mut out).unwrap();
+    (val, String::from_utf8(out).unwrap())
+}
+
+#[test]
+fn name_exact_for_lists_direct_callers_with_the_total() {
+    let (val, xml) = for_xml(
+        b"fn target() {}\nfn first() { target(); }\nfn second() { target(); }\n",
+        "target",
+    );
+    assert_eq!(val["callers"]["total"], 2);
+    assert!(xml.contains("<callers of=\"target\" total=\"2\""), "{xml}");
+    assert!(
+        xml.contains("n=\"first\"") && xml.contains("n=\"second\""),
+        "{xml}"
+    );
+}
+
+#[test]
+fn name_exact_for_omits_callers_when_nothing_calls_it_or_the_name_is_ambiguous() {
+    let (val, xml) = for_xml(b"fn lonely() {}\n", "lonely");
+    assert!(val["callers"].is_null(), "{xml}");
+    assert!(!xml.contains("<callers"), "{xml}");
+
+    let (val, xml) = for_xml(
+        b"struct A;\nstruct B;\nimpl A { fn run(&self) {} }\nimpl B { fn run(&self) {} }\nfn go(a: A) { a.run(); }\n",
+        "run",
+    );
+    assert!(val["callers"].is_null(), "{xml}");
+}

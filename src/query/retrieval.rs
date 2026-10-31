@@ -1,7 +1,7 @@
 pub use super::grep::*;
 pub use super::search::*;
 
-use crate::domain::{IngestResult, Interner, SymKind};
+use crate::domain::{IngestResult, Interner, NodeId, SymKind};
 use crate::graph::Graph;
 use memchr::memmem::Finder;
 use serde_json::{Value, json};
@@ -889,6 +889,9 @@ pub fn call_for_task_with_options(
     let lego = collect_for_lego(ingest, interner, window_rows);
     let compose = collect_for_compose(ingest, interner, window_rows);
     let hops = collect_for_hops(ingest, interner, opts.graph, window_rows, budget_page);
+    let callers = exact_term.and_then(|term| {
+        collect_for_callers(ingest, interner, opts.graph, window_rows, term, ranks)
+    });
     let tree = collect_for_tree_rows(ingest, interner, &scored, begin, end);
     let docs = collect_for_doc_mentions(ingest, interner, &raw_terms, budget_page);
     let sig_bytes: usize = symbols_json
@@ -927,11 +930,69 @@ pub fn call_for_task_with_options(
         "lego": lego,
         "compose": compose,
         "hops": hops,
+        "callers": callers,
         "tree": tree,
         "docs": docs,
         "budget": budget_page.budget,
         "adaptive": adaptive_info.map(|(k, t, g)| json!({ "kept": k, "total": t, "gap": g }))
     })
+}
+
+/// Most direct callers a name-exact `--for` lists; the rest stay behind `--callers`.
+const FOR_CALLERS_CAP: usize = 8;
+
+/// The direct callers of the one definition a name-exact `--for` answers: `of`, the `total`, and up to
+/// `FOR_CALLERS_CAP` rows ranked by importance. `None` when the name binds several definitions, the graph
+/// is absent, or nothing calls it (`in=` on the signature row already says so).
+fn collect_for_callers(
+    ingest: &IngestResult,
+    interner: &Interner,
+    graph: Option<&crate::graph::Graph>,
+    window_rows: &[(f64, &crate::domain::Symbol)],
+    term: &str,
+    ranks: &[f64],
+) -> Option<Value> {
+    let [(_, sym)] = window_rows else {
+        return None;
+    };
+    if interner.resolve(&sym.name) != term {
+        return None;
+    }
+    let graph = graph?;
+    let mut callers: Vec<(NodeId, bool)> = graph
+        .callers(sym.id)
+        .map(|(caller, _)| {
+            let by_name = graph
+                .edge_prov(caller, sym.id)
+                .is_some_and(crate::resolve::EdgeProv::is_by_name);
+            (caller, by_name)
+        })
+        .collect();
+    if callers.is_empty() {
+        return None;
+    }
+    let rank_of = |id: NodeId| ranks.get(id as usize).copied().unwrap_or(0.0);
+    callers.sort_by(|a, b| {
+        rank_of(b.0)
+            .total_cmp(&rank_of(a.0))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    let total = callers.len();
+    let rows: Vec<Value> = callers
+        .into_iter()
+        .take(FOR_CALLERS_CAP)
+        .filter_map(|(id, by_name)| {
+            let caller = ingest.sym(id)?;
+            Some(json!({
+                "name": interner.resolve(&caller.name),
+                "kind": caller.kind.tag(),
+                "path": ingest.sym_file_path(caller, interner),
+                "line": caller.line,
+                "by_name": by_name,
+            }))
+        })
+        .collect();
+    Some(json!({ "of": term, "total": total, "rows": rows }))
 }
 
 /// Interfaces that are ranked, or declared in a file holding a ranked symbol, and have implementors.
