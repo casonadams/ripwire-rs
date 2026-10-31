@@ -323,6 +323,26 @@ impl LanguageSemantics for RustLanguage {
         true
     }
 
+    /// `crate::crawler::CrawlerOptions::default()`: the qualifier is the type segment (`CrawlerOptions`),
+    /// not the whole module path, so the call binds to that type's own method rather than being
+    /// rejected as a std-name member. `Self` and non-type segments keep the default path handling.
+    fn call_qualifier(
+        &self,
+        name_node: tree_sitter::Node<'_>,
+        source_bytes: &[u8],
+    ) -> Option<String> {
+        let path = name_node.parent().filter(|p| p.kind() == "scoped_identifier")?;
+        let path = path.child_by_field_name("path")?;
+        if path.kind() != "scoped_identifier" {
+            return None;
+        }
+        let segment = path.child_by_field_name("name")?.utf8_text(source_bytes).ok()?;
+        let is_type = segment.bytes().next().is_some_and(|b| b.is_ascii_uppercase())
+            && segment != "Self"
+            && segment.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+        is_type.then(|| segment.to_string())
+    }
+
     fn def_takes_self(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
         ctx.def_node
             .and_then(|def| def.child_by_field_name("parameters"))
