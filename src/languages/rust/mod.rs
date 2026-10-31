@@ -104,6 +104,11 @@ const RUST_STD_MEMBERS: &[&str] = &[
     "index",
     "deref",
     "next",
+    "count",
+    "parent",
+    "parse",
+    "bytes",
+    "peek",
 ];
 
 const RUST_STD_QUALIFIERS: &[&str] = &[

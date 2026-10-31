@@ -391,12 +391,12 @@ fn mermaid_aggregates_cross_directory_calls_without_internal_or_isolated_edges()
         (
             "src/ui/entry.rs",
             Lang::Rust,
-            b"fn entry() { first(); second(); local(); }\nfn local() {}\n",
+            b"fn entry() { load_rows(); store_rows(); local(); }\nfn local() {}\n",
         ),
         (
             "src/core/logic.rs",
             Lang::Rust,
-            b"fn first() {}\nfn second() {}\n",
+            b"fn load_rows() {}\nfn store_rows() {}\n",
         ),
         ("src/unused/alone.rs", Lang::Rust, b"fn alone() {}\n"),
     ]);
