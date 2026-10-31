@@ -343,6 +343,14 @@ id = "callees-typed-receiver-binds-exactly"
 command = "--callees=row_bytes"
 case = ""
 kind = "smaller"
-omits = ["flush:via", "dc", "stdm"]
-why = "row_bytes calls flush on a local its constructor types and new through a path naming its type. Upstream binds flush by name to every flush in the tree, so its rows carry via=\"name\"; ours binds the receiver type's one flush and the named type's new, so no row is bound by name alone and none carries via=. Its .len() on a byte slice is a standard-library method to ours, not a declined call, so there is no <dc gate=\"std\"> row and no <stdm> tally. Pinned by tests/resolve/ladder.rs::test_a_receiver_typed_by_its_constructor_binds_only_that_types_method."
-evidence = "measured: ours 2 callee rows (MinifyingWriter::new, MinifyingWriter::flush); upstream 4 (new, and flush at writer.rs:172, writer.rs:380, xml.rs:141 by name)."
+omits = ["dc", "stdm"]
+why = "row_bytes calls .len() on a byte slice, which is a standard-library method to ours, not a declined call, so there is no <dc gate=\"std\"> row and no <stdm> tally. Upstream 0.6.9 binds flush and new to the typed receiver's definitions exactly, as ours does, so the rows themselves agree. Pinned by tests/resolve/ladder.rs::test_a_receiver_typed_by_its_constructor_binds_only_that_types_method."
+evidence = "measured: ours 2 callee rows (new, flush); upstream the same 2 plus <dc n=\"len\" gate=\"std\"> and <stdm n=\"len\" calls=\"1\">."
+
+[[divergence]]
+id = "grep-merges-hits-in-one-symbol"
+command = "--grep=row_bytes"
+case = ""
+kind = "smaller"
+why = "Hits in the same enclosing symbol collapse into one <hit n=K> row, so the first page carries fewer rows than upstream's one-row-per-line list; the merged row's key is not a row of the unmerged full set, which the paged-row rule cannot express."
+evidence = "measured: default page 85 hit rows; --limit=100000 lists 90 (the n=\"2\" rows split back into single-line hits)."
