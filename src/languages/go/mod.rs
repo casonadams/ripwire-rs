@@ -1,5 +1,5 @@
 use super::{ComplexityKinds, DialectGroup, LanguageSemantics, SyntaxKinds, VisibilityMode};
-use crate::domain::Lang;
+use crate::domain::{Lang, SymKind};
 
 pub struct GoLanguage;
 pub static GO_LANG: GoLanguage = GoLanguage;
@@ -85,6 +85,27 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
     ..SyntaxKinds::NONE
 };
 
+/// Parameters a Go parameter list declares: each `a, b int` declaration counts its names, an
+/// unnamed `int` counts once. The receiver of a method is a separate list and is not counted.
+fn go_param_count(list: tree_sitter::Node<'_>) -> u16 {
+    let mut cursor = list.walk();
+    list.named_children(&mut cursor)
+        .map(|decl| {
+            let names = match decl.kind() {
+                "parameter_declaration" => {
+                    let mut name_cursor = decl.walk();
+                    decl.children_by_field_name("name", &mut name_cursor)
+                        .count()
+                        .max(1)
+                }
+                "variadic_parameter_declaration" => 1,
+                _ => 0,
+            };
+            u16::try_from(names).unwrap_or(u16::MAX)
+        })
+        .sum()
+}
+
 impl LanguageSemantics for GoLanguage {
     fn complexity_kinds(&self) -> &'static ComplexityKinds {
         &KINDS
@@ -159,6 +180,21 @@ impl LanguageSemantics for GoLanguage {
             .trim();
         (!base.is_empty()).then(|| base.to_string())
     }
+
+    fn resolve_def_params_and_name(
+        &self,
+        def_node: Option<tree_sitter::Node<'_>>,
+        _source_bytes: &[u8],
+        _kind: SymKind,
+        orig_name: &str,
+    ) -> (u16, String) {
+        let params = def_node.map_or(0, |n| match n.child_by_field_name("parameters") {
+            Some(list) => go_param_count(list),
+            None => crate::gate::contract::extract_param_count(n, self.syntax_kinds()),
+        });
+        (params, orig_name.to_string())
+    }
+
     fn std_member_names(&self) -> &'static [&'static str] {
         GO_STD_MEMBERS
     }

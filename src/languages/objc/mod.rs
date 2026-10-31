@@ -5,6 +5,80 @@ use std::collections::HashMap;
 pub struct ObjCLanguage;
 pub static OBJC_LANG: ObjCLanguage = ObjCLanguage;
 
+/// Classes an ObjC file declares or implements (`@interface X` / `@implementation X`): their methods
+/// are the members a receiver typed `X` reaches.
+fn collect_class_subjects(node: tree_sitter::Node<'_>, source: &[u8], out: &mut Vec<super::Implementation>) {
+    if matches!(node.kind(), "class_interface" | "class_implementation") {
+        let mut cursor = node.walk();
+        let name = node
+            .named_children(&mut cursor)
+            .find(|c| c.kind() == "identifier")
+            .and_then(|c| c.utf8_text(source).ok());
+        if let Some(subject) = name.filter(|n| crate::languages::is_plain_type_name(n)) {
+            let span = (node.start_byte(), node.end_byte());
+            out.push(super::typed::implementation(subject, None, span));
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_class_subjects(child, source, out);
+    }
+}
+/// The class name a declaration's type spells: `Store` in `Store *s` (a `type_specifier` wrapper or a
+/// bare `type_identifier`).
+fn plain_type_identifier(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    match node.kind() {
+        "type_identifier" => Some(node),
+        "type_specifier" => node.named_child(0).filter(|n| n.kind() == "type_identifier"),
+        _ => None,
+    }
+}
+
+/// The identifier a declarator binds: `s` in `s`, `*s = x`, or `*s[2]`.
+fn declared_identifier(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    match node.kind() {
+        "identifier" => Some(node),
+        "init_declarator"
+        | "pointer_declarator"
+        | "parenthesized_declarator"
+        | "array_declarator" => declared_identifier(node.child_by_field_name("declarator")?),
+        _ => None,
+    }
+}
+
+/// Records `Type *name` declarations (`Type` a plain class name) with the enclosing block as their
+/// scope, so a later `[name msg]` receiver is typed by its declaration.
+fn collect_declared_types<'a>(
+    node: tree_sitter::Node<'_>,
+    source: &'a [u8],
+    scope: std::ops::Range<usize>,
+    out: &mut super::reads::ReadBindings<'a>,
+) {
+    let scope = if node.kind() == "compound_statement" {
+        node.byte_range()
+    } else {
+        scope
+    };
+    if node.kind() == "declaration"
+        && let Some(ty) = node
+            .child_by_field_name("type")
+            .and_then(|t| plain_type_identifier(t))
+            .and_then(|t| t.utf8_text(source).ok())
+    {
+        let mut cursor = node.walk();
+        for decl in node.children_by_field_name("declarator", &mut cursor) {
+            if let Some(name) = declared_identifier(decl).and_then(|n| n.utf8_text(source).ok()) {
+                out.insert(name, scope.clone(), Some(ty.to_string()));
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_declared_types(child, source, scope.clone(), out);
+    }
+}
+
+
 const OBJC_FOUNDATION_MEMBERS: &[&str] = &[
     "alloc",
     "init",
@@ -79,7 +153,7 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
         "struct_declaration",
         "protocol_declaration",
     ],
-    member_access: &["field_expression"],
+    member_access: &["field_expression", "message_expression"],
     field_access: &["field_expression"],
     body_blocks: &[
         "compound_statement",
@@ -111,6 +185,27 @@ impl LanguageSemantics for ObjCLanguage {
     }
     fn syntax_kinds(&self) -> &'static SyntaxKinds {
         &SYNTAX
+    }
+    fn indexes_implementations(&self) -> bool {
+        true
+    }
+    fn implementations(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+    ) -> Vec<super::Implementation> {
+        let mut out = Vec::new();
+        collect_class_subjects(root, source, &mut out);
+        out
+    }
+    fn read_bindings<'a>(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &'a [u8],
+    ) -> super::reads::ReadBindings<'a> {
+        let mut bindings = super::reads::ReadBindings::default();
+        collect_declared_types(root, source, root.byte_range(), &mut bindings);
+        bindings
     }
     fn has_declarations(&self) -> bool {
         true
