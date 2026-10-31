@@ -8,6 +8,7 @@ pub mod defs;
 pub mod detail;
 pub mod doc_tools;
 pub mod edit;
+mod evidence;
 pub mod graph;
 pub mod grep;
 pub mod map;

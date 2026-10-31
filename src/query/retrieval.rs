@@ -1,9 +1,9 @@
 pub use super::grep::*;
 pub use super::search::*;
 
+use super::evidence::{SymbolEvidence, TermEvidence};
 use crate::domain::{IngestResult, Interner, NodeId, SymKind};
 use crate::graph::Graph;
-use memchr::memmem::Finder;
 use serde_json::{Value, json};
 
 /// Most rows the default body posture serves inline (the exact-name definitions, in rank order).
@@ -32,7 +32,7 @@ fn stem_derivational_suffix(t: &str) -> Option<String> {
     None
 }
 
-fn stem_plural_only(term: &str) -> String {
+pub(super) fn stem_plural_only(term: &str) -> String {
     let mut t = term.to_ascii_lowercase();
     if t.len() >= 5 && t.ends_with('s') && !t.ends_with("ss") {
         t.pop();
@@ -141,175 +141,6 @@ fn score_single_term(
     )
 }
 
-/// Per-term needles (lowercase term and its stem) searched in source text.
-fn body_term_finders(raw_terms: &[&str]) -> Vec<Vec<Finder<'static>>> {
-    raw_terms
-        .iter()
-        .take(16)
-        .map(|&t| {
-            let low = t.to_ascii_lowercase();
-            let stem = stem_plural_only(&low);
-            let mut out = vec![Finder::new(low.as_bytes()).into_owned()];
-            if stem != low {
-                out.push(Finder::new(stem.as_bytes()).into_owned());
-            }
-            out
-        })
-        .collect()
-}
-
-/// Whether a lowercase body contains the needle; short needles must stand as whole tokens.
-fn body_contains_term(body: &[u8], finder: &Finder<'_>) -> bool {
-    let needle_len = finder.needle().len();
-    if needle_len >= 4 {
-        return finder.find(body).is_some();
-    }
-    finder.find_iter(body).any(|at| {
-        let before = at == 0 || !body[at - 1].is_ascii_alphanumeric();
-        let after = body
-            .get(at + needle_len)
-            .is_none_or(|b| !b.is_ascii_alphanumeric());
-        before && after
-    })
-}
-
-/// Most line comments read above a definition as its documentation.
-const MAX_DOC_LINES: usize = 12;
-
-/// A `//` comment, or a `#` comment (`#` then whitespace, so `#include` and `#[attr]` are not comments).
-fn is_line_comment(line: &[u8]) -> bool {
-    let text = line.trim_ascii_start();
-    text.starts_with(b"//")
-        || (text.starts_with(b"#") && text.get(1).is_none_or(u8::is_ascii_whitespace))
-}
-
-/// The text documenting `sym`: its attached doc comment, else the run of line comments directly above it,
-/// which many codebases write instead of doc blocks. Indexing keeps an attached doc to the languages' own
-/// rules (an edit splices it with the definition); retrieval only reads, so it takes both.
-fn leading_doc<'a>(lower: &'a [u8], sym: &crate::domain::Symbol) -> &'a [u8] {
-    let sig = (sym.sig_start_byte as usize).min(lower.len());
-    if sym.doc_len > 0 {
-        return lower
-            .get(sig.saturating_sub(sym.doc_len as usize)..sig)
-            .unwrap_or_default();
-    }
-    let line_start = |before: usize| {
-        lower[..before]
-            .iter()
-            .rposition(|&b| b == b'\n')
-            .map_or(0, |i| i + 1)
-    };
-    let end = line_start(sig);
-    let mut start = end;
-    for _ in 0..MAX_DOC_LINES {
-        if start == 0 {
-            break;
-        }
-        let prev = line_start(start - 1);
-        if !is_line_comment(&lower[prev..start - 1]) {
-            break;
-        }
-        start = prev;
-    }
-    &lower[start..end]
-}
-
-/// The per-symbol query-term masks `add_body_text_masks` fills: `body` for source text and doc comment
-/// alike, `doc` for the doc comment alone.
-struct TextMasks<'a> {
-    body: &'a mut [u32],
-    doc: &'a mut [u32],
-}
-
-/// Bit `i` is set when any needle of query term `i` occurs in `text`.
-fn term_bits(finders: &[Vec<Finder<'static>>], text: &[u8]) -> u32 {
-    finders
-        .iter()
-        .enumerate()
-        .filter(|(_, needles)| needles.iter().any(|f| body_contains_term(text, f)))
-        .fold(0, |bits, (i, _)| bits | 1u32 << i)
-}
-
-/// A symbol's own text (a constant or field is all declaration) and its doc, as slices of its lowercased file.
-fn evidence_text<'a>(lower: &'a [u8], sym: &crate::domain::Symbol) -> (&'a [u8], &'a [u8]) {
-    let has_text = sym.has_body() || matches!(sym.kind, SymKind::Var | SymKind::Field);
-    let body = if has_text { sym.decl_bytes(lower) } else { &[] };
-    (body, leading_doc(lower, sym))
-}
-
-/// Marks symbols whose own source text, or the doc comment above it, contains a query term
-/// (case-insensitive), not only callee names. Each file is read and lowercased once; the text is searched
-/// as slices of that copy. A constant or a bodyless declaration carries its doc comment as evidence too.
-fn add_body_text_masks(
-    ingest: &IngestResult,
-    interner: &Interner,
-    sources: &dyn crate::query::SourceReader,
-    raw_terms: &[&str],
-    masks: TextMasks<'_>,
-) {
-    let finders = body_term_finders(raw_terms);
-    let mut code: Vec<&crate::domain::Symbol> = ingest
-        .symbols
-        .iter()
-        .filter(|sym| sym.is_code_symbol())
-        .collect();
-    code.sort_by_key(|sym| sym.file_id);
-    for syms in code.chunk_by(|a, b| a.file_id == b.file_id) {
-        let path = ingest.sym_file_path(syms[0], interner);
-        let lower = sources
-            .read(path)
-            .map(|bytes| bytes.to_ascii_lowercase())
-            .unwrap_or_default();
-        for sym in syms {
-            let (body, doc) = evidence_text(&lower, sym);
-            let in_doc = term_bits(&finders, doc);
-            masks.body[sym.id as usize] |= in_doc | term_bits(&finders, body);
-            masks.doc[sym.id as usize] |= in_doc;
-        }
-    }
-}
-
-fn build_body_term_masks(
-    ingest: &IngestResult,
-    interner: &Interner,
-    raw_terms: &[&str],
-) -> Vec<u32> {
-    let mut masks = vec![0u32; ingest.symbols.len()];
-    if raw_terms.is_empty() {
-        return masks;
-    }
-    let stems: Vec<(String, String)> = raw_terms
-        .iter()
-        .take(16)
-        .map(|&t| {
-            let low = t.to_ascii_lowercase();
-            let st = stem_plural_only(&low);
-            (low, st)
-        })
-        .collect();
-    for r in &ingest.references {
-        let sym_idx = r.from_symbol as usize;
-        if sym_idx >= masks.len() {
-            continue;
-        }
-        let callee = interner.resolve(&r.callee_name).to_ascii_lowercase();
-        let qual = r
-            .qualifier
-            .map(|q| interner.resolve(&q).to_ascii_lowercase());
-        for (i, (low, st)) in stems.iter().enumerate() {
-            let hit = callee.contains(low)
-                || callee.contains(st)
-                || qual
-                    .as_deref()
-                    .is_some_and(|q| q.contains(low) || q.contains(st));
-            if hit {
-                masks[sym_idx] |= 1u32 << i;
-            }
-        }
-    }
-    masks
-}
-
 fn compute_term_idf_weights(
     ingest: &IngestResult,
     interner: &Interner,
@@ -341,9 +172,7 @@ struct SymbolMatchCtx<'a> {
     name: &'a str,
     scope: Option<&'a str>,
     file_path: &'a str,
-    body_mask: u32,
-    doc_mask: u32,
-    loc: u32,
+    evidence: SymbolEvidence,
     terms: &'a [&'a str],
     idf_weights: &'a [f64],
     rank: f64,
@@ -352,17 +181,6 @@ struct SymbolMatchCtx<'a> {
 fn compute_match_synergy(direct_hits: usize, body_only_hits: usize, name_hits: usize) -> f64 {
     let eff_matches = direct_hits as f64 + (body_only_hits as f64) * 0.7;
     eff_matches.powi(3) * (1.0 + (name_hits.saturating_sub(1) as f64) * 0.75)
-}
-
-/// What a term in a doc comment is worth: the author wrote it to say what the code is for.
-const DOC_TERM_WEIGHT: f64 = 8.0;
-/// What a term in a body of `BODY_REFERENCE_LOC` lines or fewer is worth; a longer body contains terms by
-/// chance, so its weight falls with the square root of its length.
-const BODY_TERM_WEIGHT: f64 = 6.0;
-const BODY_REFERENCE_LOC: f64 = 30.0;
-
-fn body_term_weight(loc: u32) -> f64 {
-    BODY_TERM_WEIGHT * (BODY_REFERENCE_LOC / f64::from(loc).max(BODY_REFERENCE_LOC)).sqrt()
 }
 
 fn score_symbol_match_with_idf(ctx: &SymbolMatchCtx<'_>) -> f64 {
@@ -384,15 +202,7 @@ fn score_symbol_match_with_idf(ctx: &SymbolMatchCtx<'_>) -> f64 {
             t,
         );
         name_hits += usize::from(is_name_hit);
-        let bit = 1u32 << i.min(31);
-        let body = if ctx.doc_mask & bit != 0 {
-            DOC_TERM_WEIGHT
-        } else if ctx.body_mask & bit != 0 {
-            body_term_weight(ctx.loc)
-        } else {
-            0.0
-        };
-        let raw = base + body;
+        let raw = base + ctx.evidence.term_weight(i);
         if raw > 0.0 {
             direct_hits += usize::from(base > 0.0);
             body_only_hits += usize::from(base == 0.0);
@@ -423,10 +233,7 @@ fn score_symbol_match_with_idf(ctx: &SymbolMatchCtx<'_>) -> f64 {
 /// Per-query inputs shared by every candidate's score.
 struct ScoringInputs<'a> {
     ranks: &'a [f64],
-    /// Per symbol, the query terms its call targets or source text contain (doc comment included).
-    body_masks: &'a [u32],
-    /// Per symbol, the query terms its doc comment contains; a subset of `body_masks`.
-    doc_masks: &'a [u32],
+    evidence: &'a TermEvidence,
     raw_terms: &'a [&'a str],
     idf_weights: &'a [f64],
     conceptual: bool,
@@ -444,7 +251,6 @@ fn score_candidate_symbol(
     }
     let view = (ingest, interner);
     let file_path = view.sym_path(sym);
-    let body_mask = inputs.body_masks.get(sym.id as usize).copied().unwrap_or(0);
     let kind_factor = if matches!(sym.kind, SymKind::Var | SymKind::Field) {
         0.2
     } else if inputs.conceptual && sym.is_callable() && !sym.has_body() {
@@ -460,9 +266,7 @@ fn score_candidate_symbol(
         name: view.sym_name(sym),
         scope: view.sym_scope(sym),
         file_path,
-        body_mask,
-        doc_mask: inputs.doc_masks.get(sym.id as usize).copied().unwrap_or(0),
-        loc: sym.loc,
+        evidence: inputs.evidence.of(sym),
         terms: inputs.raw_terms,
         idf_weights: inputs.idf_weights,
         rank: inputs.ranks.get(sym.id as usize).copied().unwrap_or(0.0),
@@ -716,11 +520,11 @@ fn compute_for_route_metadata(
     (route, confidence, margin_pct)
 }
 
-/// Percent of query terms that a top row names, or whose source text uses it (`body_masks`).
+/// Percent of query terms that a top row names, or that its evidence mentions when `evidence` is given.
 fn term_coverage_percent(
     raw_terms: &[&str],
     scored: &[(f64, &crate::domain::Symbol)],
-    body_masks: &[u32],
+    evidence: Option<&TermEvidence>,
     interner: &Interner,
 ) -> u64 {
     if raw_terms.is_empty() {
@@ -736,10 +540,7 @@ fn term_coverage_percent(
                     .resolve(&s.name)
                     .to_ascii_lowercase()
                     .contains(&lower_t)
-                    || (i < 32
-                        && body_masks
-                            .get(s.id as usize)
-                            .is_some_and(|m| m & (1u32 << i) != 0))
+                    || evidence.is_some_and(|e| e.of(s).mentions(i))
             })
         })
         .count();
@@ -879,20 +680,14 @@ pub fn call_for_task_with_options(
     };
 
     let conceptual = !is_exact_name_query(ingest, interner, &raw_terms);
-    let mut body_masks = build_body_term_masks(ingest, interner, &raw_terms);
-    let mut doc_masks = vec![0u32; ingest.symbols.len()];
+    let mut evidence = TermEvidence::from_calls(ingest, interner, &raw_terms);
     if let (true, Some(sources)) = (conceptual, opts.sources) {
-        let masks = TextMasks {
-            body: &mut body_masks,
-            doc: &mut doc_masks,
-        };
-        add_body_text_masks(ingest, interner, sources, &raw_terms, masks);
+        evidence.add_text(ingest, interner, sources, &raw_terms);
     }
     let idf_weights = compute_term_idf_weights(ingest, interner, &raw_terms);
     let inputs = ScoringInputs {
         ranks,
-        body_masks: &body_masks,
-        doc_masks: &doc_masks,
+        evidence: &evidence,
         raw_terms: &raw_terms,
         idf_weights: &idf_weights,
         conceptual,
@@ -984,10 +779,10 @@ pub fn call_for_task_with_options(
         .count();
     let (bundle, reason, follow) = body_disclosure(opts, conceptual, &symbols_json, wanted, served);
     // Exact-name lookups keep name-only coverage; conceptual rows also count their source text.
-    let coverage_masks: &[u32] = if conceptual { &body_masks } else { &[] };
+    let coverage_evidence = conceptual.then_some(&evidence);
     let (route, confidence, margin_pct) =
         compute_for_route_metadata(task, &raw_terms, &scored, interner);
-    let coverage = term_coverage_percent(&raw_terms, &scored, coverage_masks, interner);
+    let coverage = term_coverage_percent(&raw_terms, &scored, coverage_evidence, interner);
     let window_rows = &scored[begin..end];
     let lego = collect_for_lego(ingest, interner, window_rows);
     let compose = collect_for_compose(ingest, interner, window_rows);
