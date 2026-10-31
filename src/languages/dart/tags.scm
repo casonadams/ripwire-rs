@@ -35,15 +35,30 @@
     name: (identifier) @name)) @definition.method
 
 ; A constructor's signature carries the CLASS identifier first, then the constructor name for
-; the named form (`C.seeded`). Only the first is captured, so `C()` and `C.seeded()` both index
-; under `C` as overloads — see the floor at the bottom.
+; the named form (`C.seeded`). The first identifier is captured for the unnamed form (`C()`); the
+; gate in mod.rs drops it for the named form, where the second identifier is the member name
+; (`seeded`, owner `C`) and is captured by the second pattern. Factories follow the same shape.
 (declaration
   (constructor_signature
     .
     (identifier) @name)) @definition.method
 
+(declaration
+  (constructor_signature
+    .
+    (identifier)
+    .
+    (identifier) @name)) @definition.method
+
 (method_signature
   (factory_constructor_signature
+    .
+    (identifier) @name)) @definition.method
+
+(method_signature
+  (factory_constructor_signature
+    .
+    (identifier)
     .
     (identifier) @name)) @definition.method
 
@@ -89,10 +104,10 @@
   (string_literal) @name) @reference.import
 
 ; ── stated floors ─────────────────────────────────────────────────────────────────────
-; * Named constructors and factories index under the CLASS name, not `Class.name`: `C()`,
-;   `C.seeded()` and `factory C.fromA()` are three overloads of `C`. Call sites spelled
-;   `C.seeded(1)` resolve to the member name `seeded`, which has no definition, so they are
-;   unresolved rather than wrong.
+; * Named constructors and factories index as members of the class (`C.seeded()` is member
+;   `seeded` with owner `C`). The unnamed `C()` / `factory C()` index under the class name and
+;   are contract members (mod.rs): a by-name call `C(...)` binds to the class alone.
+;   Calls spelled `C.seeded(1)` bind by owner.
 ; * Dynamic dispatch through `noSuchMethod` names its callee at run time; not an edge.
 ; * `part` / `part of` composition is not resolved: a part file's members index under their
 ;   own file, never the enclosing library.

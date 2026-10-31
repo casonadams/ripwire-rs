@@ -224,6 +224,31 @@ fn dart_call_qualifier(name_node: tree_sitter::Node<'_>, source: &[u8]) -> Optio
         .then(|| text.to_string())
 }
 
+/// The class identifier of a named constructor or factory (`C` in `C.seeded`): an identifier
+/// directly followed by the member identifier in a constructor signature.
+fn is_named_constructor_class_name(name_node: Option<tree_sitter::Node<'_>>) -> bool {
+    name_node.is_some_and(|name| {
+        name.parent().is_some_and(is_constructor_signature)
+            && name
+                .next_named_sibling()
+                .is_some_and(|next| next.kind() == "identifier")
+    })
+}
+
+/// An unnamed constructor or factory: its only identifier is the class name.
+fn is_unnamed_constructor(name_node: Option<tree_sitter::Node<'_>>) -> bool {
+    name_node.is_some_and(|name| {
+        name.parent().is_some_and(is_constructor_signature) && name.prev_named_sibling().is_none()
+    })
+}
+
+fn is_constructor_signature(node: tree_sitter::Node<'_>) -> bool {
+    matches!(
+        node.kind(),
+        "constructor_signature" | "factory_constructor_signature"
+    )
+}
+
 impl LanguageSemantics for DartLanguage {
     fn call_qualifier(
         &self,
@@ -336,11 +361,18 @@ impl LanguageSemantics for DartLanguage {
     }
 
     fn is_def_capture_allowed(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
-        !(ctx.kind == SymKind::Function
+        let function_in_signature = ctx.kind == SymKind::Function
             && ctx
                 .def_node
                 .and_then(|dn| dn.parent())
-                .is_some_and(|p| p.kind() == "method_signature"))
+                .is_some_and(|p| p.kind() == "method_signature");
+        !(function_in_signature || is_named_constructor_class_name(ctx.name_node))
+    }
+
+    /// An unnamed constructor or factory (`C()`) shares its class's name. Only by-name calls to
+    /// `C` reach it, and they bind to the class: the constructor is excluded from those candidates.
+    fn is_contract_member(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
+        ctx.kind == SymKind::Method && is_unnamed_constructor(ctx.name_node)
     }
 
     fn is_symbol_name_public(&self, sym_name: &str) -> bool {

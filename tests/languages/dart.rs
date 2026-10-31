@@ -111,3 +111,29 @@ void run() {\n  makeStore().open();\n}\n";
         "{callees:?}"
     );
 }
+
+const CONSTRUCTED: &str = "class Point {\n  final int x;\n  Point(this.x);\n\
+  Point.origin() : x = 0;\n  factory Point.parse(String s) => Point.origin();\n}\n\
+class Box {\n  final Point p;\n  Box(this.p);\n}\n\
+void build() {\n  final a = Point(1);\n  final b = Point.origin();\n  final c = Box(a);\n}\n\
+void usesParse() {\n  Point.parse('1');\n}\n";
+
+#[test]
+fn dart_unnamed_constructor_call_binds_to_the_class_alone() {
+    assert_eq!(
+        dart_constructed_callees("build"),
+        [".Box", ".Point", "Point.origin"]
+    );
+}
+
+#[test]
+fn dart_named_factory_call_binds_by_owner() {
+    assert_eq!(dart_constructed_callees("usesParse"), ["Point.parse"]);
+}
+
+fn dart_constructed_callees(caller: &str) -> Vec<String> {
+    owner_qualified_callees(
+        &[("lib/shapes.dart", Lang::Dart, CONSTRUCTED.as_bytes())],
+        caller,
+    )
+}
