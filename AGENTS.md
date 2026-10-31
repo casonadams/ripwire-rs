@@ -86,9 +86,12 @@ more correct, or more honest.
 - **Generic names only**: Findings from other codebases must reach tests,
   fixtures, docs, and commit messages under generic names (`lint_rules.py`,
   `user_accounts`); never copy their repo, path, symbol, or table names.
-- **Documentation sync**: When changing CLI flags, subcommands, defaults, or MCP
-  tools, update `README.md`, `docs/`, `www/`, `man/man1/ripwire-rs.1`, and
-  `skills/` in the same commit, and verify with `ripwire-rs . --doc-drift`.
+- **Documentation sync**: `docs/REFERENCE.md` lists every CLI flag and MCP tool and is
+  generated from the binary; run `make docs` after changing one (`make docs-check`
+  fails when it is stale). Hand-written docs (`README.md`, `docs/`, `www/`,
+  `man/man1/ripwire-rs.1`, `skills/`) carry only prose and examples: update them in the
+  same commit when behavior or defaults change, and verify with
+  `ripwire-rs . --doc-drift`. Do not copy flag or tool lists into them.
 - **Required gate**: Run `make all` before finishing (enforces `clippy`,
   cognitive complexity `<= 15`, `--quality-delta` vs `git HEAD`, default answer
   size ceilings (`make size`), test coverage CRAP `<= 30`, upstream parity, and

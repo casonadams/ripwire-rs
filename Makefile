@@ -21,7 +21,7 @@ ensure-grammars:
 ci: fmt-check clippy complexity registry crap ## Deterministic checks CI runs: format, clippy, complexity, registry, CRAP/tests (no upstream binary, no git history, no machine state)
 
 .PHONY: all
-all: fmt ci quality size parity ## Run every check: format, the deterministic CI set, quality regressions against git HEAD, default answer sizes, and upstream parity
+all: fmt ci quality size docs-check parity ## Run every check: format, the deterministic CI set, quality regressions against git HEAD, default answer sizes, generated reference freshness, and upstream parity
 
 .PHONY: build
 build: ## Build the project in debug mode
@@ -104,6 +104,14 @@ quality: ## Measure quality regressions against git HEAD with ripwire-rs
 .PHONY: size
 size: build-release ## Fail when a default answer outgrows its byte budget in scripts/output-budgets.toml
 	@python3 ./scripts/check-output-size.py .
+
+.PHONY: docs
+docs: build-release ## Regenerate docs/REFERENCE.md (every CLI flag and MCP tool) from the binary
+	@python3 ./scripts/gen-reference.py
+
+.PHONY: docs-check
+docs-check: build-release ## Fail when docs/REFERENCE.md is stale
+	@python3 ./scripts/gen-reference.py --check
 
 UPSTREAM_DIR ?= ../ripwire
 
