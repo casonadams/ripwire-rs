@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.8](https://github.com/casonadams/ripwire-rs/compare/v0.6.7...v0.6.8) (2026-10-30)
+
+
+### Features
+
+* **mcp:** keep the previous root's workspace warm across root switches ([8045902](https://github.com/casonadams/ripwire-rs/commit/8045902b046e2d44b9867baa68724bbcdf7776c6))
+* **mcp:** per-call root, index refresh, line seeds, and an honest tool schema ([9258f6b](https://github.com/casonadams/ripwire-rs/commit/9258f6b57b37767bd221e192c6ab279b11d304ce))
+* **navigate:** accept @FILE:LINE seeds in the CLI symbol selectors ([5ae6afc](https://github.com/casonadams/ripwire-rs/commit/5ae6afc2024091763d95089e68da84a53aa26148))
+
+
+### Bug Fixes
+
+* **navigate:** only a FILE:LINE-shaped [@selector](https://github.com/selector) is a seed ([fd5cab5](https://github.com/casonadams/ripwire-rs/commit/fd5cab5d0330ed9963cb75dd23f52b58741b240c))
+* **navigate:** seeds work in --safe-delete and --lego; correct the note docs ([48ebde9](https://github.com/casonadams/ripwire-rs/commit/48ebde944ccb6eea2f22eb110fd59583cf429d50))
+
+
+### Performance Improvements
+
+* **ingest:** keep an ancestor stack while collecting JS/TS and Rust read bindings ([0af032a](https://github.com/casonadams/ripwire-rs/commit/0af032ae2714049379421984b78d41e901de87d1))
+
 ## [0.6.7](https://github.com/casonadams/ripwire-rs/compare/v0.6.6...v0.6.7) (2026-10-29)
 
 
