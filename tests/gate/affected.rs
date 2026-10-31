@@ -796,12 +796,3 @@ fn test_affected_reaches_a_test_through_a_static_initializer_read() {
     let paths: Vec<&str> = report.tests.iter().map(|t| t.path.as_str()).collect();
     assert_eq!(paths, ["tests/cmds.rs"]);
 }
-
-#[test]
-fn a_rust_test_prefixed_file_is_production_code_outside_a_test_directory() {
-    assert!(!is_test_path("src/commands/test_gate.rs"));
-    assert!(!is_test_path("src/gate/test_gate.rs"));
-    assert!(is_test_path("tests/test_service.rs"));
-    assert!(is_test_path("src/widget_test.rs"));
-    assert!(is_test_path("scripts/test_lint_rules.py"));
-}

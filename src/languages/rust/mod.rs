@@ -259,14 +259,6 @@ impl LanguageSemantics for RustLanguage {
         matches!(lower.as_str(), "tests" | "test") || lower.ends_with("_tests")
     }
 
-    /// Rust keeps tests in `tests/` or inline, so a `test_` file stem outside a test directory names a
-    /// feature (`test_gate.rs` is the test gate), not a test; `_test` and `_spec` suffixes still pair.
-    fn test_partner_subject<'a>(&self, file_stem: &'a str, in_test_dir: bool) -> Option<&'a str> {
-        let subject = super::common::util::universal_test_partner_subject(file_stem, in_test_dir)?;
-        let by_prefix = file_stem.strip_prefix("test_") == Some(subject);
-        (in_test_dir || !by_prefix).then_some(subject)
-    }
-
     super::impl_grammar_method!(crate tree_sitter_rust::LANGUAGE, "tags.scm");
 
     fn is_read_capture_allowed(&self, node: tree_sitter::Node<'_>, _source: &[u8]) -> bool {
