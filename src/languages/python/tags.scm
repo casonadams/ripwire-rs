@@ -68,6 +68,10 @@
 (class_definition
   superclasses: (argument_list
     (identifier) @name)) @reference.extends
+; A decorator without arguments is a call of its name: `@dec` runs `dec(f)`. `@a.b` runs `a.b(f)`.
+; `@dec(...)` is already a call, captured above.
+(decorator (identifier) @name) @reference.call
+(decorator (attribute attribute: (identifier) @name)) @reference.call
 
 (import_statement . name: (_) @import.path)
 (import_from_statement module_name: (_) @import.path)

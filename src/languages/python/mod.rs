@@ -2,6 +2,9 @@ use super::{
     ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds,
     VisibilityMode, resolve_relative_or_exact, strip_import_quotes,
 };
+mod builtins;
+mod types;
+
 use crate::domain::{Lang, SymKind};
 use std::collections::HashMap;
 
@@ -412,6 +415,19 @@ impl LanguageSemantics for PythonLanguage {
                     .byte_range()
             })
         })
+    }
+
+    /// A builtin call (`len(x)`) names the builtin, and `c.m()` on a receiver declared as `C` names
+    /// `C.m`; neither edges to a same-named function elsewhere.
+    fn call_qualifier(
+        &self,
+        name_node: tree_sitter::Node<'_>,
+        source_bytes: &[u8],
+    ) -> Option<String> {
+        if builtins::is_builtin_call(name_node, source_bytes) {
+            return Some("builtins".to_string());
+        }
+        types::declared_receiver_class(name_node, source_bytes)
     }
 
     fn var_binding(&self, ctx: &DefCaptureGateContext<'_>) -> crate::domain::Binding {
