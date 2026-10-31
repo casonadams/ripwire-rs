@@ -180,7 +180,7 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
     body_blocks: &["block", "declaration_list", "field_declaration_list"],
     body_wrappers: &["parenthesized_expression"],
     function_defs: &["function_item"],
-    local_bindings: &["let_condition"],
+    local_bindings: &["let_condition", "for_expression"],
     identifiers: &["identifier"],
     type_contexts: &[
         "type_parameters",

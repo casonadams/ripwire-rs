@@ -58,3 +58,17 @@ fn test_slice_locals_ts_rust_cpp_destructured_and_typed() {
     let cpp_names: Vec<&str> = cpp_locals.iter().map(|(n, _, _)| n.as_str()).collect();
     assert_eq!(cpp_names, vec!["adj", "out", "comm"]);
 }
+
+#[test]
+fn rust_for_loop_variable_is_a_sliceable_local() {
+    let reg = LanguageRegistry::new().unwrap();
+    let (rs_lang, _) = reg.get(Lang::Rust).unwrap();
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(rs_lang).unwrap();
+    let src = b"fn total(xs: &[i32]) -> i32 {\n  let mut sum = 0;\n  for x in xs {\n    sum += x;\n  }\n  sum\n}\n";
+    let tree = parser.parse(src, None).unwrap();
+    let locals =
+        list_sliceable_locals(tree.root_node(), src, Lang::Rust.semantics().syntax_kinds());
+    let names: Vec<&str> = locals.iter().map(|(n, _, _)| n.as_str()).collect();
+    assert_eq!(names, vec!["xs", "sum", "x"]);
+}
