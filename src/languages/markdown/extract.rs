@@ -159,28 +159,137 @@ pub fn markdown_link_targets(text: &str) -> Vec<&str> {
         .collect()
 }
 
-fn scan_line_links(line: &str, line_num: u32, line_start: usize, refs: &mut Vec<RawRef>) {
-    for (b, target) in line_link_targets(line) {
-        let clean_target = target.trim_start_matches('#');
-        if clean_target.is_empty() {
+/// GitHub-style anchor slug of a heading's text: lowercase, spaces to `-`, other punctuation dropped.
+fn heading_slug(text: &str) -> String {
+    text.trim()
+        .chars()
+        .flat_map(char::to_lowercase)
+        .filter_map(|c| match c {
+            ' ' => Some('-'),
+            c if c.is_alphanumeric() || c == '-' || c == '_' => Some(c),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The symbol a link target names, or `None` when it names nothing in the repository: an external URL, a
+/// non-document file, or an `#anchor` that matches no heading of this document. A same-document anchor names
+/// the heading it slugs to; a link to another Markdown file names that file's root section, by its stem.
+fn link_callee(target: &str, headings: &[(String, String)]) -> Option<String> {
+    let target = target.trim_matches(['<', '>']);
+    let target = target.split_whitespace().next()?;
+    if target.contains("://") || target.starts_with("mailto:") || target.starts_with("//") {
+        return None;
+    }
+    if let Some(anchor) = target.strip_prefix('#') {
+        return headings
+            .iter()
+            .find(|(slug, _)| slug.as_str() == anchor)
+            .map(|(_, name)| name.clone());
+    }
+    let path = target.split('#').next()?;
+    let file = path.rsplit('/').next()?;
+    let (stem, ext) = file.rsplit_once('.')?;
+    matches!(ext, "md" | "markdown" | "mdx")
+        .then(|| stem.to_string())
+        .filter(|stem| !stem.is_empty())
+}
+
+fn push_link_ref(callee: String, line: u32, start_byte: usize, refs: &mut Vec<RawRef>) {
+    refs.push(RawRef {
+        callee_name: callee,
+        qualifier: None,
+        line,
+        name_line: line,
+        start_byte,
+        role: RefRole::Call,
+        arg_count: 0,
+        arg_count_known: false,
+        lang: None,
+        receiver: None,
+        receiver_type: None,
+        callable_field: false,
+        macro_arg: false,
+        member_call: false,
+    });
+}
+
+/// Byte offset of the backtick run of exactly `run` backticks that closes a code span opened before `from`.
+fn closing_backtick_run(bytes: &[u8], from: usize, run: usize) -> Option<usize> {
+    let mut p = from;
+    while p < bytes.len() {
+        if bytes[p] == b'`' {
+            let len = bytes[p..].iter().take_while(|&&b| b == b'`').count();
+            if len == run {
+                return Some(p);
+            }
+            p += len;
+        } else {
+            p += 1;
+        }
+    }
+    None
+}
+
+/// `text` with the content of every inline code span blanked to spaces, so a link written inside code is not a link.
+/// Blanking replaces whole characters between two ASCII backticks, so the result stays valid UTF-8 and offsets hold.
+fn mask_code_spans(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = bytes.to_vec();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'`' {
+            i += 1;
             continue;
         }
-        refs.push(RawRef {
-            callee_name: clean_target.to_string(),
-            qualifier: None,
-            line: line_num,
-            name_line: line_num,
-            start_byte: line_start + b,
-            role: RefRole::Call,
-            arg_count: 0,
-            arg_count_known: false,
-            lang: None,
-            receiver: None,
-            receiver_type: None,
-            callable_field: false,
-            macro_arg: false,
-            member_call: false,
-        });
+        let run = bytes[i..].iter().take_while(|&&b| b == b'`').count();
+        match closing_backtick_run(bytes, i + run, run) {
+            Some(close) => {
+                out[i..close + run].fill(b' ');
+                i = close + run;
+            }
+            None => i += run,
+        }
+    }
+    String::from_utf8(out).unwrap_or_default()
+}
+
+/// Links in one prose `inline` node, whose text starts at `start_byte` on line `first_line`.
+fn scan_inline_links(
+    text: &str,
+    first_line: u32,
+    start_byte: usize,
+    headings: &[(String, String)],
+    refs: &mut Vec<RawRef>,
+) {
+    let masked = mask_code_spans(text);
+    let mut line_start = start_byte;
+    for (offset, line) in masked.split('\n').enumerate() {
+        let line_num = first_line + offset as u32;
+        for (b, target) in line_link_targets(line) {
+            if let Some(callee) = link_callee(target, headings) {
+                push_link_ref(callee, line_num, line_start + b, refs);
+            }
+        }
+        line_start += line.len() + 1;
+    }
+}
+
+/// Byte ranges of the block tree's prose (`inline`) nodes with their first line. Fenced and indented code, HTML
+/// blocks and link reference definitions carry no `inline` node, so links inside them are never scanned.
+fn collect_inline_nodes(node: Node<'_>, out: &mut Vec<(usize, usize, u32)>) {
+    if node.kind() == "inline" {
+        out.push((
+            node.start_byte(),
+            node.end_byte(),
+            node.start_position().row as u32 + 1,
+        ));
+        return;
+    }
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_inline_nodes(child, out);
+        }
     }
 }
 
@@ -249,15 +358,19 @@ pub fn extract_markdown(
 
     let mut headings = Vec::new();
     walk_markdown_tree(tree.root_node(), source_bytes, &mut headings);
+    let slugs: Vec<(String, String)> = headings
+        .iter()
+        .map(|h| (heading_slug(&h.name), h.name.clone()))
+        .collect();
 
+    let mut prose = Vec::new();
+    collect_inline_nodes(tree.root_node(), &mut prose);
     let mut refs = Vec::new();
-    let mut line_num = 1;
-    let mut line_start = 0;
     if let Ok(src_str) = std::str::from_utf8(source_bytes) {
-        for line in src_str.lines() {
-            scan_line_links(line, line_num, line_start, &mut refs);
-            line_start += line.len() + 1;
-            line_num += 1;
+        for (start, end, row) in prose {
+            if let Some(text) = src_str.get(start..end) {
+                scan_inline_links(text, row, start, &slugs, &mut refs);
+            }
         }
     }
     let defs = assemble_defs(&headings, rel_path, source_bytes.len());
