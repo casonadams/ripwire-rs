@@ -1,5 +1,39 @@
 # Repository instructions
 
+## The problem this repo solves (read first)
+
+An agent in a repository answers "who calls this, what breaks, what do I test, did I make it worse" by
+grepping and reading whole files. That burns context and lowers accuracy. `ripwire-rs` exists to give the
+**smallest structural answer that is right**, and to say honestly how far to trust it. Two jobs:
+
+1. **Find**: orient and navigate without reading the repo (`--for`, `--callers`, `--callees`, `--impact`,
+   `--uses`, `--defs`, `--expand`, `--grep`).
+2. **Check**: after a change, say what it affects and whether it made things worse (`--situ`,
+   `--test-gate`, `--affected`, `--edit-check`, `--quality-delta`).
+
+Everything else is a secondary lens. A feature belongs only if it makes a Find or Check answer smaller,
+more correct, or more honest.
+
+- **Fewer tokens is the product.** A default answer should cost an agent less than the grep and reads it
+  replaces. Every default answer has a byte ceiling in `scripts/output-budgets.toml`, enforced by
+  `make size`. Lists are budgeted (8 KiB each; a secondary list inside a report gets a quarter). More
+  facts or bigger output is not a win by itself; parity with upstream is never a reason to grow an answer.
+- **Honest before confident.** A guess is labelled (`via="name"`, `declined`, `unresolved`, `counts_floor`);
+  an unproven edge is never counted or shown as proven. A wrong answer stated with confidence is the worst
+  outcome; a smaller labelled answer is better than a larger unlabelled one.
+- **Correctness of resolution is the ceiling.** Every verb inherits the call graph. Improve resolution
+  recall and precision before adding verbs. Measure with `scripts/retrieval-eval.py` and
+  `--eval-retrieval` (baseline in `docs/BASELINE.md`), not by output volume.
+- **A small agent-facing surface.** Each new flag, skill or doc page costs every agent that reads it.
+  Prefer extending an existing verb. Do not add a verb without removing or folding another, and keep the
+  always-loaded skill text short.
+- **Measure, then change.** For any change to defaults, ranking, resolution or budgets, record before and
+  after (`docs/BASELINE.md` numbers, `make size`, the retrieval eval) in the commit message.
+- **Upstream is a reference, not the target.** `redhat-et/ripwire` is credited and compared, but ripwire-rs
+  matches its facts only where they help an agent. Record deliberate differences in
+  `scripts/parity-divergences.toml` with the reason; a "richer" entry that depends on larger output is a
+  smell.
+
 ## Core mission: Maximum intelligence in the smallest token footprint
 
 `ripwire-rs` exists to replace blind `grep` and whole-file reads with deterministic, token-budgeted codebase intelligence across 36 languages, delivering the exact symbols, blast radius, and safety verification an agent or developer needs in one turn.
@@ -56,5 +90,6 @@
   tools, update `README.md`, `docs/`, `www/`, `man/man1/ripwire-rs.1`, and
   `skills/` in the same commit, and verify with `ripwire-rs . --doc-drift`.
 - **Required gate**: Run `make all` before finishing (enforces `clippy`,
-  cognitive complexity `<= 15`, `--quality-delta` vs `git HEAD`, test coverage
-  CRAP `<= 30`, and `fmt` as the final step).
+  cognitive complexity `<= 15`, `--quality-delta` vs `git HEAD`, default answer
+  size ceilings (`make size`), test coverage CRAP `<= 30`, upstream parity, and
+  `fmt` as the final step).
