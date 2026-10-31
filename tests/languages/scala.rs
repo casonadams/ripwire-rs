@@ -44,3 +44,29 @@ fn scala_typed_receivers_pick_the_declared_type_method() {
     assert_eq!(callees("viaLocal"), ["OrderStore.lookup"]);
     assert_eq!(callees("viaSuper"), ["Base.close"]);
 }
+
+#[test]
+fn scala_enum_is_a_type_definition() {
+    verify_protocol_case(&GraphProtocolCase {
+        label: "scala-enum",
+        files: &[(
+            "src/Color.scala",
+            Lang::Scala,
+            b"enum Color {\n  case Red, Green\n}\nclass Shade {\n  def tint(): Int = 1\n}\n",
+        )],
+        expected_syms: &[
+            sym("Color", SymKind::Var, None, false),
+            sym("Shade", SymKind::Class, None, true),
+        ],
+        ..Default::default()
+    });
+}
+
+#[test]
+fn scala_new_expression_reaches_the_constructed_class() {
+    let src: &[u8] = b"class Box(v: Int) {\n  def get(): Int = v\n}\nclass Pair[T](a: T, b: T)\nclass Empty\nobject Main {\n  def run(): Int = {\n    val b = new Box(2)\n    val p = new Pair[Int](1, 2)\n    val e = new Empty\n    b.get()\n  }\n}\n";
+    let callees = owner_qualified_callees(&[("src/Main.scala", Lang::Scala, src)], "run");
+    assert!(callees.contains(&".Box".to_string()), "{callees:?}");
+    assert!(callees.contains(&".Pair".to_string()), "{callees:?}");
+    assert!(callees.contains(&".Empty".to_string()), "{callees:?}");
+}

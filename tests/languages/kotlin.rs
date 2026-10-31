@@ -46,3 +46,20 @@ fn kotlin_typed_receivers_pick_the_declared_type_method() {
         ["AccountStore.lookup", "Desk.make"]
     );
 }
+
+#[test]
+fn kotlin_typealias_is_a_named_type_definition() {
+    verify_protocol_case(&GraphProtocolCase {
+        label: "kotlin-typealias",
+        files: &[(
+            "src/Names.kt",
+            Lang::Kotlin,
+            b"typealias Name = String\nfun greet(n: Name): Int = n.length\n",
+        )],
+        expected_syms: &[
+            sym("Name", SymKind::Var, None, false),
+            sym("greet", SymKind::Function, None, true),
+        ],
+        ..Default::default()
+    });
+}
