@@ -119,6 +119,9 @@ pub struct ForReport<'a> {
     pub inner: Vec<u8>,
 }
 
+/// The legend comment, root open tag and close tag around a `--for` body, which `est_tokens=` also prices.
+const FOR_FRAME_BYTES: usize = 250;
+
 impl crate::serialize::XmlReport for ForReport<'_> {
     crate::xml_report_meta!("ctx", "ripwire-rs.for/v1", root: false);
     fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {
@@ -134,8 +137,7 @@ impl crate::serialize::XmlReport for ForReport<'_> {
         let bodies_cnt = self.val["symbols"].as_array().map_or(0, |items| {
             items.iter().filter(|item| item["body"].is_string()).count()
         });
-        let computed_tokens = ((self.inner.len() + 180) / 4).max(1) as u64;
-        let est_tokens = self.val.u64_or("est_tokens", computed_tokens);
+        let est_tokens = crate::serialize::est_tokens(self.inner.len() + FOR_FRAME_BYTES);
         let bundle = escape_xml_str(self.val.str_or("bundle", "auto"));
         write!(
             out,

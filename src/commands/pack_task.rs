@@ -4,7 +4,6 @@ use super::common::retrieval::{report_query, token_budget};
 use super::{Plugin, Run, SharedOption};
 use crate::cli::Cli;
 use crate::query::commands::QueryContext;
-use crate::serialize::BYTES_PER_TOKEN;
 use clap::Args;
 use std::io::{self, Write};
 
@@ -31,7 +30,7 @@ pub struct PackTaskArgs {
 /// The token ceiling: `--token-budget` or `--max-tokens`, else `--pack-budget` (bytes), else the default.
 fn budget_tokens(cli: &Cli) -> usize {
     token_budget(cli)
-        .or(cli.pack_budget.map(|bytes| bytes / BYTES_PER_TOKEN))
+        .or(cli.pack_budget.map(crate::serialize::est_tokens))
         .unwrap_or(DEFAULT_PACK_TOKENS)
 }
 

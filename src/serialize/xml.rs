@@ -709,6 +709,13 @@ fn write_map_legend_header<W: Write>(
     counter.write_all(b" -->")
 }
 
+/// The root element's own open and close tags, which `est_tokens=` counts but the header is written before.
+const ROOT_FRAME_BYTES: usize = 160;
+
+/// Least budget left after the body for the inventory tier to be worth its element; below it the tier is dropped
+/// so an explicit budget bounds the whole answer, not the body alone.
+const MIN_INVENTORY_BYTES: usize = 512;
+
 pub fn serialize_xml_with_ranks<W: Write>(
     ctx: &StreamXmlContext<'_>,
     writer: &mut W,
@@ -726,12 +733,28 @@ pub fn serialize_xml_with_ranks<W: Write>(
         options.metrics,
     )?;
 
+    let mut inv_buf = Vec::new();
+    if options.allows_inventory_tier() {
+        let left = options
+            .pack_budget_bytes
+            .map(|b| b.saturating_sub(body_buf.len()));
+        if left.is_none_or(|bytes| bytes >= MIN_INVENTORY_BYTES) {
+            write_inv_section(
+                &mut inv_buf,
+                ctx,
+                &listed_files,
+                PageRequest::default().with_budget(left),
+            )?;
+        }
+    }
     let buf = BufWriter::with_capacity(DEFAULT_STREAM_BUFFER_CAPACITY, writer);
     let mut counter = CountingWriter::new(buf);
     let ambiguous = ctx.graph.amb_out.iter().map(|&a| a as usize).sum::<usize>();
     if options.emit_legend || options.metrics {
         write_map_legend_header(&mut counter, ctx, options, symbols_shown)?;
-        let est_tokens = (body_buf.len() + 1200) * 2 / 5;
+        let est_tokens = crate::serialize::est_tokens(
+            counter.count + ROOT_FRAME_BYTES + body_buf.len() + inv_buf.len(),
+        );
         let data_sections_cut = ctx
             .ingest
             .symbols
@@ -765,10 +788,7 @@ pub fn serialize_xml_with_ranks<W: Write>(
         write_root_open(&mut counter, &root_ctx)?;
     }
     counter.write_all(&body_buf)?;
-    if options.allows_inventory_tier() {
-        let page = PageRequest::default().with_budget(options.pack_budget_bytes);
-        write_inv_section(&mut counter, ctx, &listed_files, page)?;
-    }
+    counter.write_all(&inv_buf)?;
     counter.write_all(b"</r>\n")?;
     counter.flush()
 }

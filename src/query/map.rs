@@ -37,14 +37,18 @@ impl<'a> MapRequest<'a> {
     }
 }
 
+/// Bytes of body a budget of `tokens` pays for: the answer's price (`crate::serialize::budget_bytes`) minus the
+/// legend and root element that frame every map, which are not part of the budgeted body.
 #[must_use]
 pub fn token_budget_bytes(tokens: usize) -> usize {
-    if tokens <= 200 {
-        tokens.saturating_mul(4)
-    } else {
-        tokens.saturating_mul(2).saturating_sub(1100).max(512)
-    }
+    crate::serialize::budget_bytes(tokens)
+        .saturating_sub(MAP_FRAME_BYTES)
+        .max(MIN_BUDGET_BYTES)
 }
+
+const MAP_FRAME_BYTES: usize = 450;
+/// Floor that keeps a budget of a token or two from collapsing to zero bytes.
+const MIN_BUDGET_BYTES: usize = 16;
 
 pub fn execute_stream_xml_with<W: Write>(
     root: &str,

@@ -13,7 +13,7 @@ max_bytes = 2048
 
 [[budget]]
 command = "--for='how are pages windowed under a byte budget'"
-max_bytes = 17408
+max_bytes = 12288
 
 [[budget]]
 command = "--callers=fit_rows"
@@ -43,10 +43,10 @@ max_bytes = 18432
 command = "--grep=row_bytes"
 max_bytes = 15360
 
-# --pack-task is one bundle (ranking, bodies, callers, tests) under its own 6000-token budget, 24000 bytes.
+# --pack-task is one bundle (ranking, bodies, callers, tests) under its own 6000-token budget, 18000 bytes.
 [[budget]]
 command = "--pack-task='add a verb'"
-max_bytes = 24576
+max_bytes = 18432
 
 [[budget]]
 command = "--hotspots"

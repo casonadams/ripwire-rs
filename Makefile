@@ -102,8 +102,8 @@ quality: ## Measure quality regressions against git HEAD with ripwire-rs
 	fi
 
 .PHONY: size
-size: build-release ## Fail when a default answer outgrows its byte budget in scripts/output-budgets.toml
-	@python3 ./scripts/check-output-size.py .
+size: build-release ## Fail when a default answer outgrows its byte budget, or discloses a wrong est_tokens (needs uv for tiktoken)
+	@if command -v uv >/dev/null 2>&1; then uv run --quiet --with tiktoken python3 ./scripts/check-output-size.py .; else python3 ./scripts/check-output-size.py .; fi
 
 .PHONY: docs
 docs: build-release ## Regenerate docs/REFERENCE.md (every CLI flag and MCP tool) from the binary

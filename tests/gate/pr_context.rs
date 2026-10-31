@@ -160,9 +160,11 @@ fn test_pr_context_file_without_history_claims_nothing() {
 }
 
 #[test]
-fn test_pr_context_budget_tokens_reports_the_byte_budget_at_four_bytes_per_token() {
+fn test_pr_context_budget_tokens_reports_the_byte_budget_in_tokens() {
     let mut report = report_of(vec![file_context("src/a.rs")], None, "");
-    report.page = report.page.with_budget(Some(16_000 * 4));
+    report.page = report
+        .page
+        .with_budget(Some(ripwire_rs::serialize::budget_bytes(16_000)));
     assert!(xml_of(&report).contains(" budget_tokens=\"16000\""));
 }
 

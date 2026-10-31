@@ -65,7 +65,7 @@ fn test_pack_est_tokens_counts_the_whole_document_within_its_ceiling() {
         let est: usize = ctx_attr(&doc, "est_tokens").unwrap().parse().unwrap();
         assert_eq!(
             est,
-            xml.len().div_ceil(4),
+            ripwire_rs::serialize::est_tokens(xml.len()),
             "est_tokens counts the whole document"
         );
         assert!(est <= budget, "budget {budget} gave est_tokens {est}");

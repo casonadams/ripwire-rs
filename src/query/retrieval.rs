@@ -9,6 +9,14 @@ use serde_json::{Value, json};
 /// Most rows the default body posture serves inline (the exact-name definitions, in rank order).
 const AUTO_BODY_ROWS: usize = 6;
 
+/// Share of a `--for` token budget the ranked rows may take. The one-hop, doc and tree sections are budgeted
+/// from the rows' budget (a quarter each), so rows alone at the full budget make an answer of about twice it.
+const FOR_ROWS_SHARE_PERCENT: usize = 50;
+
+fn for_rows_budget_bytes(tokens: usize) -> usize {
+    crate::query::map::token_budget_bytes(tokens) * FOR_ROWS_SHARE_PERCENT / 100
+}
+
 fn stem_derivational_suffix(t: &str) -> Option<String> {
     if let Some(prefix) = t.strip_suffix("ution").filter(|p| p.len() >= 3) {
         return Some(format!("{prefix}v"));
@@ -640,9 +648,7 @@ pub fn call_for_task_with_options(
     let budget_page = crate::serialize::PageRequest {
         limit: None,
         offset: None,
-        budget: opts
-            .budget_tokens
-            .map(crate::query::map::token_budget_bytes),
+        budget: opts.budget_tokens.map(for_rows_budget_bytes),
     };
     let window = crate::serialize::PageRequest {
         limit: opts.limit,
@@ -728,16 +734,6 @@ pub fn call_for_task_with_options(
     });
     let tree = collect_for_tree_rows(ingest, interner, &scored, begin, end);
     let docs = collect_for_doc_mentions(ingest, interner, &raw_terms, budget_page);
-    let sig_bytes: usize = symbols_json
-        .iter()
-        .map(|s| {
-            s["sig"].as_str().map_or(0, str::len)
-                + s["body"].as_str().map_or(0, str::len)
-                + s["path"].as_str().map_or(0, str::len)
-                + 64
-        })
-        .sum();
-    let est_tokens = ((sig_bytes + 320) / 4).max(1) as u64;
     json!({
         "task": task,
         "root": opts.root,
@@ -746,7 +742,6 @@ pub fn call_for_task_with_options(
         "confidence": confidence,
         "margin_pct": margin_pct,
         "coverage": coverage,
-        "est_tokens": est_tokens,
         "symbols": symbols_json,
         "count": symbols_json.len(),
         "window": {

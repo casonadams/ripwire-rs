@@ -34,8 +34,23 @@ pub use xml::{
     write_root_open_with_rank_by, write_symbol_row,
 };
 
-/// Bytes per token: converts a byte budget into the `budget_tokens=` disclosure (same 4-bytes-per-token rule as `est_tokens=`).
-pub const BYTES_PER_TOKEN: usize = 4;
+/// Bytes in four tokens of our XML answers. Measured with the o200k tokenizer (`docs/BASELINE.md`): 2.0 for
+/// attribute-dense `--callers` rows to 3.2 for `--for`; the answers that take a token budget (map 2.6, `--for`
+/// 2.7 to 3.0, pack-task 2.9, impact 2.75) centre on 2.75. A stated price and a budget use it, so the price
+/// disclosed is close to the price paid.
+const BYTES_PER_FOUR_TOKENS: usize = 11;
+
+/// Tokens an answer of `bytes` costs.
+#[must_use]
+pub const fn est_tokens(bytes: usize) -> usize {
+    bytes.saturating_mul(4).div_ceil(BYTES_PER_FOUR_TOKENS)
+}
+
+/// Bytes a budget of `tokens` pays for.
+#[must_use]
+pub const fn budget_bytes(tokens: usize) -> usize {
+    tokens.saturating_mul(BYTES_PER_FOUR_TOKENS) / 4
+}
 
 /// A secondary list gets this fraction of its parent's byte budget.
 const NESTED_BUDGET_DIVISOR: usize = 4;

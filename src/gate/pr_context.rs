@@ -394,12 +394,12 @@ impl crate::serialize::XmlReport for PrContextReport {
         let paged = self.files_paged();
         let window = paged.window;
         let shown_bytes: usize = paged.rows().iter().map(file_row_bytes).sum();
-        let est_tokens = HEADER_TOKENS + shown_bytes.div_ceil(crate::serialize::BYTES_PER_TOKEN);
+        let est_tokens = HEADER_TOKENS + crate::serialize::est_tokens(shown_bytes);
         let budget = self
             .page
             .budget
             .unwrap_or(crate::serialize::DEFAULT_PACK_BUDGET_BYTES);
-        let budget_tokens = budget / crate::serialize::BYTES_PER_TOKEN;
+        let budget_tokens = crate::serialize::est_tokens(budget);
         let trim_level = usize::from(window.capped);
         let truncated = if window.capped { "files" } else { "none" };
         let budget_default = usize::from(self.page.budget.is_none());

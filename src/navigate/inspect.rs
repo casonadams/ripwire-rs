@@ -563,7 +563,7 @@ fn pack_document(
             est,
             include_legend,
         );
-        let next = doc.len().div_ceil(crate::serialize::BYTES_PER_TOKEN);
+        let next = crate::serialize::est_tokens(doc.len());
         if next == est {
             break;
         }
@@ -582,7 +582,7 @@ fn write_pack_task_ctx<W: Write>(
     out: &mut W,
 ) -> io::Result<std::collections::BTreeSet<crate::domain::NodeId>> {
     let syms = pack_candidates(syms, env.ingest, env.interner);
-    let limit = budget_tokens.saturating_mul(crate::serialize::BYTES_PER_TOKEN);
+    let limit = crate::serialize::budget_bytes(budget_tokens);
     let mut budget = limit;
     let mut passes = 0usize;
     let (doc, plan) = loop {

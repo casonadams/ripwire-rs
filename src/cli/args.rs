@@ -20,10 +20,10 @@ pub struct Cli {
         value_name = "BYTES"
     )]
     pub pack_budget: Option<usize>,
-    /// Token budget (~4 bytes per token, alternative to --pack-budget)
+    /// Token budget (~2.75 bytes per token, alternative to --pack-budget)
     #[arg(long)]
     pub token_budget: Option<usize>,
-    /// Budget the map to ~N tokens (~4 bytes per token, alias for --token-budget)
+    /// Budget the map to ~N tokens (~2.75 bytes per token, alias for --token-budget)
     #[arg(long = "max-tokens", value_name = "N")]
     pub max_tokens: Option<usize>,
     /// Keep only the N highest-ranked symbols (e.g. 200)

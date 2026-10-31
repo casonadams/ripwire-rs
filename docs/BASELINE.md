@@ -92,6 +92,38 @@ Parameters sweep flat on 52 questions (k1 1.2 to 2, b 0.5 to 0.9, name copies 2 
 move mrr between 0.57 and 0.61), so the crate defaults and upstream's field weights stand. Query-side plural
 stemming was neutral (mrr 0.582, hit@10 0.77) and is not applied.
 
+## Token price: measured with a tokenizer, not assumed
+
+Every `est_tokens=` and `budget_tokens=` rested on "4 bytes per token". Measured with tiktoken (o200k_base, a
+proxy: Claude's tokenizer is not public) over this repository and two TypeScript repositories, the answers cost
+2.0 (attribute-dense `--callers`) to 3.2 (`--for`) bytes per token, median 3.0; the answers that take a token
+budget centre on 2.75 (map 2.6, `--for` 2.7 to 3.0, pack-task 2.9, impact 2.75). `-h` prose is 4.3.
+
+| answer | disclosed `est_tokens` / real, before | after |
+|---|---|---|
+| default map | 0.62 | 0.93 |
+| `--for=<name>` | 0.51 | 1.18 |
+| `--for=<concept>` | 0.46 | 0.96 |
+| `--pack-task` | 0.72 | 1.06 |
+
+Changes: one `serialize::est_tokens` / `budget_bytes` pair at 11 bytes per four tokens replaces the scattered
+`/ 4` and `* 2 / 5`; the map prices the bytes it emits (header, body and inventory), `--for` the whole XML
+instead of its signatures; `token_budget_bytes` is the price minus the map's frame (it had been a hand-fitted
+`tokens * 2 - 1100`); an explicit byte budget now bounds the inventory tier too (`--pack-budget=12000` gave
+19507 bytes, now 12434; the default map keeps its inventory); a `--for` answer budgets its ranked rows at half
+the tokens because the one-hop, doc and tree sections are budgeted from the rows' budget. `make size` now
+tokenizes the answers that disclose a price and fails outside 0.8 to 1.2 of the real count (needs `uv`; it
+skips loudly without).
+
+| `--max-tokens=N` map, real tokens / N | 500 | 1000 | 2000 | 4000 | 8000 |
+|---|---|---|---|---|---|
+| before | 0.68 | 0.50 | 0.64 | 0.72 | 1.07 |
+| after | 1.00 | 1.00 | 1.06 | 1.08 | 1.12 |
+
+`--for` at its default 4000 tokens: 14422 bytes (5362 real tokens) to 11301 bytes (4138); at `--max-tokens=2000`
+real/asked 1.2 to 1.02; `--pack-task` 23943 to 16496 bytes (6000-token budget, 5641 real). Retrieval at budget
+2000 is unchanged in quality (top1 0.52, mrr 0.604) at 6008 median bytes instead of 6599.
+
 Still open:
 
 - A Rust `test_*.rs` file outside a test directory is classified as a test (the universal `test_` stem rule,
