@@ -240,12 +240,12 @@ why = "FileSources and SourceReader stay in query/mod.rs's per-file top three: t
 evidence = "measured on f59e47d: ours 58789 B, 4369 facts; upstream default 12465 B, 970 facts; 112 of 1047 shown names absent from upstream's full tree (cls 2, fn 66, method 46, iface 1); --uses=FileSources count=10."
 
 [[divergence]]
-id = "dead-code-pub-items-upstream"
+id = "dead-code-test-only-rows"
 command = "--dead-code"
 case = ""
-kind = "fixes-upstream-defect"
-why = "Upstream reports three pub fn rows (commands, lang_color, cx_color) as internal-linkage dead code because its rule ignores Rust visibility; ours counts only non-pub private functions and reports none, which is the correct answer for this repo."
-evidence = "tests/cli/architecture_behavior.rs::dead_code_reports_only_private_unused_rust_functions"
+kind = "richer"
+why = "Functions whose every indexed caller is test code, and whose name is an identifier in no non-test file, are listed as <to> rows with a to= count outside count=, so an agent sees API that only tests keep alive without a second query. Upstream reports none here. The earlier upstream defect (pub fn rows reported as internal-linkage dead code) is fixed upstream and no longer diverges."
+evidence = "tests/cli/dead_code_test_only.rs::functions_only_tests_call_are_listed_apart_from_count; tests/cli/dead_code_test_only.rs::a_production_reference_keeps_a_function_out_of_the_test_only_group; tests/cli/architecture_behavior.rs::dead_code_reports_only_private_unused_rust_functions"
 
 [[divergence]]
 id = "communities-file-scope-members"
