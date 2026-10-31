@@ -1,4 +1,4 @@
-use super::harness::{GraphProtocolCase, sym, verify_protocol_case};
+use super::harness::{GraphProtocolCase, resolved_edges, sym, verify_protocol_case};
 use ripwire_rs::{Lang, SymKind};
 
 #[test]
@@ -16,6 +16,26 @@ fn test_sql_graph_protocol() {
         ],
         ..Default::default()
     });
+}
+
+#[test]
+fn test_sql_statements_reference_the_tables_they_touch() {
+    let edges = resolved_edges(&[(
+        "schema.sql",
+        Lang::Sql,
+        b"CREATE TABLE users (\n  id bigint PRIMARY KEY\n);\nCREATE TABLE orders (\n  id bigint PRIMARY KEY,\n  user_id bigint REFERENCES users(id)\n);\nCREATE VIEW active_users AS\n  SELECT u.id FROM users u JOIN orders o ON o.user_id = u.id;\nCREATE FUNCTION touch_users() RETURNS bigint AS $$\n  UPDATE users SET id = id WHERE id = 1;\n$$ LANGUAGE sql;\nCREATE FUNCTION purge_orders() RETURNS bigint AS $$\n  DELETE FROM orders WHERE user_id = 2;\n$$ LANGUAGE sql;\n",
+    )]);
+    // REFERENCES in a column definition, FROM and JOIN relations, UPDATE target, and the DELETE FROM form.
+    for (from, to) in [
+        ("orders", "users"),
+        ("active_users", "users"),
+        ("active_users", "orders"),
+        ("touch_users", "users"),
+        ("purge_orders", "orders"),
+    ] {
+        let edge = (from.to_owned(), to.to_owned());
+        assert!(edges.contains(&edge), "missing {edge:?} in {edges:?}");
+    }
 }
 
 #[test]

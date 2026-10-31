@@ -27,6 +27,25 @@ pub fn owner_qualified_callees(files: &[(&str, Lang, &[u8])], caller: &str) -> V
     out
 }
 
+/// Every resolved `(from, to)` edge among the indexed files, by symbol name, sorted.
+pub fn resolved_edges(files: &[(&str, Lang, &[u8])]) -> Vec<(String, String)> {
+    let registry = LanguageRegistry::new().unwrap();
+    let interner = Interner::new();
+    let ingest = ingest_in_memory_files(files, &registry, &interner);
+    let name = |id: u32| {
+        interner
+            .resolve(&ingest.symbols[id as usize].name)
+            .to_owned()
+    };
+    let mut edges: Vec<(String, String)> = resolve_all_references(&ingest, &interner)
+        .edge_accumulators
+        .keys()
+        .map(|(from, to)| (name(*from), name(*to)))
+        .collect();
+    edges.sort();
+    edges
+}
+
 pub struct ExpectedSym {
     pub name: &'static str,
     pub kind: SymKind,
