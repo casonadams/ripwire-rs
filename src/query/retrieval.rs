@@ -1,7 +1,7 @@
 pub use super::grep::*;
 pub use super::search::*;
 
-use super::evidence::{SymbolEvidence, TermEvidence};
+use super::lexical::{Lexical, mentions};
 use crate::domain::{IngestResult, Interner, NodeId, SymKind};
 use crate::graph::Graph;
 use serde_json::{Value, json};
@@ -32,7 +32,7 @@ fn stem_derivational_suffix(t: &str) -> Option<String> {
     None
 }
 
-pub(super) fn stem_plural_only(term: &str) -> String {
+fn stem_plural_only(term: &str) -> String {
     let mut t = term.to_ascii_lowercase();
     if t.len() >= 5 && t.ends_with('s') && !t.ends_with("ss") {
         t.pop();
@@ -141,102 +141,44 @@ fn score_single_term(
     )
 }
 
-fn compute_term_idf_weights(
-    ingest: &IngestResult,
-    interner: &Interner,
-    raw_terms: &[&str],
-) -> Vec<f64> {
-    if raw_terms.is_empty() {
-        return Vec::new();
-    }
-    let total = ingest
-        .symbols
-        .iter()
-        .filter(|s| s.is_code_symbol())
-        .count()
-        .max(1) as f64;
-    raw_terms
-        .iter()
-        .map(|&term| {
-            let df = ingest
-                .symbols
-                .iter()
-                .filter(|s| s.is_code_symbol() && symbol_matches_term(s, ingest, interner, term))
-                .count() as f64;
-            1.0 + ((total / (df + 1.0)).ln().max(0.0) * 0.5)
-        })
-        .collect()
-}
-
-struct SymbolMatchCtx<'a> {
-    name: &'a str,
-    scope: Option<&'a str>,
-    file_path: &'a str,
-    evidence: SymbolEvidence,
-    terms: &'a [&'a str],
-    idf_weights: &'a [f64],
-    rank: f64,
-}
-
-fn compute_match_synergy(direct_hits: usize, body_only_hits: usize, name_hits: usize) -> f64 {
-    let eff_matches = direct_hits as f64 + (body_only_hits as f64) * 0.7;
-    eff_matches.powi(3) * (1.0 + (name_hits.saturating_sub(1) as f64) * 0.75)
-}
-
-fn score_symbol_match_with_idf(ctx: &SymbolMatchCtx<'_>) -> f64 {
-    let lower_name = ctx.name.to_ascii_lowercase();
-    let norm_name = normalize_camel_case_lower(ctx.name);
-    let lower_scope = ctx.scope.map(normalize_camel_case_lower);
-    let lower_path = ctx.file_path.to_ascii_lowercase();
-    let mut direct_hits = 0usize;
-    let mut body_only_hits = 0usize;
-    let mut name_hits = 0usize;
-    let mut max_raw = 0.0f64;
-    let mut weighted_sum = 0.0f64;
-    for (i, &t) in ctx.terms.iter().enumerate() {
-        let (base, is_name_hit) = score_single_term(
-            &lower_name,
-            &norm_name,
-            lower_scope.as_deref(),
-            &lower_path,
-            t,
-        );
-        name_hits += usize::from(is_name_hit);
-        let raw = base + ctx.evidence.term_weight(i);
-        if raw > 0.0 {
-            direct_hits += usize::from(base > 0.0);
-            body_only_hits += usize::from(base == 0.0);
-            max_raw = max_raw.max(raw);
-            let idf = ctx.idf_weights.get(i).copied().unwrap_or(1.0);
-            weighted_sum += raw * idf;
-        }
-    }
-    // A lone body-only term is a weak hint; two distinct query concepts called from one body coordinate them.
-    if max_raw <= 6.0 && body_only_hits < 2 {
-        return 0.0;
-    }
-    let synergy = compute_match_synergy(direct_hits, body_only_hits, name_hits);
-    let query_wants_test = ctx.terms.iter().any(|t| {
+/// Down-weight for symbols in test and bench files unless the query asks about tests.
+fn test_factor(file_path: &str, name: &str, terms: &[&str]) -> f64 {
+    let wants_test = terms.iter().any(|t| {
         let l = t.to_ascii_lowercase();
         l.contains("test") || l.contains("spec")
     });
-    let is_test = crate::gate::affected::is_test_or_bench_path(ctx.file_path)
-        || lower_name.starts_with("test_");
-    let non_test = if is_test && !query_wants_test {
-        0.05
-    } else {
-        1.0
-    };
-    weighted_sum * synergy * non_test * (1.0 + ctx.rank * 10.0)
+    let is_test = crate::gate::affected::is_test_or_bench_path(file_path)
+        || name.to_ascii_lowercase().starts_with("test_");
+    if is_test && !wants_test { 0.05 } else { 1.0 }
+}
+
+/// Score of a symbol for a one-word lookup of an existing name: how well its name, scope or path says
+/// the word. A path or scope hit alone (6 or less) is not enough to answer a lookup.
+fn score_exact_name(
+    sym: &crate::domain::Symbol,
+    view: (&IngestResult, &Interner),
+    term: &str,
+) -> f64 {
+    use crate::domain::CorpusView;
+    let name = view.sym_name(sym);
+    let (base, _) = score_single_term(
+        &name.to_ascii_lowercase(),
+        &normalize_camel_case_lower(name),
+        view.sym_scope(sym)
+            .map(normalize_camel_case_lower)
+            .as_deref(),
+        &view.sym_path(sym).to_ascii_lowercase(),
+        term,
+    );
+    if base <= 6.0 { 0.0 } else { base }
 }
 
 /// Per-query inputs shared by every candidate's score.
 struct ScoringInputs<'a> {
     ranks: &'a [f64],
-    evidence: &'a TermEvidence,
+    /// BM25 over the corpus for a conceptual query; `None` for a one-word lookup of an existing name.
+    lexical: Option<&'a Lexical>,
     raw_terms: &'a [&'a str],
-    idf_weights: &'a [f64],
-    conceptual: bool,
 }
 
 fn score_candidate_symbol(
@@ -246,32 +188,32 @@ fn score_candidate_symbol(
     inputs: &ScoringInputs<'_>,
 ) -> f64 {
     use crate::domain::CorpusView;
-    if !sym.is_code_symbol() && !(!inputs.conceptual && is_module_anchor(sym)) {
+    let conceptual = inputs.lexical.is_some();
+    if !sym.is_code_symbol() && !(!conceptual && is_module_anchor(sym)) {
         return 0.0;
     }
     let view = (ingest, interner);
-    let file_path = view.sym_path(sym);
     let kind_factor = if matches!(sym.kind, SymKind::Var | SymKind::Field) {
         0.2
-    } else if inputs.conceptual && sym.is_callable() && !sym.has_body() {
+    } else if conceptual && sym.is_callable() && !sym.has_body() {
         // A bodyless declaration names the contract, not the coordinating implementation.
         0.5 * sym.lang.semantics().retrieval_weight()
-    } else if inputs.conceptual && sym.kind == SymKind::Interface {
+    } else if conceptual && sym.kind == SymKind::Interface {
         // An interface is the contract that implementations satisfy; they coordinate the behavior.
         0.5 * sym.lang.semantics().retrieval_weight()
     } else {
         sym.lang.semantics().retrieval_weight()
     };
-    let ctx = SymbolMatchCtx {
-        name: view.sym_name(sym),
-        scope: view.sym_scope(sym),
-        file_path,
-        evidence: inputs.evidence.of(sym),
-        terms: inputs.raw_terms,
-        idf_weights: inputs.idf_weights,
-        rank: inputs.ranks.get(sym.id as usize).copied().unwrap_or(0.0),
+    let matched = match (inputs.lexical, inputs.raw_terms) {
+        (Some(lexical), _) => lexical.score(sym),
+        (None, [term]) => {
+            let rank = inputs.ranks.get(sym.id as usize).copied().unwrap_or(0.0);
+            score_exact_name(sym, view, term) * (1.0 + rank * 10.0)
+        }
+        (None, _) => 0.0,
     };
-    score_symbol_match_with_idf(&ctx) * kind_factor
+    let tests = test_factor(view.sym_path(sym), view.sym_name(sym), inputs.raw_terms);
+    matched * tests * kind_factor
 }
 
 fn extract_normalized_sig(
@@ -520,28 +462,30 @@ fn compute_for_route_metadata(
     (route, confidence, margin_pct)
 }
 
-/// Percent of query terms that a top row names, or that its evidence mentions when `evidence` is given.
+/// Percent of query terms that a top row names, or, for a conceptual query, whose document mentions.
 fn term_coverage_percent(
     raw_terms: &[&str],
     scored: &[(f64, &crate::domain::Symbol)],
-    evidence: Option<&TermEvidence>,
+    lexical: Option<&Lexical>,
     interner: &Interner,
 ) -> u64 {
     if raw_terms.is_empty() {
         return 100;
     }
+    let top = || scored.iter().take(10).map(|(_, s)| *s);
+    let documents: Vec<_> = lexical
+        .map(|lex| top().map(|s| lex.tokens(s)).collect())
+        .unwrap_or_default();
     let covered = raw_terms
         .iter()
-        .enumerate()
-        .filter(|&(i, &t)| {
+        .filter(|&&t| {
             let lower_t = t.to_ascii_lowercase();
-            scored.iter().take(10).any(|(_, s)| {
+            top().any(|s| {
                 interner
                     .resolve(&s.name)
                     .to_ascii_lowercase()
                     .contains(&lower_t)
-                    || evidence.is_some_and(|e| e.of(s).mentions(i))
-            })
+            }) || documents.iter().any(|tokens| mentions(tokens, t))
         })
         .count();
     ((covered * 100) / raw_terms.len()) as u64
@@ -680,17 +624,11 @@ pub fn call_for_task_with_options(
     };
 
     let conceptual = !is_exact_name_query(ingest, interner, &raw_terms);
-    let mut evidence = TermEvidence::from_calls(ingest, interner, &raw_terms);
-    if let (true, Some(sources)) = (conceptual, opts.sources) {
-        evidence.add_text(ingest, interner, sources, &raw_terms);
-    }
-    let idf_weights = compute_term_idf_weights(ingest, interner, &raw_terms);
+    let lexical = conceptual.then(|| Lexical::build(ingest, interner, opts.sources, &raw_terms));
     let inputs = ScoringInputs {
         ranks,
-        evidence: &evidence,
+        lexical: lexical.as_ref(),
         raw_terms: &raw_terms,
-        idf_weights: &idf_weights,
-        conceptual,
     };
     let mut scored = score_candidates(ingest, interner, &inputs, opts.in_scope);
 
@@ -778,11 +716,9 @@ pub fn call_for_task_with_options(
         .filter(|s| s["body"].is_string())
         .count();
     let (bundle, reason, follow) = body_disclosure(opts, conceptual, &symbols_json, wanted, served);
-    // Exact-name lookups keep name-only coverage; conceptual rows also count their source text.
-    let coverage_evidence = conceptual.then_some(&evidence);
     let (route, confidence, margin_pct) =
         compute_for_route_metadata(task, &raw_terms, &scored, interner);
-    let coverage = term_coverage_percent(&raw_terms, &scored, coverage_evidence, interner);
+    let coverage = term_coverage_percent(&raw_terms, &scored, lexical.as_ref(), interner);
     let window_rows = &scored[begin..end];
     let lego = collect_for_lego(ingest, interner, window_rows);
     let compose = collect_for_compose(ingest, interner, window_rows);

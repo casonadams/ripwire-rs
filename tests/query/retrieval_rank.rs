@@ -76,16 +76,11 @@ fn position(rows: &[(String, u64)], name: &str, line: u64) -> Option<usize> {
 }
 
 #[test]
-fn body_coordinating_two_query_concepts_is_admitted_but_single_call_is_not() {
+fn body_coordinating_two_query_concepts_outranks_single_call() {
     let rows = ranked(LEDGER_TS, "retry queue overdue");
-    assert!(
-        position(&rows, "acceptRequest", 1).is_some(),
-        "coordinator calling two query concepts must be admitted: {rows:?}"
-    );
-    assert!(
-        position(&rows, "tidy", 7).is_none(),
-        "a body that matches a single concept only must stay out: {rows:?}"
-    );
+    let order: Vec<&str> = rows.iter().map(|(name, _)| name.as_str()).collect();
+    let at = |name| order.iter().position(|n| *n == name).unwrap_or(usize::MAX);
+    assert!(at("acceptRequest") < at("tidy"), "{order:?}");
 }
 
 #[test]

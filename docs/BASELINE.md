@@ -68,16 +68,32 @@ by under 0.01, a 12 doc weight loses 0.04).
 `--for` latency: `collect_for_lego` built a full resolution index per interface to print a count; it is now
 built once and only when needed. `--for=<name>` 130 ms -> 61 ms, `--for=<concept>` 188 ms -> 77 ms, warm.
 
+## Conceptual ranking (third pass): BM25 from the `bm25` crate
+
+Reading upstream's source showed why hand-tuning plateaued: it ranks with BM25 over identifier subtokens
+(one document per symbol: name x3, callee names, doc comment x2, own text; term-frequency saturation and
+length normalization against the corpus average). Our scorer summed binary hits with cubic synergy, a
+hand-set length reference and several cutoffs. Four coordinator signals added to that sum (a heavier call
+weight, a per-extra-term bonus, boosting a symbol that calls top rows, demoting a helper under a higher
+caller) all failed to beat mrr 0.440.
+
+`src/query/lexical.rs` now builds those documents and scores them with the `bm25` crate (default features
+off: `fxhash` is its only dependency). Counting and embedding run on rayon. A one-word lookup of an existing
+name keeps its own small scorer (`score_exact_name`); the idf, synergy, evidence-mask and cutoff code is
+gone.
+
+| | top1 | hit@3 | hit@10 | mrr | pres | rec | ms/query |
+|---|---|---|---|---|---|---|---|
+| hand-weighted | 0.33 | 0.44 | 0.73 | 0.440 | 0.87 | 0.75 | 28.7 |
+| BM25 (`bm25` crate) | 0.52 | 0.67 | 0.81 | 0.604 | 0.85 | 0.72 | 28.2 |
+| upstream 0.6.9 | 0.42 | 0.62 | 0.75 | 0.531 | 0.75 | 0.64 | 88.9 |
+
+Parameters sweep flat on 52 questions (k1 1.2 to 2, b 0.5 to 0.9, name copies 2 to 5, doc copies 1 to 4
+move mrr between 0.57 and 0.61), so the crate defaults and upstream's field weights stand. Query-side plural
+stemming was neutral (mrr 0.582, hit@10 0.77) and is not applied.
+
 Still open:
 
-- Conceptual ranking still trails upstream on top1 (0.33 against 0.42) and mrr (0.440 against 0.531), while
-  presence and recall are ahead. What outranks the right row is usually a relevant helper. Three ways of
-  preferring the coordinating function all failed to beat 0.33 / 0.440 on the 52 questions, so none shipped:
-  a heavier weight for a call into a term-named function (weight 4 to 12: mrr 0.435 down to 0.390), a bonus
-  per extra query term the symbol's callees name (0.25 to 1: mrr 0.414 to 0.437), and re-scoring from the
-  top 30 (boost a symbol calling two or more top rows: mrr 0.412 to 0.427; demote a helper whose caller also
-  scores higher: mrr 0.428 to 0.431). The call-target weight (6) is already at its plateau. A new signal has to
-  come from outside call structure.
 - A Rust `test_*.rs` file outside a test directory is classified as a test (the universal `test_` stem rule,
   pinned by `tests/gate/affected.rs`), so `src/commands/test_gate.rs` and `src/gate/test_gate.rs` count as tests.
 - Parity still runs against this repository's own tree and the installed upstream; a pinned fixture corpus

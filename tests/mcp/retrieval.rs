@@ -607,6 +607,18 @@ fn a_long_body_does_not_outrank_a_short_one_by_mentioning_more_terms() {
 }
 
 #[test]
+fn a_query_word_matches_whole_subtokens_not_substrings_of_a_longer_word() {
+    let code = "export function loadAuthor(): number {\n  return 1;\n}\n\nexport function checkAuth(): number {\n  return 2;\n}\n";
+    let names = ranked_names(&[("src/users.ts", code)], "check auth");
+    assert_eq!(
+        names.first().map(String::as_str),
+        Some("checkAuth"),
+        "{names:?}"
+    );
+    assert!(!names.iter().any(|n| n == "loadAuthor"), "{names:?}");
+}
+
+#[test]
 fn a_ranked_signature_is_capped_so_a_wide_declaration_does_not_take_the_budget() {
     let params: String = (0..60).map(|i| format!("argument{i}: string, ")).collect();
     let code = format!("export function wide({params}): void {{\n  return;\n}}\n");

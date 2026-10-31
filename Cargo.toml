@@ -80,6 +80,7 @@ tree-sitter-elixir = "0.3.5"
 scip = "0.10.0"
 protobuf = "=3.7.2"
 roxmltree = { version = "0.21.1", default-features = false, features = ["std", "positions"] }
+bm25 = { version = "2.3.2", default-features = false }
 
 [build-dependencies]
 cc = "1.7.0"
