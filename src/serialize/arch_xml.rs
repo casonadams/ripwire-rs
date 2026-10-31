@@ -27,17 +27,43 @@ pub struct TestGateReport<'a> {
     pub gauge_attrs: &'a str,
 }
 
+fn untested_cost(u: &UntestedSymbol<'_>) -> usize {
+    crate::serialize::row_bytes(|mut w| write_untested_row(u, &mut w))
+}
+
+fn test_gate_cost(t: &crate::gate::affected::AffectedTest) -> usize {
+    crate::serialize::row_bytes(|mut w| write_test_gate_row(t, &mut w))
+}
+
+struct StrAttrs<'a>(&'a [(&'a str, &'a str)]);
+
+impl std::fmt::Display for StrAttrs<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0
+            .iter()
+            .try_for_each(|(key, value)| write!(f, " {key}=\"{}\"", value.xml_escaped()))
+    }
+}
+
+/// One `<tag k="v" .../>` row per `(a, b)` pair, with `keys` naming the two escaped string attributes.
+fn write_pair_rows<'a, W: Write>(
+    out: &mut W,
+    tag: &str,
+    keys: [&str; 2],
+    rows: impl Iterator<Item = (&'a str, &'a str)>,
+) -> io::Result<()> {
+    rows.into_iter().try_for_each(|(a, b)| {
+        writeln!(out, "  <{tag}{}/>", StrAttrs(&[(keys[0], a), (keys[1], b)]))
+    })
+}
+
 impl TestGateReport<'_> {
     fn untested_page(&self) -> Paged<'_, UntestedSymbol<'_>> {
-        Paged::new(self.untested, self.page, |u| {
-            crate::serialize::row_bytes(|mut w| write_untested_row(u, &mut w))
-        })
+        Paged::new(self.untested, self.page, untested_cost)
     }
 
     fn tests_page(&self) -> Paged<'_, crate::gate::affected::AffectedTest> {
-        Paged::new(self.tests, self.page.nested(), |t| {
-            crate::serialize::row_bytes(|mut w| write_test_gate_row(t, &mut w))
-        })
+        Paged::new(self.tests, self.page.nested(), test_gate_cost)
     }
 }
 
@@ -243,11 +269,13 @@ pub struct SafeDeleteReport<'a> {
     pub page: crate::serialize::PageRequest,
 }
 
+fn caller_cost(&(p, n): &(&str, &str)) -> usize {
+    crate::serialize::text_bytes(&[p, n])
+}
+
 impl SafeDeleteReport<'_> {
     fn callers_page(&self) -> Paged<'_, (&str, &str)> {
-        Paged::new(self.callers, self.page, |&(p, n)| {
-            crate::serialize::text_bytes(&[p, n])
-        })
+        Paged::new(self.callers, self.page, caller_cost)
     }
 }
 
@@ -287,15 +315,8 @@ impl crate::serialize::XmlReport for SafeDeleteReport<'_> {
         )
     }
     fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        for &(p, n) in self.callers_page().rows() {
-            writeln!(
-                out,
-                "  <c n=\"{}\" p=\"{}\"/>",
-                n.xml_escaped(),
-                p.xml_escaped()
-            )?;
-        }
-        Ok(())
+        let rows = self.callers_page().rows().iter().map(|&(p, n)| (n, p));
+        write_pair_rows(out, "c", ["n", "p"], rows)
     }
 }
 
@@ -324,15 +345,7 @@ impl crate::serialize::XmlReport for ExercisesReport<'_> {
         )
     }
     fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        for (p, n) in self.reached {
-            writeln!(
-                out,
-                "  <target p=\"{}\" n=\"{}\"/>",
-                p.xml_escaped(),
-                n.xml_escaped()
-            )?;
-        }
-        Ok(())
+        write_pair_rows(out, "target", ["p", "n"], self.reached.iter().copied())
     }
 }
 
@@ -488,11 +501,13 @@ pub struct CommunitiesReport<'a> {
     pub page: crate::serialize::PageRequest,
 }
 
+fn community_cost(nested: crate::serialize::PageRequest) -> impl Fn(&CommunityModule<'_>) -> usize {
+    move |m| crate::serialize::row_bytes(|mut w| write_community(&mut w, m, nested))
+}
+
 impl CommunitiesReport<'_> {
     fn modules_page(&self) -> Paged<'_, CommunityModule<'_>> {
-        Paged::new(self.modules, self.page, |m| {
-            crate::serialize::row_bytes(|mut w| write_community(&mut w, m, self.page.nested()))
-        })
+        Paged::new(self.modules, self.page, community_cost(self.page.nested()))
     }
 
     fn bridges_page(&self) -> Paged<'_, (u32, u32, &str, &str, usize)> {
@@ -769,11 +784,13 @@ pub struct ExternalSurfaceReport<'a> {
     pub page: crate::serialize::PageRequest,
 }
 
+fn external_cost(&(name, lang, _): &(&str, &str, usize)) -> usize {
+    crate::serialize::text_bytes(&[name, lang])
+}
+
 impl ExternalSurfaceReport<'_> {
     fn externals_page(&self) -> Paged<'_, (&str, &str, usize)> {
-        Paged::new(self.externals, self.page, |&(name, lang, _)| {
-            crate::serialize::text_bytes(&[name, lang])
-        })
+        Paged::new(self.externals, self.page, external_cost)
     }
 }
 
