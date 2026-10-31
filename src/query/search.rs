@@ -251,6 +251,22 @@ fn lego_not_found(selector: &str, ingest: &IngestResult, interner: &Interner) ->
 }
 
 pub fn call_lego(ingest: &IngestResult, interner: &Interner, interface_name: &str) -> Value {
+    call_lego_with(
+        ingest,
+        interner,
+        interface_name,
+        &std::cell::OnceCell::new(),
+    )
+}
+
+/// [`call_lego`] over a resolution index shared between calls: building one scans every reference, so a
+/// caller that asks about many interfaces builds it once and only if a trait-based language needs it.
+pub fn call_lego_with(
+    ingest: &IngestResult,
+    interner: &Interner,
+    interface_name: &str,
+    index: &std::cell::OnceCell<crate::resolve::ResolutionIndex>,
+) -> Value {
     let selected = crate::navigate::find_symbols_by_name(interface_name, ingest, interner);
     if selected.is_empty() {
         return json!({ "error": lego_not_found(interface_name, ingest, interner) });
@@ -282,7 +298,7 @@ pub fn call_lego(ingest: &IngestResult, interner: &Interner, interface_name: &st
     };
     let mut implementors = Vec::new();
     if let (true, [iface]) = (trait_impls, iface_defs.as_slice()) {
-        let index = crate::resolve::ResolutionIndex::build(ingest, interner);
+        let index = index.get_or_init(|| crate::resolve::ResolutionIndex::build(ingest, interner));
         for id in index.trait_implementors(iface.id) {
             implementors.push(implementor_json(&view, &ingest.symbols[id as usize]));
         }

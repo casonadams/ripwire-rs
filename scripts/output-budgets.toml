@@ -43,9 +43,10 @@ max_bytes = 18432
 command = "--grep=row_bytes"
 max_bytes = 15360
 
+# --pack-task is one bundle (ranking, bodies, callers, tests) under its own 6000-token budget, 24000 bytes.
 [[budget]]
 command = "--pack-task='add a verb'"
-max_bytes = 22528
+max_bytes = 24576
 
 [[budget]]
 command = "--hotspots"

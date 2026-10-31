@@ -221,6 +221,22 @@ struct TextMasks<'a> {
     doc: &'a mut [u32],
 }
 
+/// Bit `i` is set when any needle of query term `i` occurs in `text`.
+fn term_bits(finders: &[Vec<Finder<'static>>], text: &[u8]) -> u32 {
+    finders
+        .iter()
+        .enumerate()
+        .filter(|(_, needles)| needles.iter().any(|f| body_contains_term(text, f)))
+        .fold(0, |bits, (i, _)| bits | 1u32 << i)
+}
+
+/// A symbol's own text (a constant or field is all declaration) and its doc, as slices of its lowercased file.
+fn evidence_text<'a>(lower: &'a [u8], sym: &crate::domain::Symbol) -> (&'a [u8], &'a [u8]) {
+    let has_text = sym.has_body() || matches!(sym.kind, SymKind::Var | SymKind::Field);
+    let body = if has_text { sym.decl_bytes(lower) } else { &[] };
+    (body, leading_doc(lower, sym))
+}
+
 /// Marks symbols whose own source text, or the doc comment above it, contains a query term
 /// (case-insensitive), not only callee names. Each file is read and lowercased once; the text is searched
 /// as slices of that copy. A constant or a bodyless declaration carries its doc comment as evidence too.
@@ -232,35 +248,23 @@ fn add_body_text_masks(
     masks: TextMasks<'_>,
 ) {
     let finders = body_term_finders(raw_terms);
-    let mut by_file: std::collections::BTreeMap<u32, Vec<&crate::domain::Symbol>> =
-        std::collections::BTreeMap::new();
-    for sym in ingest.symbols.iter().filter(|sym| sym.is_code_symbol()) {
-        by_file.entry(sym.file_id).or_default().push(sym);
-    }
-    for syms in by_file.values() {
+    let mut code: Vec<&crate::domain::Symbol> = ingest
+        .symbols
+        .iter()
+        .filter(|sym| sym.is_code_symbol())
+        .collect();
+    code.sort_by_key(|sym| sym.file_id);
+    for syms in code.chunk_by(|a, b| a.file_id == b.file_id) {
         let path = ingest.sym_file_path(syms[0], interner);
         let lower = sources
             .read(path)
             .map(|bytes| bytes.to_ascii_lowercase())
             .unwrap_or_default();
         for sym in syms {
-            let text = sym.has_body() || matches!(sym.kind, SymKind::Var | SymKind::Field);
-            let body = if text { sym.decl_bytes(&lower) } else { &[] };
-            let doc = leading_doc(&lower, sym);
-            let (body_slot, doc_slot) = (
-                &mut masks.body[sym.id as usize],
-                &mut masks.doc[sym.id as usize],
-            );
-            for (i, term_finders) in finders.iter().enumerate() {
-                let in_doc = term_finders.iter().any(|f| body_contains_term(doc, f));
-                let in_body = term_finders.iter().any(|f| body_contains_term(body, f));
-                if in_doc || in_body {
-                    *body_slot |= 1u32 << i;
-                }
-                if in_doc {
-                    *doc_slot |= 1u32 << i;
-                }
-            }
+            let (body, doc) = evidence_text(&lower, sym);
+            let in_doc = term_bits(&finders, doc);
+            masks.body[sym.id as usize] |= in_doc | term_bits(&finders, body);
+            masks.doc[sym.id as usize] |= in_doc;
         }
     }
 }
@@ -1104,6 +1108,7 @@ fn collect_for_lego(
         ranked.iter().map(|(_, s)| s.file_id).collect();
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
+    let index = std::cell::OnceCell::new();
     for sym in &ingest.symbols {
         if sym.kind != SymKind::Interface || !ranked_files.contains(&sym.file_id) {
             continue;
@@ -1112,7 +1117,7 @@ fn collect_for_lego(
         if !seen.insert(name) {
             continue;
         }
-        let lego = call_lego(ingest, interner, name);
+        let lego = call_lego_with(ingest, interner, name, &index);
         if lego["count"].as_u64().unwrap_or(0) == 0 {
             continue;
         }
