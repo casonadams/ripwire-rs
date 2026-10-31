@@ -121,6 +121,7 @@ two hops away, a read/write that never calls SYM, or an `#include` that pulls it
 - **Neighborhood** (bounded k-hop ego graph) — `ripwire-rs <dir> --around=SYM --legend=compact [--around-depth=2] [--around-fanout=32]`
 - **How does X reach Y** (shortest call-path) — `ripwire-rs <dir> --path=SRC,DST --legend=compact`
 - **How do N symbols relate** (minimal connecting subgraph, shared-caller joins) — `ripwire-rs <dir> --connect=A,B,C --legend=compact [--connect-radius=N]`
+- **Which definitions does a name bind, and how do I pin one** — `ripwire-rs <dir> --defs=A,B,C --legend=compact` — one `<d>` row per definition (owner, kind, `file:line`, language, `test=1`, `in=` callers) and a `sel=` spelling that binds exactly that definition when passed to any symbol verb; names that bind nothing come back as `<nf>`.
 - **Verify a CLAIM in one call** — "does X really call Y?", "is Z ever used?", "does this file contain/define A?" →
   `ripwire-rs <dir> --verify='calls(A,B)' --legend=compact` (also `uses(SYM)` / `unused(SYM)` / `contains(FILE, "LIT")` /
   `defines(FILE, SYM)` / `reaches(SYM, "FILE")`): one three-valued verdict with the evidence inline —

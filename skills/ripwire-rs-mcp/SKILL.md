@@ -26,7 +26,7 @@ answers this?".
 
 **MCP tools, at a glance** (backed by `CommandDescriptor`):
 - **Read verbs**: `analyze`, `rank_by`, `for`, `find_symbol`, `find_referencing_symbols`, `callers`, `callees`, `grep`, `cochange`, `memory_recall`, `situational_awareness`, `mentions`, `owners`, `lego`, `batch`, `fetch_body`, `flags`, `doc_drift`, and `slice`.
-- **Task and safety verbs**: `exemplar`, `quality_delta`, `quality_baseline`, `impact`, `uses`, `affected`, `path_between`, `connect`, `explore`, `from_trace`, `edit_check`, `whereis`, and `stray_content`.
+- **Task and safety verbs**: `exemplar`, `quality_delta`, `quality_baseline`, `impact`, `uses`, `affected`, `path_between`, `connect`, `defs`, `explore`, `from_trace`, `edit_check`, `whereis`, and `stray_content`.
 - **Atomic span-addressed edit verbs**: `replace_symbol_body`, `insert_before_symbol`, `insert_after_symbol`.
 
 ## Wiring — Starting the stdio MCP server
@@ -123,6 +123,7 @@ CLI twin: `--at=FILE:LINE` reports the enclosing chain, and the symbol selectors
 | `uses` (`symbol`) | `--uses=SYM` | the resolvable USE-SITES — call/read/write/import/extends, not just calls (`count=0` is a real answer; `counts_floor="1"` — a floor, never a total) |
 | `path_between` (`from`, `to`) | `--path=A,B` | does A reach B, and the shortest call path (named `path_between` because `path` is a scope hint) |
 | `connect` (`symbols`) | `--connect=A,B,C` | canonical connecting subgraph for 2..16 symbols; default radius 2 |
+| `defs` (`symbols`) | `--defs=A,B,C` | which definitions 1..16 names bind: `<d>` rows with owner (`sc=`), kind, `file:line`, `lang=`, `test=1`, `in=` callers (a floor), and `sel=` — a selector that binds that definition alone (absent when `n=` alone is unique); names binding nothing are `<nf>`; more than 25 rows per name are counted, not listed (`shown=`/`total=`/`capped=` on the root) |
 | `explore` (`task`, `budget_tokens` + `partition` optional) | `--pack-task=TASK [--partition=N]` | with `task`: the canonical task pack — ranking, bodies, callers, and tests under one byte budget (default 6000 tokens); `partition: 2..16` requests community-based agent slices. Without `task`: the ranked map |
 | `from_trace` (`trace`, `budget_tokens` optional) | `--from-trace=FILE` | paste a stack trace / sanitizer report / compiler error → the frames mapped onto indexed symbols, ranked INNERMOST-first, with the innermost in-corpus symbol's FULL body. `trace` = the raw trace TEXT (no stdin/file arg over MCP — paste it, don't hand-translate it into a query) |
 | `edit_check` (`symbol`) | `--edit-check=SYM` | just edited a symbol? did its CONTRACT (params/publicness) change vs git HEAD, and which 1-hop callers are now PROVABLY incompatible? Fast targeted check — for the same question over a whole diff use `quality_delta` instead |

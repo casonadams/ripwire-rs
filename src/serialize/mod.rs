@@ -1,4 +1,5 @@
 pub mod arch_xml;
+pub mod defs_xml;
 pub mod escape;
 pub mod graph_export;
 pub mod html;
@@ -7,6 +8,7 @@ pub mod query_xml;
 pub mod workspace_xml;
 pub mod writer;
 pub mod xml;
+pub use defs_xml::serialize_defs_xml;
 pub use writer::{MinifyingWriter, XmlWriter, strip_xml_comments};
 
 pub use query_xml::{

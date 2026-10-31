@@ -46,6 +46,7 @@ write it in call form (`F()`) — to route on it by name.
 | **Find an exact literal** — error text, config key, or emitted string | **ripwire-rs-navigate** | `--grep='literal' --grep-context=2`; add `--and`/`--not`, `--grep-scope=file`, or `--grep-in=any` only when the first answer requires it |
 | **Verify one closed code claim** — does A call B, is X unused, does a file define/contain Y? | **ripwire-rs-navigate** | `--verify='calls(A,B)'` (also `uses`/`unused`/`contains`/`defines`/`reaches`) |
 | **My task touches A, B and C — how do they relate?** — N (>2) task symbols, or a pair `--path` can't reach | **ripwire-rs-navigate** | `--connect=A,B,C` (the shared-caller join a directed `--path` can't see) |
+| **A name has several definitions — which one do I mean, and how do I pin it?** | **ripwire-rs-navigate** | `--defs=A,B` (one row per definition with a `sel=` spelling that binds it alone) |
 | **Planning a FEATURE** — multi-symbol work needing a plan / interface / size estimate | **ripwire-rs-before-you-build** | `--recall` + `--for` + `--seams` |
 | **Implementing against an interface** — writing a class/type that must satisfy interface `I` | **ripwire-rs-before-you-build** | `--lego=I` (I's method contract + every existing implementor to copy) |
 | **About to write ONE symbol** — a fn/class/helper, even a "quick" one | **ripwire-rs-reuse-first** | `--exemplar` + `--for` + `--clones` |

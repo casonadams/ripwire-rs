@@ -4,6 +4,7 @@ use std::path::Path;
 
 pub mod branch_tools;
 pub mod commands;
+pub mod defs;
 pub mod detail;
 pub mod doc_tools;
 pub mod edit;

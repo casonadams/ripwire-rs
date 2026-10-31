@@ -130,6 +130,9 @@ Query both incoming callers and outgoing callees of symbol \fISYM\fR in one view
 .BI \-\-connect= A,B,...
 Compute the minimal connecting subgraph relating 2 to 16 named symbols.
 .TP
+.BI \-\-defs= A,B,...
+List the definitions that 1 to 16 names bind: owner, kind, file:line, language, test or source, caller count, and a \fBsel=\fR selector that binds that definition alone. Names that bind nothing are reported as \fB<nf>\fR.
+.TP
 .BI \-\-path= A:B ", " \-\-path\-between= A:B
 Find the shortest directed call path from source symbol \fIA\fR to destination \fIB\fR (\fIA:B\fR or \fIA,B\fR).
 .TP

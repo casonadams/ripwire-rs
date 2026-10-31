@@ -91,6 +91,7 @@ register_commands! {
     regex::REGEX,
     pack_signatures::PACK_SIGNATURES,
     connect::CONNECT,
+    defs::DEFS,
     path_between::PATH_BETWEEN,
     exemplar::EXEMPLAR,
     lego::LEGO,

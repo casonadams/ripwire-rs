@@ -90,6 +90,43 @@ fn matches_symbol_selector(
     sym_name == selector
 }
 
+/// A selector spelling `find_symbols` binds to `sym` alone, shortest first; `None` when no spelling is
+/// unique. `same_name` must hold every symbol sharing `sym`'s name.
+#[must_use]
+pub fn pinning_selector(
+    sym: &crate::domain::Symbol,
+    same_name: &[NodeId],
+    ingest: &IngestResult,
+    interner: &Interner,
+) -> Option<String> {
+    use crate::domain::CorpusView;
+    let view = (ingest, interner);
+    let name = view.sym_name(sym);
+    let path = view.sym_path(sym);
+    let scope = view.sym_scope(sym);
+    let unique = |selector: &str| {
+        same_name
+            .iter()
+            .filter_map(|&id| ingest.sym(id))
+            .filter(|s| matches_symbol_selector(s, ingest, interner, selector))
+            .map(|s| s.id)
+            .eq([sym.id])
+    };
+    let mut spellings = Vec::with_capacity(4);
+    if let Some(sc) = scope {
+        spellings.push(format!("{sc}::{name}"));
+        spellings.push(format!("{sc}.{name}"));
+    }
+    spellings.push(format!("{path}:{name}"));
+    if let Some(sc) = scope {
+        spellings.push(format!("{path}::{sc}::{name}"));
+    }
+    if let Some(found) = spellings.into_iter().find(|s| unique(s)) {
+        return Some(found);
+    }
+    (view.symbol_at_line(path, sym.line) == Some(sym.id)).then(|| format!("{path}:{}", sym.line))
+}
+
 fn trim_dot(path: &str) -> &str {
     path.strip_prefix("./").unwrap_or(path)
 }

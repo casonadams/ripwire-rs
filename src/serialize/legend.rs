@@ -66,6 +66,11 @@ pub const LEGEND_DICT_ENTRIES: &[(&str, &str, &str)] = &[
     ),
     (
         "schema",
+        "ripwire-rs.defs/v1",
+        "Definitions bound by 1..16 names (<d>), with names that bind none (<nf>); sel= absent means n= alone pins the definition",
+    ),
+    (
+        "schema",
         "ripwire-rs.path/v1",
         "Shortest directed call path between two symbols",
     ),
@@ -286,6 +291,17 @@ pub const LEGEND_DICT_ENTRIES: &[(&str, &str, &str)] = &[
         "Enclosing class, struct, trait, module, or namespace scope",
     ),
     ("attr", "l", "1-based source start line number"),
+    ("attr", "lang", "Source language tag of the definition"),
+    (
+        "attr",
+        "test",
+        "1 when the definition is test or bench code",
+    ),
+    (
+        "attr",
+        "sel",
+        "Selector spelling that binds this definition alone; pass it to any symbol verb",
+    ),
     ("attr", "el", "1-based source end line number"),
     ("attr", "k", "PageRank or HITS centrality score"),
     (

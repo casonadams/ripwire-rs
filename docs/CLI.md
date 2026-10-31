@@ -306,6 +306,11 @@ ripwire-rs . --from-trace=error.log
 
 # Emit JSON instead of XML for navigation queries
 ripwire-rs . --callers="Interner::len" --json
+# Which definitions do up to 16 names bind? One <d> row each: owner (sc=), kind, file:line, language,
+# test=1 for test code, in= caller count (a floor); sel= is a spelling that binds that definition alone
+# (absent when n= alone is unique); names that bind nothing come back as <nf>
+ripwire-rs . --defs="build,parse"
+
 
 # Execute up to 16 heterogeneous sub-queries in a single turn
 ripwire-rs . --batch=queries.txt
