@@ -53,3 +53,43 @@ fn test_c_graph_protocol_and_header_refinement() {
         Some(7)
     );
 }
+
+#[test]
+fn c_header_without_cpp_markers_refines_to_c_and_member_calls_never_bind_free_functions() {
+    let registry = LanguageRegistry::new().unwrap();
+    let interner = Interner::new();
+    let ingest = ingest_in_memory_files(
+        &[
+            (
+                "include/plain.h",
+                Lang::Cpp,
+                b"int plain_fn(int a);\n#define LIMIT 8\n",
+            ),
+            (
+                "include/ext.h",
+                Lang::Cpp,
+                b"extern \"C\" {\nint ext_fn(int a);\n}\n",
+            ),
+        ],
+        &registry,
+        &interner,
+    );
+    assert_eq!(ingest.files[0].lang, Lang::C);
+    assert_eq!(ingest.files[1].lang, Lang::Cpp);
+
+    let by_ref = ingest_in_memory_files(
+        &[(
+            "include/by_ref.h",
+            Lang::Cpp,
+            b"struct Box { int v; };\nint take(const Box& b);\n",
+        )],
+        &registry,
+        &interner,
+    );
+    assert_eq!(by_ref.files[0].lang, Lang::Cpp);
+
+    let source = b"struct Buffer { int (*get)(struct Buffer *); };\nstatic int get(struct Buffer *b) { return 0; }\nstatic int helper(struct Buffer *b) { return 0; }\nint drop(struct Buffer *b) { return b->get(b) + helper(b); }\n";
+    let callees =
+        super::harness::owner_qualified_callees(&[("src/pool.c", Lang::C, source)], "drop");
+    assert_eq!(callees, [".helper"]);
+}

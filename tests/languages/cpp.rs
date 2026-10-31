@@ -84,3 +84,16 @@ class Sub : public Base {\n public:\n  void viaThis() { this->refill(); }\n  voi
     assert_eq!(callees("viaRef"), ["Store.stash"]);
     assert_eq!(callees("viaPtr"), ["Store.stash"]);
 }
+
+#[test]
+fn cpp_destructor_bodies_attribute_their_calls() {
+    let in_class = "static void release_all() {}\nclass Canvas {\npublic:\n  ~Canvas() { release_all(); }\n};\n";
+    let out_of_line = "static void release_all() {}\nclass Canvas {\npublic:\n  void flush();\n};\nCanvas::~Canvas() { release_all(); }\n";
+    for source in [in_class, out_of_line] {
+        let callees = owner_qualified_callees(
+            &[("src/canvas.cpp", Lang::Cpp, source.as_bytes())],
+            "~Canvas",
+        );
+        assert_eq!(callees, [".release_all"]);
+    }
+}
