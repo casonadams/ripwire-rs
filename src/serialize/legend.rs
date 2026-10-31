@@ -373,6 +373,11 @@ pub const LEGEND_DICT_ENTRIES: &[(&str, &str, &str)] = &[
     ),
     (
         "attr",
+        "to",
+        "Count of <to> rows: functions whose every indexed caller is test code (--dead-code); outside count=",
+    ),
+    (
+        "attr",
         "has_more",
         "1 if additional pages exist beyond shown items",
     ),

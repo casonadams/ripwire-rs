@@ -9,6 +9,16 @@ thread_local! {
     ));
 }
 
+/// Parse `source` with `grammar` on this thread's shared parser.
+pub(crate) fn parse_with_grammar(grammar: &Language, source: &[u8]) -> Option<tree_sitter::Tree> {
+    PARSER_STATE.with(|state| {
+        let mut borrowed = state.borrow_mut();
+        let (parser, _) = &mut *borrowed;
+        parser.set_language(grammar).ok()?;
+        parser.parse(source, None)
+    })
+}
+
 /// Registry of supported Tree-Sitter languages and compiled queries.
 #[derive(Default, Clone, Copy)]
 pub struct LanguageRegistry;

@@ -184,6 +184,8 @@ ripwire-rs . --edit-target-file="src/domain.rs" --no-post-check --allow-remote-e
 **When & Where:** Sprint refactoring, architectural reviews, or technical debt auditing.
 ```bash
 # Detect internal functions with zero incoming callers across the tree
+# <to> rows (counted by to=, outside count=) list functions whose every indexed caller is test code and
+# whose name appears as an identifier in no test-free file other than their definition
 ripwire-rs . --dead-code
 
 # Partition call graph into cohesive modules (Louvain community detection)
@@ -304,13 +306,13 @@ ripwire-rs . --recall="PageRank"
 # Map stack trace / compiler error lines onto indexed symbols
 ripwire-rs . --from-trace=error.log
 
-# Emit JSON instead of XML for navigation queries
-ripwire-rs . --callers="Interner::len" --json
 # Which definitions do up to 16 names bind? One <d> row each: owner (sc=), kind, file:line, language,
 # test=1 for test code, in= caller count (a floor); sel= is a spelling that binds that definition alone
 # (absent when n= alone is unique); names that bind nothing come back as <nf>
 ripwire-rs . --defs="build,parse"
 
+# Emit JSON instead of XML for navigation queries
+ripwire-rs . --callers="Interner::len" --json
 
 # Execute up to 16 heterogeneous sub-queries in a single turn
 ripwire-rs . --batch=queries.txt

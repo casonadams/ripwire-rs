@@ -5,29 +5,54 @@ use std::collections::HashMap;
 /// Parse `source` with `lang`'s grammar for `path`, on this thread's shared parser.
 pub(crate) fn parse_file_tree(lang: Lang, path: &str, source: &[u8]) -> Option<tree_sitter::Tree> {
     let grammar = lang.semantics().source_grammar(path)?;
-    crate::ingest::registry::PARSER_STATE.with(|state| {
-        let mut borrowed = state.borrow_mut();
-        let (parser, _) = &mut *borrowed;
-        parser.set_language(grammar).ok()?;
-        parser.parse(source, None)
-    })
+    crate::ingest::registry::parse_with_grammar(grammar, source)
 }
 
 /// Adds to each name in `uses` the identifier tokens of every `lang` file that use that name;
 /// definitions and prototypes do not count, so any count is evidence of a reference.
-pub fn count_identifier_uses<'a>(
+pub fn count_identifier_uses(
     ingest: &IngestResult,
     interner: &Interner,
     sources: &dyn crate::query::SourceReader,
     lang: Lang,
-    uses: &mut HashMap<&'a str, u32>,
+    uses: &mut HashMap<&str, u32>,
 ) {
-    use rayon::prelude::*;
     let files: Vec<_> = ingest
         .files
         .iter()
         .filter(|file| file.lang == lang)
         .collect();
+    count_uses_in_files(ingest, interner, sources, &files, uses);
+}
+
+/// [`count_identifier_uses`] over the non-test, non-bench files only: a use here is a reference from
+/// production code.
+pub fn count_production_identifier_uses(
+    ingest: &IngestResult,
+    interner: &Interner,
+    sources: &dyn crate::query::SourceReader,
+    lang: Lang,
+    uses: &mut HashMap<&str, u32>,
+) {
+    let files: Vec<_> = ingest
+        .files
+        .iter()
+        .filter(|file| file.lang == lang)
+        .filter(|file| {
+            !crate::gate::affected::is_test_or_bench_path(ingest.file_path(file.id, interner))
+        })
+        .collect();
+    count_uses_in_files(ingest, interner, sources, &files, uses);
+}
+
+fn count_uses_in_files<'a>(
+    ingest: &IngestResult,
+    interner: &Interner,
+    sources: &dyn crate::query::SourceReader,
+    files: &[&crate::domain::FileInfo],
+    uses: &mut HashMap<&'a str, u32>,
+) {
+    use rayon::prelude::*;
     let known = &*uses;
     let counted: HashMap<&'a str, u32> = files
         .par_iter()
@@ -36,8 +61,8 @@ pub fn count_identifier_uses<'a>(
             let source = sources
                 .read(path)
                 .unwrap_or(std::borrow::Cow::Borrowed(&[]));
-            if let Some(tree) = parse_file_tree(lang, path, source.as_ref()) {
-                lang.semantics().for_each_identifier(
+            if let Some(tree) = parse_file_tree(file.lang, path, source.as_ref()) {
+                file.lang.semantics().for_each_identifier(
                     tree.root_node(),
                     source.as_ref(),
                     &mut |text| {

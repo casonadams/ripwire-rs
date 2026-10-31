@@ -2,8 +2,9 @@
 use super::SharedOption;
 use super::plugin::report_command;
 use crate::commands::context::ExecutionContext;
-use crate::domain::{IngestResult, Interner};
+use crate::domain::{IngestResult, Interner, Lang, SymKind, Symbol};
 use crate::graph::Graph;
+use crate::serialize::arch_xml::{DeadCodeReport, DeadRow};
 use crate::serialize::XmlWriter;
 use std::io::{self, Write};
 use std::path::Path;
@@ -94,18 +95,117 @@ pub fn execute_dead_code_query_paged<W: Write>(
             dead.push((name, sym.kind.tag(), view.sym_path(sym), sym.line));
         }
     }
-    dead.sort_by(|a, b| {
+    emit_report(ctx, dead, out)
+}
+
+fn sort_rows(rows: &mut [DeadRow<'_>]) {
+    rows.sort_by(|a, b| {
         a.2.cmp(b.2)
             .then_with(|| a.3.cmp(&b.3))
             .then_with(|| a.0.cmp(b.0))
     });
-    crate::serialize::query_xml::serialize_dead_code_paged_xml(
-        ctx.root,
-        &dead,
-        ctx.graph.gauges(),
-        ctx.page.page_request(),
-        out,
-    )
+}
+
+fn emit_report<W: Write>(
+    ctx: &DeadCodeContext<'_>,
+    mut dead: Vec<DeadRow<'_>>,
+    out: &mut W,
+) -> io::Result<()> {
+    use crate::serialize::XmlReport;
+    sort_rows(&mut dead);
+    let test_only = rows_only_tests_call(ctx);
+    DeadCodeReport {
+        items: &dead,
+        test_only: &test_only,
+        gauges: ctx.graph.gauges(),
+        page: ctx.page.page_request(),
+    }
+    .write_xml_report(ctx.root, out)
+}
+
+/// Production functions whose every indexed caller (call edge or same-file value read) is test code and
+/// whose name appears in no non-test file as an identifier use. A floor: a caller the index could not
+/// bind and the name check both miss is invisible here.
+fn rows_only_tests_call<'a>(ctx: &DeadCodeContext<'a>) -> Vec<DeadRow<'a>> {
+    use crate::domain::CorpusView;
+    let view = (ctx.ingest, ctx.interner);
+    let value = crate::graph::value_reach::ValueReach::build(ctx.ingest);
+    let candidates: Vec<&Symbol> = ctx
+        .ingest
+        .symbols
+        .iter()
+        .filter(|sym| {
+            sym.kind == SymKind::Function
+                && sym.has_body()
+                && !view.is_test_symbol(sym)
+                && !sym.lang.semantics().is_header_file(view.sym_path(sym))
+        })
+        .filter(|sym| only_tests_call(ctx, &value, sym))
+        .collect();
+    let uses_by_lang = production_uses(ctx, &candidates);
+    let mut rows: Vec<DeadRow<'a>> = candidates
+        .into_iter()
+        .filter(|sym| {
+            uses_by_lang
+                .get(&sym.lang)
+                .and_then(|uses| uses.get(view.sym_name(sym)))
+                .is_some_and(|&count| count == 0)
+        })
+        .map(|sym| (view.sym_name(sym), sym.kind.tag(), view.sym_path(sym), sym.line))
+        .collect();
+    sort_rows(&mut rows);
+    rows
+}
+
+/// True when `sym` has at least one caller besides itself and every such caller is test code.
+fn only_tests_call(
+    ctx: &DeadCodeContext<'_>,
+    value: &crate::graph::value_reach::ValueReach,
+    sym: &Symbol,
+) -> bool {
+    use crate::domain::CorpusView;
+    let view = (ctx.ingest, ctx.interner);
+    let callers = ctx
+        .graph
+        .callers(sym.id)
+        .map(|(caller, _)| caller)
+        .chain(value.readers(sym.id))
+        .filter(|&caller| caller != sym.id);
+    let mut seen = false;
+    for caller in callers {
+        if !ctx.ingest.sym(caller).is_some_and(|s| view.is_test_symbol(s)) {
+            return false;
+        }
+        seen = true;
+    }
+    seen
+}
+
+/// Identifier uses of each candidate name in non-test files, per language.
+fn production_uses<'a>(
+    ctx: &DeadCodeContext<'a>,
+    candidates: &[&Symbol],
+) -> std::collections::HashMap<Lang, std::collections::HashMap<&'a str, u32>> {
+    use crate::domain::CorpusView;
+    let view = (ctx.ingest, ctx.interner);
+    let mut uses_by_lang: std::collections::HashMap<Lang, std::collections::HashMap<&str, u32>> =
+        std::collections::HashMap::new();
+    for sym in candidates {
+        uses_by_lang
+            .entry(sym.lang)
+            .or_default()
+            .insert(view.sym_name(sym), 0);
+    }
+    for (lang, uses) in &mut uses_by_lang {
+        crate::ingest::identifiers::count_production_identifier_uses(
+            ctx.ingest,
+            ctx.interner,
+            ctx.sources,
+            *lang,
+            uses,
+        );
+    }
+    uses_by_lang
 }
 
 pub fn render<W: Write>(

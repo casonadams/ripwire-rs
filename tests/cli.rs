@@ -1,6 +1,7 @@
 mod cli {
     mod architecture_behavior;
     mod args;
+    mod dead_code_test_only;
     mod dispatch;
     mod dispatch_contract;
     mod doctor;

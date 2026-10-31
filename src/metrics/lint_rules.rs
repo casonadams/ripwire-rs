@@ -1,7 +1,7 @@
 use super::lint::{LintFinding, LintRuleDesc};
 use super::lint_naming::NameCorpus;
 use crate::domain::{IngestResult, Interner, Lang, SymKind, Symbol};
-use crate::ingest::registry::PARSER_STATE;
+use crate::ingest::registry::parse_with_grammar;
 use crate::languages::LanguageSemantics;
 
 #[derive(Clone, Copy)]
@@ -106,13 +106,7 @@ fn parse_source(
     path: &str,
     source: &str,
 ) -> Option<tree_sitter::Tree> {
-    let grammar = sem.source_grammar(path)?;
-    PARSER_STATE.with(|state| {
-        let mut borrowed = state.borrow_mut();
-        let (parser, _) = &mut *borrowed;
-        parser.set_language(grammar).ok()?;
-        parser.parse(source, None)
-    })
+    parse_with_grammar(sem.source_grammar(path)?, source.as_bytes())
 }
 
 pub struct Sink<'a> {

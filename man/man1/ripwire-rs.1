@@ -341,7 +341,7 @@ Disable stable dependency violation warnings in \fB\-\-deps\fR output.
 .SH ARCHITECTURE & CODE INTELLIGENCE
 .TP
 .B \-\-dead\-code
-Detect internal functions with zero incoming callers across the repository.
+Detect internal functions with zero incoming callers across the repository. Functions whose every indexed caller is test code are listed apart as \fB<to>\fR rows, counted by \fBto=\fR and not by \fBcount=\fR.
 .TP
 .B \-\-communities
 Partition call graph into cohesive modular clusters using Louvain community detection.
