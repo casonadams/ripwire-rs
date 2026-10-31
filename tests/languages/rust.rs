@@ -595,3 +595,25 @@ impl Op {\n    fn helper(&self) {}\n    fn run(&self) { helper(); }\n}\nfn helpe
     assert!(callees("parse").is_empty(), "{:?}", callees("parse"));
     assert_eq!(callees("run"), [".helper"]);
 }
+
+/// `crate::crawler::Config::parse(..)`: `parse` is a std member name, so the call must bind through its
+/// type segment (`Config`) to the in-tree inherent method, not be dropped as a std call on the path.
+#[test]
+fn rust_module_qualified_type_call_binds_to_in_tree_owner() {
+    let callees = owner_qualified_callees(
+        &[
+            (
+                "src/crawler.rs",
+                Lang::Rust,
+                b"pub struct Config;\n\nimpl Config {\n    pub fn parse(s: &str) -> Config {\n        let _ = s;\n        Config\n    }\n}\n",
+            ),
+            (
+                "src/lib.rs",
+                Lang::Rust,
+                b"pub mod crawler;\n\npub fn run() -> crawler::Config {\n    crate::crawler::Config::parse(\"y\")\n}\n",
+            ),
+        ],
+        "run",
+    );
+    assert_eq!(callees, vec!["Config.parse".to_string()]);
+}

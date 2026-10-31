@@ -11,7 +11,18 @@
 
 ; ---- calls ----
 
-(perform_procedure) @name @reference.call
+; `PERFORM A THRU B` names two paragraphs: one reference per label, so both bind (the procedure node
+; text is the two names joined, which binds to nothing).
+(perform_procedure
+  (label
+    (qualified_word
+      (WORD) @name))) @reference.call
+
+; `GO TO FINISH-UP` transfers control to a paragraph: a call edge like PERFORM.
+(goto_statement
+  to: (label
+    (qualified_word
+      (WORD) @name))) @reference.call
 
 (call_statement
   x: _ @name) @reference.call

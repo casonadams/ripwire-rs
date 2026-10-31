@@ -27,3 +27,9 @@
 (inheritance_specifier
     ancestor: (user_defined_type
         (identifier) @name)) @reference.extends
+
+; `new Vault(...)` constructs the contract `Vault`: a call on the named type.
+(new_expression
+    name: (type_name
+        (user_defined_type
+            (identifier) @name))) @reference.call
