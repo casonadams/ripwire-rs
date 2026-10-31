@@ -329,6 +329,10 @@ fn is_method_std_member_blocked<L: ResolutionLookup + ?Sized>(
     let Some(sym_sc) = sym.scope else {
         return true;
     };
+    if r.member_call {
+        // `x.len()`: the receiver, not the caller's scope or file, says whose `len` this is.
+        return r.receiver_type != Some(sym_sc) && r.qualifier != Some(sym_sc);
+    }
     if caller_scope == Some(sym_sc) {
         return false;
     }
