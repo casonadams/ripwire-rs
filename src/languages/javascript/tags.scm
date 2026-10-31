@@ -67,13 +67,15 @@
 ; export object (47 webpack/lib sites, 0 extracted before this round). Structurally these patterns
 ; capture EVERY `a.b = fn` / `a.b.c = fn`; the object-text scoping (exports / module.exports) lives
 ; in ingest.cpp (isCjsExportTarget) because tags-pass predicates never run — see the SCREAMING_SNAKE
-; precedent above. `!name`-scoped to ANONYMOUS values: a named function expression already defines
-; its inner name, and capturing both would double the row.
+; precedent above. The def is named by the PROPERTY, which is the name callers use, whether the value is
+; anonymous or a named function expression (`module.exports.h = function helperFn(){}` is `h`, not
+; `helperFn`). The inner name of such a value is suppressed in is_def_capture_allowed, so the row is
+; minted once.
 (assignment_expression
   left: (member_expression
     object: (identifier)
     property: (property_identifier) @name)
-  right: [ (arrow_function) (function_expression !name) ]) @definition.cjsexport
+  right: [ (arrow_function) (function_expression) ]) @definition.cjsexport
 
 (assignment_expression
   left: (member_expression
@@ -81,20 +83,19 @@
       object: (identifier)
       property: (property_identifier))
     property: (property_identifier) @name)
-  right: [ (arrow_function) (function_expression !name) ]) @definition.cjsexport
+  right: [ (arrow_function) (function_expression) ]) @definition.cjsexport
 
 ; prototype method — `Foo.prototype.bar = function (..) {..}`, the pre-class idiom node lib/ still
-; carries 332 sites of; the 163 with ANONYMOUS values were invisible (the rest rode a named inner
-; function expression, hence the same `!name` scope). The inner `object:` is unconstrained so any
-; qualifier depth matches (`net.exports.Socket.prototype.x`); the `.prototype.` text test is the
-; ingest.cpp gate (isPrototypeMemberTarget) — instance-slot assignments (`sock.onclose = fn`,
-; `this.state.h = fn`) share the shape and must stay out.
+; carries 332 sites of. The inner `object:` is unconstrained so any qualifier depth matches
+; (`net.exports.Socket.prototype.x`); the `.prototype.` text test is the ingest.cpp gate
+; (isPrototypeMemberTarget) — instance-slot assignments (`sock.onclose = fn`, `this.state.h = fn`) share
+; the shape and must stay out. Named function-expression values are named by the property, as above.
 (assignment_expression
   left: (member_expression
     object: (member_expression
       property: (property_identifier))
     property: (property_identifier) @name)
-  right: [ (arrow_function) (function_expression !name) ]) @definition.protomethod
+  right: [ (arrow_function) (function_expression) ]) @definition.protomethod
 
 ; ---- module-level settings constants (r3 q10 — bench/headtohead/r3-headroom-2026-08-03) ----
 ; Mirrors queries/typescript/tags.scm (same rationale, same --match-verified shapes; the JS grammar

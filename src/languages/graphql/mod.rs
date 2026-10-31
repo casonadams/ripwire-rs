@@ -38,4 +38,14 @@ impl LanguageSemantics for GraphqlLanguage {
     fn supports_slice(&self) -> bool {
         false
     }
+
+    /// A named type a field, argument or variable mentions is a dependency on that schema type.
+    fn type_mentions_are_edges(&self) -> bool {
+        true
+    }
+
+    /// The built-in scalars are defined by the spec, never by a schema, so a mention of one is no edge.
+    fn is_builtin_keyword(&self, name: &str) -> bool {
+        matches!(name, "ID" | "String" | "Int" | "Float" | "Boolean")
+    }
 }
