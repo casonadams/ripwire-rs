@@ -27,6 +27,15 @@
 (enum_declaration
   name: (identifier) @name) @definition.type
 
+; `record Point(int x) { .. }` — a record is a class-like container; its members (`sum()` in
+; `record Point(int x, int y) { int sum() { .. } }`) were orphaned without it (no class symbol).
+(record_declaration
+  name: (identifier) @name) @definition.class
+
+; `@interface Marker { .. }` — an annotation type declares an interface-shaped contract.
+(annotation_type_declaration
+  name: (identifier) @name) @definition.interface
+
 (method_declaration
   name: (identifier) @name) @definition.method
 

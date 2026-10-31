@@ -125,3 +125,21 @@ class Client {\n  void run(Store store) { store.stash(1); }\n}\n";
     );
     assert!(callees.contains(&"Store.stash".to_string()), "{callees:?}");
 }
+
+#[test]
+fn java_record_and_annotation_declarations_are_definitions() {
+    verify_protocol_case(&GraphProtocolCase {
+        label: "java-record",
+        files: &[(
+            "src/Points.java",
+            Lang::Java,
+            b"public record Point(int x, int y) {\n    public int sum() { return x + y; }\n}\n@interface Marker { String value(); }\n",
+        )],
+        expected_syms: &[
+            sym("Point", SymKind::Class, None, true),
+            sym("sum", SymKind::Method, Some("Point"), true),
+            sym("Marker", SymKind::Interface, None, true),
+        ],
+        ..Default::default()
+    });
+}
