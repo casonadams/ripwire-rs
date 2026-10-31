@@ -31,6 +31,10 @@ impl LanguageSemantics for ProtoLanguage {
         false
     }
 
+    fn type_mentions_are_edges(&self) -> bool {
+        true
+    }
+
     fn retrieval_weight(&self) -> f64 {
         0.35
     }
