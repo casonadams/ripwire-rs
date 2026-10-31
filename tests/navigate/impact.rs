@@ -271,3 +271,34 @@ fn shared_impact_depth_changes_the_reachable_set() {
     assert!(deeper.contains(" n=\"top\""), "{deeper}");
     assert!(deeper.contains(" pr_iters=\"7\""), "{deeper}");
 }
+
+fn impact_row<'a>(xml: &'a str, name: &str) -> &'a str {
+    let marker = format!("<s t=\"fn\" n=\"{name}\"");
+    let start = xml
+        .find(&marker)
+        .unwrap_or_else(|| panic!("no row for {name}: {xml}"));
+    let rest = &xml[start..];
+    &rest[..rest.find("/>").unwrap() + 2]
+}
+
+#[test]
+fn a_caller_bound_by_name_alone_is_marked_via_name() {
+    let files = [
+        (
+            "lib/target.py",
+            Lang::Python,
+            b"def target():\n    return 1\n\ndef sibling():\n    return target()\n".as_slice(),
+        ),
+        (
+            "app/other.py",
+            Lang::Python,
+            b"def stranger():\n    return target()\n".as_slice(),
+        ),
+    ];
+    let xml = render(&files, NavMode::Impact, "target", PageRequest::default());
+    assert!(
+        impact_row(&xml, "stranger").contains("via=\"name\""),
+        "{xml}"
+    );
+    assert!(!impact_row(&xml, "sibling").contains("via="), "{xml}");
+}

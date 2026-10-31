@@ -58,6 +58,9 @@ pub struct ImpactNode {
     pub rank: f64,
     pub hops: u32,
     pub tested: bool,
+    /// The edge that first reached this node binds by name alone: a hedge, not a proven caller.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub by_name: bool,
 }
 
 fn matches_symbol_selector(
@@ -403,6 +406,7 @@ fn create_impact_node(
         rank: info.rank,
         hops: depth,
         tested: false,
+        by_name: false,
     })
 }
 
@@ -448,7 +452,7 @@ fn enqueue_impact_callers(
     depth: u32,
     graph: &Graph,
     visited: &mut HashSet<NodeId>,
-    queue: &mut VecDeque<(NodeId, u32)>,
+    queue: &mut VecDeque<(NodeId, u32, bool)>,
 ) {
     if depth >= 1 && graph.in_degree(curr) > 512 {
         return;
@@ -456,7 +460,10 @@ fn enqueue_impact_callers(
     let min_weight = if depth == 0 { 0.1 } else { 0.2 };
     for (caller_id, weight) in graph.callers(curr) {
         if weight >= min_weight && visited.insert(caller_id) {
-            queue.push_back((caller_id, depth + 1));
+            let by_name = graph
+                .edge_prov(caller_id, curr)
+                .is_some_and(crate::resolve::EdgeProv::is_by_name);
+            queue.push_back((caller_id, depth + 1, by_name));
         }
     }
 }
@@ -478,15 +485,16 @@ pub fn transitive_impact_multi(
 
     for &seed_id in &effective_seeds {
         if visited.insert(seed_id) {
-            queue.push_back((seed_id, 0u32));
+            queue.push_back((seed_id, 0u32, false));
         }
     }
 
     let tested_mask = compute_tested_node_mask(ingest, graph, interner);
-    while let Some((curr, depth)) = queue.pop_front() {
+    while let Some((curr, depth, by_name)) = queue.pop_front() {
         if !seeds.contains(&curr)
             && let Some(mut node) = create_impact_node(curr, depth, ingest, ranks, interner)
         {
+            node.by_name = by_name;
             node.tested = tested_mask.get(curr as usize).copied().unwrap_or(false)
                 || crate::gate::affected::is_test_path(&node.path);
             results.push(node);

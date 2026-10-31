@@ -69,7 +69,9 @@ two hops away, a read/write that never calls SYM, or an `#include` that pulls it
   `ripwire-rs <dir> --uses=SYM --legend=compact` (the resolvable use-sites by role — `call|read|write|import|extends` — file:line; catches
   non-call references `--callers` never sees, e.g. a struct read or a header import). Run both — `--impact`
   gives depth (the call chain), `--uses` gives breadth (kinds of reference). `--callers` alone is the wrong
-  tool for this question; reach for it only when you already know the change is local.
+  tool for this question; reach for it only when you already know the change is local. A `via="name"` row in
+  `--impact` was first reached through an edge bound by name alone: a hedge, not a proven caller — verify it
+  at the call site before trusting it.
 - **"Who breaks, AND which of those a test already reaches"** — `--impact`/`--callers`/`--callees` rows
   carry `tested="1"` when an indexed test transitively reaches that row (omitted, never a literal `0`, when
   none does); `--impact`'s root adds `radius_tested=`/`radius_untested=` over its transitive reach,

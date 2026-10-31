@@ -355,9 +355,10 @@ fn write_reach_row<W: Write>(out: &mut W, n: &ImpactNode, show_depth: bool) -> i
     } else {
         ""
     };
+    let via_attr = if n.by_name { " via=\"name\"" } else { "" };
     write!(
         out,
-        "<s t=\"{}\" n=\"{}\" p=\"{}:{}\"{depth_attr}{tested_attr}/>",
+        "<s t=\"{}\" n=\"{}\" p=\"{}:{}\"{depth_attr}{tested_attr}{via_attr}/>",
         n.kind,
         n.name.xml_escaped(),
         n.path.xml_escaped(),
@@ -388,7 +389,7 @@ impl crate::serialize::XmlReport for ImpactReport<'_> {
         "impact",
         "ripwire-rs.impact/v1",
         root: false,
-        comment: "ripwire-rs impact schema=ripwire-rs.impact/v1: transitive blast radius of of=. declined_calls=K: call sites naming a reached def the resolver left unbound; <dc in= p= cands=>: one such site, NOT an edge; dc_shown=N rows printed (file-first)."
+        comment: "ripwire-rs impact schema=ripwire-rs.impact/v1: transitive blast radius of of=. via=name on <s>: the edge that first reached it binds by name alone, a hedge not a proven caller. declined_calls=K: call sites naming a reached def the resolver left unbound; <dc in= p= cands=>: one such site, NOT an edge; dc_shown=N rows printed (file-first)."
     );
     fn pr_iters(&self) -> Option<u32> {
         self.pr_iters
