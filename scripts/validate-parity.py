@@ -543,6 +543,27 @@ def check_xml_timeout(output):
 Outcome = collections.namedtuple("Outcome", "reason rw rip text")
 
 
+def full_window_outputs(rw_bin, rip_bin, repo, cmd, out_rw, out_rip):
+    """Both outputs at the full window when the default one is a paged list.
+
+    A default window is a byte budget, so what it shows says nothing about which attributes a row
+    can carry; structure is judged on the full set and default sizes by `make size`. A budget
+    command keeps its own windows, and any failure to run the full set keeps the default outputs.
+    """
+    root, err = parse_xml_dom(out_rw)
+    if err or not is_paged(root) or FULL_ROWS_FLAG in cmd or "--max-tokens" in cmd or "--token-budget" in cmd:
+        return out_rw, out_rip
+    args = shlex.split(cmd) + [FULL_ROWS_FLAG]
+    try:
+        full_rw = subprocess.run([rw_bin, repo] + args, capture_output=True, text=True, timeout=20)
+        full_rip = subprocess.run([rip_bin, repo] + args, capture_output=True, text=True, timeout=FULL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return out_rw, out_rip
+    if full_rw.returncode != 0 or full_rip.returncode != 0:
+        return out_rw, out_rip
+    return full_rw.stdout, full_rip.stdout
+
+
 def run_one_check(rw_bin, rip_bin, repo, cmd, allow_extra_root=False, omits=None):
     text = is_text_cmd(cmd)
     if cmd == "-v":
@@ -578,7 +599,8 @@ def run_one_check(rw_bin, rip_bin, repo, cmd, allow_extra_root=False, omits=None
     if text:
         reason = check_non_xml_parity(cmd, p_rw.stdout, p_rip.stdout)
     else:
-        reason = check_xml_parity(cmd, p_rw.stdout, p_rip.stdout, allow_extra_root, omits)
+        rw_out, rip_out = full_window_outputs(rw_bin, rip_bin, repo, cmd, p_rw.stdout, p_rip.stdout)
+        reason = check_xml_parity(cmd, rw_out, rip_out, allow_extra_root, omits)
     return Outcome(reason, p_rw.stdout, p_rip.stdout, text)
 
 
@@ -826,7 +848,7 @@ def judge(rw_bin, rip_bin, repo, cmd, outcome, entry):
 
 
 def check_one(rw_bin, rip_bin, where, cmd, desc, entry, run_cmd=None):
-    kind_allows_extra = entry is not None and entry["kind"] == "richer"
+    kind_allows_extra = entry is not None and entry["kind"] in ("richer", "smaller")
     omits = entry.get("omits") if entry is not None else None
     outcome = run_one_check(rw_bin, rip_bin, where, run_cmd or cmd, kind_allows_extra, omits)
     reason, warning = judge(rw_bin, rip_bin, where, run_cmd or cmd, outcome, entry)

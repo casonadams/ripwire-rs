@@ -4,7 +4,7 @@
 # equal upstream's, every shown row in upstream's full (--limit) set, rows in our ranking order,
 # and bytes within upstream's or richer by density. An entry records only what that rule cannot.
 # Kinds, checked against measured output:
-#   smaller                 our stdout bytes <= upstream stdout bytes; may declare omits (see docs/GATES.md)
+#   smaller                 our stdout bytes <= upstream stdout bytes; may declare omits (see docs/GATES.md) and extra root attributes
 #   richer                  our facts (elements + attributes) > upstream's, and our facts-per-byte >= upstream's
 #   fixes-upstream-defect   evidence = tests/<mod>/<file>.rs::test_name, which must exist
 #   defect                  our known defect; printed as a warning and counted in defect_budget
@@ -195,17 +195,17 @@ evidence = "measured: ours 3403 B, 8 rows, all upstream-required attrs present e
 id = "quality-panel-richer-family-evidence"
 command = "--quality-panel"
 case = ""
-kind = "richer"
-why = "Each ranked finding carries one child per fired family with the measured values behind its rank (structural bars and, when non-zero, the nesting humps and deep lines, lexical name length and words, historical churn count and last-change date, colocation fan-out, state reads and writes), so a reader can audit why it ranked. Upstream's per-family evidence rows are the same kind of fact and ours are denser per byte. Ours-only root attributes disclose the lenses: state_lens=mutable (state is mutable non-local state; configuration reads are excluded, unlike upstream's state), and hcut/hbasis/hfiles/hcrossed/hstatus (the historical cut and whether the family was ranked, measured-empty or unavailable)."
-evidence = "measured at default preset by make parity: see the printed ledger line for the current bytes, facts and density; upstream about 14 KB, 711 facts, density 0.0507. Root extras state_lens, hcut, hbasis, hfiles, hcrossed, hstatus are disclosure only; upstream root attributes are all present."
+kind = "smaller"
+why = "The default panel is budgeted to a fraction of upstream's bytes. Each ranked finding still carries one child per fired family with the measured values behind its rank, so a reader can audit why it ranked. Ours-only root attributes disclose the lenses: state_lens=mutable (state is mutable non-local state; configuration reads are excluded, unlike upstream's state), and hcut/hbasis/hfiles/hcrossed/hstatus (the historical cut and whether the family was ranked, measured-empty or unavailable)."
+evidence = "measured: ours about 9 KB, upstream about 14 KB at the default preset. Root extras state_lens, hcut, hbasis, hfiles, hcrossed, hstatus are disclosure only; upstream root attributes are all present."
 
 [[divergence]]
 id = "ensemble-default-window"
 command = "--ensemble"
 case = ""
-kind = "richer"
-why = "The default ensemble is budget-derived like every paged default window: it fills the 64 KB pack budget (276 of 1433 ranked symbols) where upstream stops at a fixed 40-symbol window, so it carries more facts at a higher density. Its root also discloses ours-only enabled and enabled_n (the families that ran) and hcut, hbasis, hfiles and hstatus (the historical cut and whether the family was ranked, measured-empty or unavailable), which richer permits; upstream's required root attributes are all present."
-evidence = "measured: bytes rw=64407 rip=14009; facts rw=3897 rip=714; density rw=0.06051 rip=0.05097; upstream default shown_syms=40 of total=1421; root extras enabled, enabled_n allowed by test_validate_parity.py RootAttributeRule."
+kind = "smaller"
+why = "The default ensemble is budget-windowed like every paged default list, so it shows fewer symbols than upstream's fixed 40-symbol window only when a row does not fit the budget, in about two thirds of upstream's bytes. Its root also discloses ours-only enabled and enabled_n (the families that ran) and hcut, hbasis, hfiles and hstatus (the historical cut and whether the family was ranked, measured-empty or unavailable); upstream's required root attributes are all present."
+evidence = "measured: ours about 8.9 KB, upstream about 14.0 KB; root extras enabled, enabled_n allowed by test_validate_parity.py RootAttributeRule."
 
 [[divergence]]
 id = "test-gate-untested-default-window"
@@ -251,18 +251,18 @@ evidence = "tests/cli/dead_code_test_only.rs::functions_only_tests_call_are_list
 id = "communities-file-scope-members"
 command = "--communities"
 case = ""
-kind = "richer"
-why = "Module-scope owners are no longer community members (fixed in e7a8731). The rest of the difference is a cap: upstream lists at most 5 members for each of its 92 capped communities even under --limit=100000 (shown=5 capped=1), so its full set cannot contain our members beyond that cap, while our member lists are budget-windowed."
-evidence = "measured: upstream full run shows 92 communities with shown=\"5\" capped=\"1\"; the checker's full-set comparison cannot reach members past 5 in those communities."
+kind = "smaller"
+why = "Module-scope owners are no longer community members (fixed in e7a8731). The default list is budget-windowed, so it carries about half of upstream's bytes; upstream lists at most 5 members for each of its 92 capped communities even under --limit=100000."
+evidence = "measured: ours about 9.0 KB, upstream about 19.1 KB; upstream full run shows 92 communities with shown=\"5\" capped=\"1\"."
 
 
 [[divergence]]
 id = "deps-afferent-only-files"
 command = "--deps"
 case = ""
-kind = "richer"
-why = "The 11 afferent-only rows are real importers, not noise: changes.rs is imported by gate.rs and safety_queries.rs through `use crate::commands::common::changes::...`, and score.rs by its parent through `use score::{...}`. Upstream's full list records no importer for them, so it has no row; each row here names an import that exists in the source."
-evidence = "measured: ours 11 afferent-only rows absent from upstream's full set; ours 79861 B and 3920 facts vs upstream default 27653 B and 1214 facts (density 0.04909 vs 0.04390)."
+kind = "smaller"
+why = "The default list is budget-windowed, so it carries about half of upstream's bytes. Afferent-only rows, where shown, are real importers: changes.rs is imported by gate.rs and safety_queries.rs through `use crate::commands::common::changes::...`, and score.rs by its parent through `use score::{...}`."
+evidence = "measured: ours about 15.9 KB, upstream about 28.0 KB at the default window."
 
 [[divergence]]
 id = "clones-seams-compute-directory"
@@ -285,9 +285,25 @@ evidence = "measured at 575bd1e: ours --callers=write_hits hop_tested=2 (matches
 id = "context-ratio-dispatch-row"
 command = "--context-ratio"
 case = ""
+kind = "smaller"
+why = "The default file list is budget-windowed to under half of upstream's bytes. Upstream caps its file rows at 40 (shown_files=40 files_capped=1) even under --limit=100000."
+evidence = "measured: ours about 8.4 KB, upstream about 18.7 KB; upstream full run file_units=448 shown_files=40 files_capped=1."
+
+[[divergence]]
+id = "hotspots-bulk-commits-not-churn"
+command = "--hotspots"
+case = ""
 kind = "richer"
-why = "Upstream caps its file rows at 40 (shown_files=40 files_capped=1) even under --limit=100000, so src/cli/dispatch.rs and the other file rows we show past that cap cannot be in its full set. Our budget-windowed listing carries more facts per byte (4554 facts at 0.0704 per byte vs upstream 1138 at 0.0604)."
-evidence = "measured: ours default 64733 B, 4554 facts, density 0.07035; upstream default 18857 B, 1138 facts, density 0.06035; upstream full run file_units=448 shown_files=40 files_capped=1."
+why = "A commit touching more than 100 changed paths (MERGE_BOMB_MAX_FILES, renames counted as two) is a mechanical sweep, not a change to each file, so it adds no churn; upstream counts it, so it ranks eight more files whose only change is the module-split commit. Ours shows more rows in the default window because its window is budget-derived."
+evidence = "measured: ours ranked=277 files=536 unranked_no_churn=16; upstream ranked=285 unranked_no_churn=0; the eight extra upstream rows each have churn=1 from commit 2771653."
+
+[[divergence]]
+id = "zoom-louvain-granularity"
+command = "--zoom"
+case = ""
+kind = "richer"
+why = "Our Louvain pass over our own call graph yields a different partition from upstream's (96 against 46 top modules over 7520 against 7075 symbols), because the two graphs differ in resolved edges; totals and module membership therefore cannot match. The default window is budget-derived and shows more modules than upstream's fixed 40."
+evidence = "measured: ours levels=5 top_modules=96 symbols=7520; upstream levels=5 top_modules=46 symbols=7075; both print the top 2 levels by default."
 
 [[divergence]]
 id = "comment-coherence-auto-cache-path"
