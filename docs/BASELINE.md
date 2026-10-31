@@ -48,12 +48,31 @@ Same commands and repository state class (this repo, upstream 0.6.9). Ceilings f
 Conceptual retrieval at `--budget 2000` is unchanged in ranking and 19% smaller: top1 0.27, mrr 0.387,
 pres 0.79, median 6706 B (was 8276 B).
 
+## Conceptual ranking (second pass)
+
+`scripts/retrieval-eval.py --budget 2000`, 52 questions. Three changes to the scoring evidence: the doc comment
+above a definition (or the run of line comments there, which many codebases write instead) counts as evidence
+at weight 8; a constant's own initializer text counts; a body's evidence weight falls with the square root of
+its length above 30 lines, since a long body contains terms by chance.
+
+| | top1 | hit@3 | hit@10 | mrr | pres | rec | median bytes |
+|---|---|---|---|---|---|---|---|
+| before | 0.27 | 0.42 | 0.69 | 0.387 | 0.79 | 0.69 | 8276 |
+| after | 0.33 | 0.44 | 0.71 | 0.442 | 0.87 | 0.75 | 6686 |
+| upstream 0.6.9 | 0.42 | 0.62 | 0.75 | 0.531 | 0.75 | 0.64 | 5903 |
+
+Tried and dropped: weighting a constant with three or more matching terms like code (mrr unchanged, presence
+down); the body-length exponent, doc weight and reference length are on a plateau (0.25 to 1 and 6 to 8 move mrr
+by under 0.01, a 12 doc weight loses 0.04).
+
+`--for` latency: `collect_for_lego` built a full resolution index per interface to print a count; it is now
+built once and only when needed. `--for=<name>` 130 ms -> 61 ms, `--for=<concept>` 188 ms -> 77 ms, warm.
+
 Still open:
 
-- Conceptual ranking trails upstream (top1 0.27 against 0.42, mrr 0.387 against 0.531). Presence is higher
-  (0.79 against 0.75), so the right row is usually returned but not first. This is the largest quality gap.
-- `--for` takes about 130 ms warm against 40 to 70 ms for the other verbs; the cost is in retrieval scoring,
-  not in building the answer.
+- Conceptual ranking still trails upstream on top1 (0.33 against 0.42) and mrr (0.442 against 0.531), while
+  presence and recall are ahead. What outranks the right row is usually a relevant helper; telling the
+  coordinating function from its helpers needs a signal the scorer does not have yet.
 - A Rust `test_*.rs` file outside a test directory is classified as a test (the universal `test_` stem rule,
   pinned by `tests/gate/affected.rs`), so `src/commands/test_gate.rs` and `src/gate/test_gate.rs` count as tests.
 - Parity still runs against this repository's own tree and the installed upstream; a pinned fixture corpus
