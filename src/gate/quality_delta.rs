@@ -1133,8 +1133,30 @@ pub fn is_changed_callable(
             .any(|cf| file_path == cf || file_path.ends_with(cf))
 }
 
+/// Whether `sym`'s body differs from the baseline's. Body fingerprints exist only for a baseline rebuilt
+/// from git; a pinned sidecar keeps just complexity and size, so without both fingerprints a symbol
+/// counts as changed only when its cognitive complexity or length moved.
+fn body_changed(
+    sym: &crate::domain::Symbol,
+    key: &str,
+    was: &str,
+    facts: &QualityDeltaFacts<'_>,
+) -> bool {
+    if let Some((now, then)) = facts
+        .working
+        .body_by_sym
+        .get(key)
+        .zip(facts.baseline.body_by_sym.get(was))
+    {
+        return !now.same_text(then);
+    }
+    let ccx = facts.baseline.ccx_by_sym.get(was).copied();
+    let loc = facts.baseline.loc_by_sym.get(was).copied();
+    ccx != Some(sym.ccx) || loc.is_some_and(|loc| loc != sym.loc)
+}
+
 /// A clone member's standing: new when the baseline lacks it, touched when its body in a changed
-/// file differs from the baseline's fingerprint.
+/// file differs from the baseline's.
 fn member_status(
     sym: &crate::domain::Symbol,
     state: &QueryContext<'_>,
@@ -1149,12 +1171,7 @@ fn member_status(
     if !facts.baseline.ccx_by_sym.contains_key(was) {
         MemberStatus::New
     } else if is_changed_callable(sym, path, facts.changed_files)
-        && !facts
-            .working
-            .body_by_sym
-            .get(&key)
-            .zip(facts.baseline.body_by_sym.get(was))
-            .is_some_and(|(now, then)| now.same_text(then))
+        && body_changed(sym, &key, was, facts)
     {
         MemberStatus::Touched
     } else {
