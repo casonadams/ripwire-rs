@@ -31,8 +31,6 @@
 ;     "not measured yet".
 ;   - enum_entry (individual enum constants): Java's own tags.scm makes the same call — only the
 ;     enum's container type is a def node, not each of its values.
-;   - type_alias: rare enough, and genuinely ambiguous whether it should read as @definition.type
-;     (Java's enum uses that tag) or @definition.class; deferred rather than guessed.
 
 ; ---- definitions ----
 
@@ -70,6 +68,11 @@
 (statements
   (function_declaration
     (simple_identifier) @name) @definition.function)
+
+; `typealias Name = String` — a type alias is a named type, the same @definition.type bucket Java's
+; enum and Swift's typealias use.
+(type_alias
+  (type_identifier) @name) @definition.type
 
 ; ---- references (calls + imports) ----
 
