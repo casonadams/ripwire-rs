@@ -70,9 +70,14 @@ built once and only when needed. `--for=<name>` 130 ms -> 61 ms, `--for=<concept
 
 Still open:
 
-- Conceptual ranking still trails upstream on top1 (0.33 against 0.42) and mrr (0.442 against 0.531), while
-  presence and recall are ahead. What outranks the right row is usually a relevant helper; telling the
-  coordinating function from its helpers needs a signal the scorer does not have yet.
+- Conceptual ranking still trails upstream on top1 (0.33 against 0.42) and mrr (0.440 against 0.531), while
+  presence and recall are ahead. What outranks the right row is usually a relevant helper. Three ways of
+  preferring the coordinating function all failed to beat 0.33 / 0.440 on the 52 questions, so none shipped:
+  a heavier weight for a call into a term-named function (weight 4 to 12: mrr 0.435 down to 0.390), a bonus
+  per extra query term the symbol's callees name (0.25 to 1: mrr 0.414 to 0.437), and re-scoring from the
+  top 30 (boost a symbol calling two or more top rows: mrr 0.412 to 0.427; demote a helper whose caller also
+  scores higher: mrr 0.428 to 0.431). The call-target weight (6) is already at its plateau. A new signal has to
+  come from outside call structure.
 - A Rust `test_*.rs` file outside a test directory is classified as a test (the universal `test_` stem rule,
   pinned by `tests/gate/affected.rs`), so `src/commands/test_gate.rs` and `src/gate/test_gate.rs` count as tests.
 - Parity still runs against this repository's own tree and the installed upstream; a pinned fixture corpus
