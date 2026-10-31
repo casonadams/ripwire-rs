@@ -5,7 +5,7 @@
 ## Basic Usage
 
 ```bash
-# Generate ranked symbol call graph map (default 64 KB budget)
+# Generate ranked symbol call graph map (default 8 KiB budget per list)
 ripwire-rs .
 
 # Select ranking signal (pagerank, authority, hub, degree, ccx, stable)
@@ -24,7 +24,7 @@ ripwire-rs . --top-k=200
 ripwire-rs . --legend=compact --pretty
 ripwire-rs . --top-k=20 --json
 
-# Maps default to 200 symbols and 65536 bytes; unknown rank signals are errors.
+# Maps default to 200 symbols and 8192 bytes; unknown rank signals are errors.
 # Query symbol relationships by bare name, scoped name, file:name, file::Scope::name or file:LINE
 ripwire-rs . --callers="Interner::len"
 ripwire-rs . --callees="src/domain.rs:new"

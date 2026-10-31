@@ -65,7 +65,7 @@ Unreadable or malformed indexes fail explicitly without a name-only fallback.
 callee identifier's index line; report lines preserve the call expression start.
 Overlapping MCP tools return canonical CLI XML/text in
 `result.content[0].text`, with the same facts, defaults, errors, and limits.
-Maps default to 200 symbols / 65536 bytes; rank signals are `pagerank`,
+Maps default to 200 symbols / 8192 bytes; rank signals are `pagerank`,
 `authority`, `hub`, `degree`, `ccx`, and `stable` (unknown signals error).
 `--situ` emits `ripwire-rs.situ/v1` XML; connecting subgraphs default to radius 2.
 `--impact-depth=N` optionally limits impact traversal (MCP `max_depth`), including

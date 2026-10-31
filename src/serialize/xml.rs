@@ -6,7 +6,7 @@ use crate::serialize::{PageRequest, Paged, row_bytes};
 use std::io::{self, BufWriter, Write};
 
 pub const DEFAULT_STREAM_BUFFER_CAPACITY: usize = 64 * 1024;
-pub const DEFAULT_PACK_BUDGET_BYTES: usize = 64 * 1024;
+pub const DEFAULT_PACK_BUDGET_BYTES: usize = 8 * 1024;
 
 /// Configuration options for streaming XML serialization.
 #[derive(Debug, Clone, PartialEq)]

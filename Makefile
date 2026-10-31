@@ -21,7 +21,7 @@ ensure-grammars:
 ci: fmt-check clippy complexity registry crap ## Deterministic checks CI runs: format, clippy, complexity, registry, CRAP/tests (no upstream binary, no git history, no machine state)
 
 .PHONY: all
-all: fmt ci quality parity ## Run every check: format, the deterministic CI set, quality regressions against git HEAD, and upstream parity
+all: fmt ci quality size parity ## Run every check: format, the deterministic CI set, quality regressions against git HEAD, default answer sizes, and upstream parity
 
 .PHONY: build
 build: ## Build the project in debug mode
@@ -100,6 +100,10 @@ quality: ## Measure quality regressions against git HEAD with ripwire-rs
 	else \
 		echo "Error: ripwire-rs not found"; exit 1; \
 	fi
+
+.PHONY: size
+size: build-release ## Fail when a default answer outgrows its byte budget in scripts/output-budgets.toml
+	@python3 ./scripts/check-output-size.py .
 
 UPSTREAM_DIR ?= ../ripwire
 

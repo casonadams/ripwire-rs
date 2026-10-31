@@ -75,7 +75,7 @@ Read the canonical XML/text in JSON-RPC `result.content[0].text`; do not parse
 legacy JSON summary fields such as navigation `definitions` or impact arrays.
 Facts, defaults, errors, limits, and pagination match the CLI. Navigation retains
 definition grouping, edge provenance, and unresolved/external/declined evidence.
-Map defaults are 200 symbols and 65536 bytes. Supported rank signals are
+Map defaults are 200 symbols and 8192 bytes. Supported rank signals are
 `pagerank`, `authority`, `hub`, `degree`, `ccx`, and `stable`; unknown signals
 (including `churn`) are errors, not a fallback.
 `situational_awareness` and CLI `--situ` emit `ripwire-rs.situ/v1` XML.

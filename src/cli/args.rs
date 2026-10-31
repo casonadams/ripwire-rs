@@ -13,7 +13,7 @@ pub struct Cli {
     /// Ranking signal: pagerank, authority, hub, degree, ccx, stable
     #[arg(long, default_value = "pagerank")]
     pub rank_by: String,
-    /// Streaming budget in bytes (default 65536)
+    /// Streaming budget in bytes (default 8192; secondary lists get a quarter)
     #[arg(
         long = "pack-budget",
         visible_alias = "pack-budget-bytes",

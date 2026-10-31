@@ -37,6 +37,9 @@ pub use xml::{
 /// Bytes per token: converts a byte budget into the `budget_tokens=` disclosure (same 4-bytes-per-token rule as `est_tokens=`).
 pub const BYTES_PER_TOKEN: usize = 4;
 
+/// A secondary list gets this fraction of its parent's byte budget.
+const NESTED_BUDGET_DIVISOR: usize = 4;
+
 /// A caller's `--limit` / `--offset` request and the output budget every default cap is computed from.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct PageRequest {
@@ -52,13 +55,15 @@ impl PageRequest {
         Self { budget, ..self }
     }
 
-    /// The same byte budget with no `--limit` / `--offset`, for a secondary list inside a report.
+    /// A secondary list inside a report: no `--limit` / `--offset`, and a quarter of the byte budget, so a
+    /// report's lists together stay near one budget. A list always shows at least one row.
     #[must_use]
     pub fn nested(self) -> Self {
+        let budget = self.budget.unwrap_or(DEFAULT_PACK_BUDGET_BYTES);
         Self {
             limit: None,
             offset: None,
-            ..self
+            budget: Some(budget / NESTED_BUDGET_DIVISOR),
         }
     }
 

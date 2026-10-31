@@ -1,0 +1,76 @@
+# Byte ceilings for default answers on this repository, checked by scripts/check-output-size.py.
+# A ceiling sits about a quarter above the measured size so ordinary growth passes; a verb that
+# outgrows its ceiling must be budgeted down, or the ceiling raised in a commit that says why.
+# Before the alignment work these answers were 3 to 15 times larger (docs/BASELINE.md).
+
+[[budget]]
+command = ""
+max_bytes = 20480
+
+[[budget]]
+command = "--for=fit_rows"
+max_bytes = 2048
+
+[[budget]]
+command = "--for='how are pages windowed under a byte budget'"
+max_bytes = 17408
+
+[[budget]]
+command = "--callers=fit_rows"
+max_bytes = 2048
+
+[[budget]]
+command = "--callees=window_fit"
+max_bytes = 2048
+
+[[budget]]
+command = "--uses=row_bytes"
+max_bytes = 6144
+
+[[budget]]
+command = "--defs=run"
+max_bytes = 4096
+
+[[budget]]
+command = "--impact=fit_rows"
+max_bytes = 18432
+
+[[budget]]
+command = "--impact=row_bytes"
+max_bytes = 18432
+
+[[budget]]
+command = "--grep=row_bytes"
+max_bytes = 15360
+
+[[budget]]
+command = "--pack-task='add a verb'"
+max_bytes = 22528
+
+[[budget]]
+command = "--hotspots"
+max_bytes = 11264
+
+[[budget]]
+command = "--report"
+max_bytes = 20480
+
+[[budget]]
+command = "--communities"
+max_bytes = 12288
+
+[[budget]]
+command = "--deps"
+max_bytes = 20480
+
+[[budget]]
+command = "--lint"
+max_bytes = 15360
+
+[[budget]]
+command = "--clones"
+max_bytes = 10240
+
+[[budget]]
+command = "--quality-panel"
+max_bytes = 12288

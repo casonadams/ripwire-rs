@@ -73,7 +73,7 @@ Budget the output to approximately \fIN\fR LLM prompt tokens (~4 bytes per token
 Alias for \fB\-\-max\-tokens\fR.
 .TP
 .BI \-\-pack\-budget= BYTES
-Streaming budget cap in raw bytes (default: 65536 = 64 KB).
+Streaming budget cap in raw bytes (default: 8192 = 8 KB per list; secondary lists in a report get a quarter).
 .TP
 .BI \-\-rank\-by= MODE
 Ranking signal algorithm: \fBpagerank\fR (default), \fBauthority\fR, \fBhub\fR, \fBdegree\fR, \fBccx\fR, or \fBstable\fR. Unknown signals are errors.

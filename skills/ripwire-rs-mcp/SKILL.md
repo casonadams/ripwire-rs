@@ -65,7 +65,7 @@ identifier's index line; reported lines preserve the call expression start.
 Overlapping tools return canonical CLI XML/text in `result.content[0].text`,
 not bespoke JSON summaries. Facts, defaults, errors, limits, definition grouping,
 provenance, and declined evidence match CLI reports. Maps default to 200 symbols
-and 65536 bytes. Rank signals: `pagerank`, `authority`, `hub`, `degree`, `ccx`,
+and 8192 bytes. Rank signals: `pagerank`, `authority`, `hub`, `degree`, `ccx`,
 `stable`; unknown signals (including `churn`) error. Slice shares the CLI
 workspace root and flow/depth validation.
 
