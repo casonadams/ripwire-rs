@@ -178,15 +178,55 @@ register_commands! {
     slice::SLICE,
 }
 
-/// The CLI with every plugin's flags and subcommands added.
+/// The flags `-h` lists: the Find and Check verbs and the options that shape their answers. Every other
+/// flag (reports, lenses, edits, exports) stays in `--help`, so an agent's first look is a short list.
+const CORE_FLAGS: &[&str] = &[
+    "for",
+    "callers",
+    "callees",
+    "impact",
+    "uses",
+    "defs",
+    "expand",
+    "grep",
+    "situ",
+    "test-gate",
+    "affected",
+    "edit-check",
+    "quality-delta",
+    "quality-baseline",
+    "help-task",
+    "limit",
+    "offset",
+    "token-budget",
+    "json",
+];
+
+const SHORT_HELP_FOOTER: &str = "Core Find and Check flags are listed. `--help` lists every flag (reports, lenses, edits, exports).";
+
+/// The CLI with every plugin's flags and subcommands added, and non-core flags hidden from `-h`.
 #[must_use]
 pub fn augment(cmd: clap::Command) -> clap::Command {
-    REGISTRY.iter().fold(cmd, |cmd, command| {
+    let cmd = REGISTRY.iter().fold(cmd, |cmd, command| {
         command
             .subcommands()
             .into_iter()
             .fold(command.augment(cmd), |cmd, sub| cmd.subcommand(sub))
-    })
+    });
+    let non_core: Vec<clap::Id> = cmd
+        .get_arguments()
+        .filter(|arg| {
+            arg.get_long()
+                .is_some_and(|long| !CORE_FLAGS.contains(&long))
+        })
+        .map(|arg| arg.get_id().clone())
+        .collect();
+    non_core
+        .into_iter()
+        .fold(cmd, |cmd, id| {
+            cmd.mut_arg(id, |arg| arg.hide_short_help(true))
+        })
+        .after_help(SHORT_HELP_FOOTER)
 }
 
 /// Every registered command plugin, in dispatch order.

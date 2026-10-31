@@ -151,7 +151,7 @@ The always-loaded ripwire primer trains the READ verbs (`--for`/`--recall`/`--ca
   `ripwire-rs <dir> --quality-panel[=strict|default|lenient] --legend=compact`, the six-family panel (→ **ripwire-rs-fresh-eyes**).
   **It is a lens, not a gate** — always exits 0; `--quality-delta` above is the only pass here that gates.
 
-`ripwire-rs --help` lists every flag on one line; `--help=--FLAG` prints one flag in full and `--help=all` the whole catalog. Every skill re-verifies its commands against the shipped binary.
+`ripwire-rs -h` lists only the core Find and Check flags (about 2.5 KB); `ripwire-rs --help` lists every flag. `--help-task="<task>"` names the one verb for a task. Every skill re-verifies its commands against the shipped binary.
 
 **Installing these skills:** `ripwire-rs --add-skills` installs every `ripwire-rs-*` skill and active manifest into `${AGENTS_HOME:-~/.agents}/skills` (or a custom directory passed via `--add-skills=DIR`).
 

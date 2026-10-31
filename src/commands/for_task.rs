@@ -39,6 +39,7 @@ pub struct ForTaskArgs {
     /// Emit compact refetch handles on retrieval rows
     #[arg(long = "handles")]
     pub handles: bool,
+    /// Ranked signatures and bodies for a task or a symbol name; a name gives its callers too
     #[arg(long = "for", visible_alias = "query", value_name = "TASK")]
     pub task_for: Option<String>,
     /// Emit only signatures without bodies
