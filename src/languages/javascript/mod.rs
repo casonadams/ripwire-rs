@@ -191,6 +191,28 @@ fn is_prototype_member_target(name_node: tree_sitter::Node<'_>, source_bytes: &[
         .is_some_and(|p| p.utf8_text(source_bytes) == Ok("prototype"))
 }
 
+/// True when a named function expression is the value of a CJS export or prototype assignment, where the
+/// assigned property is its def (`exports.h = function helperFn(){}` defines `h`). Its inner name is then
+/// not a second definition. Other `obj.p = function inner(){}` assignments keep the inner name.
+fn is_member_assigned_function_name(ctx: &DefCaptureGateContext<'_>) -> bool {
+    let Some(def) = ctx
+        .def_node
+        .filter(|def| def.kind() == "function_expression")
+    else {
+        return false;
+    };
+    def
+        .parent()
+        .filter(|assign| assign.kind() == "assignment_expression")
+        .and_then(|assign| assign.child_by_field_name("left"))
+        .filter(|left| left.kind() == "member_expression")
+        .and_then(|left| left.child_by_field_name("property"))
+        .is_some_and(|property| {
+            is_cjs_export_target(property, ctx.source_bytes)
+                || is_prototype_member_target(property, ctx.source_bytes)
+        })
+}
+
 pub(super) fn is_jsx_intrinsic_tag_call(
     name_node: Option<tree_sitter::Node<'_>>,
     name: &str,
@@ -445,6 +467,7 @@ impl LanguageSemantics for JavaScriptLanguage {
             Some("protomethod") => ctx
                 .name_node
                 .is_some_and(|nn| is_prototype_member_target(nn, ctx.source_bytes)),
+            None => !is_member_assigned_function_name(ctx),
             _ => true,
         }
     }
