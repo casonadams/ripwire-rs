@@ -1386,7 +1386,7 @@ fn first_call_argument(call: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<
 fn associated_call_type(cx: &TypeCx<'_>, subject: &str, name: &str) -> Option<String> {
     match cx.assoc_returns.get(subject).and_then(|fns| fns.get(name)) {
         Some(ret) => ret.clone(),
-        None if name == "new" => Some(subject.to_string()),
+        None if matches!(name, "new" | "default") => Some(subject.to_string()),
         None => None,
     }
 }
