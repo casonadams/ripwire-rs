@@ -596,6 +596,83 @@ fn call_edges(path: &str, lang: Lang, source: &str) -> Vec<(String, String)> {
     edges
 }
 
+/// For a corpus of in-memory files, `caller -> callee's file` for every call edge.
+fn callee_files(files: &[(&str, Lang, &str)]) -> Vec<(String, String)> {
+    use ripwire_rs::domain::CorpusView;
+    let registry =
+        ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
+    let interner = Interner::new();
+    let sources: Vec<(&str, Lang, &[u8])> = files
+        .iter()
+        .map(|(path, lang, src)| (*path, *lang, src.as_bytes()))
+        .collect();
+    let ingest = ripwire_rs::ingest_in_memory_files(&sources, &registry, &interner);
+    let graph = ripwire_rs::Graph::build(&ingest, &interner);
+    let view = (&ingest, &interner);
+    let mut edges: Vec<(String, String)> = ingest
+        .symbols
+        .iter()
+        .flat_map(|callee| {
+            graph
+                .callers(callee.id)
+                .map(|(caller, _)| {
+                    let caller = &ingest.symbols[caller as usize];
+                    (
+                        view.sym_name(caller).to_string(),
+                        view.sym_path(callee).to_string(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    edges.sort();
+    edges
+}
+
+#[test]
+fn test_a_bare_call_binds_to_the_imported_file_not_the_other_namesake() {
+    let imported = [
+        (
+            "src/commands/common/mcp.rs",
+            Lang::Rust,
+            "pub fn mk(n: u8) -> u8 { n }\n",
+        ),
+        (
+            "src/commands/map/tools.rs",
+            Lang::Rust,
+            "pub fn mk(n: u8) -> u8 { n + 1 }\n",
+        ),
+        (
+            "src/commands/a.rs",
+            Lang::Rust,
+            "use super::common::mcp::mk;\npub fn tools() -> u8 { mk(1) }\n",
+        ),
+    ];
+    assert_eq!(
+        callee_files(&imported),
+        vec![(
+            "tools".to_string(),
+            "src/commands/common/mcp.rs".to_string()
+        )]
+    );
+    let local_shadows = [
+        (
+            "src/commands/common/mcp.rs",
+            Lang::Rust,
+            "pub fn mk(n: u8) -> u8 { n }\n",
+        ),
+        (
+            "src/commands/a.rs",
+            Lang::Rust,
+            "use super::common::mcp::mk;\nfn mk(n: u8) -> u8 { n }\npub fn tools() -> u8 { mk(1) }\n",
+        ),
+    ];
+    assert_eq!(
+        callee_files(&local_shadows),
+        vec![("tools".to_string(), "src/commands/a.rs".to_string())]
+    );
+}
+
 #[test]
 fn test_bare_calls_reach_module_functions_and_nested_defs_not_class_members() {
     let py = "class Client:\n    def load(self):\n        return 1\n\n    def run(self):\n        def helper():\n            return 2\n        return helper()\n\n\ndef load():\n    return 3\n\n\ndef use():\n    return load()\n";

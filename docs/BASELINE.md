@@ -183,6 +183,14 @@ Rust typing added: struct field types (`ctx.graph.gauges()`) and free-function r
 module-qualified paths (`build::make().m()`), type a receiver. Precision 0.9832 to 0.9845, recall 0.9625 to
 0.9671.
 
+Import tier: a bare call (no qualifier, not a member call) to a free function or macro now binds to the
+candidate in a file the caller imports when no candidate is in the caller's own file; before, two same-named
+definitions in different directories made it `declined` however the caller imported. This is what the 48
+`mcp_tool!` misses were. It narrows only unscoped candidates, so trait methods and `Type::new` are untouched
+(a first version without that limit added 43 wrong `sym_name` edges). Oracles, precision / recall before to
+after: Rust 0.9845 / 0.9671 to 0.9848 / 0.9714; TypeScript 0.9948 / 0.9929 to 0.9948 / 0.9971 and
+0.9973 / 0.9763 to 0.9974 / 0.9908; Python and data-pipeline unchanged at 0.998 / 0.981 and 0.996 / 0.994.
+
 Still open:
 
 - A Rust `test_*.rs` file outside a test directory is classified as a test (the universal `test_` stem rule,

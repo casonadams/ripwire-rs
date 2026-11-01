@@ -1262,6 +1262,13 @@ pub trait ResolutionLookup {
             .get(caller_file_id as usize)
             .copied()
             .unwrap_or(u32::MAX);
+        if narrowing == Narrowing::None
+            && r.qualifier.is_none()
+            && !r.member_call
+            && let Some(imported) = self.imported_candidates(&cands, caller_file_id)
+        {
+            return self.resolve_targets(r, imported, Narrowing::Import, Tier::SameDir, template);
+        }
         let Some((tier_targets, tier)) = select_precedence_tier(
             &cands,
             caller_file_id,
@@ -1280,6 +1287,28 @@ pub trait ResolutionLookup {
             };
         };
         self.resolve_targets(r, tier_targets, narrowing, tier, template)
+    }
+
+    /// Candidates declared in files the caller imports, when none sits in the caller's own file (a local
+    /// definition shadows an import) and at least one does. A caller that imports two files naming the
+    /// symbol gets both, labelled as a split.
+    fn imported_candidates(&self, cands: &[NodeId], caller_file: u32) -> Option<Vec<NodeId>> {
+        let symbols = self.symbols();
+        if cands
+            .iter()
+            .any(|&id| symbols[id as usize].file_id == caller_file)
+        {
+            return None;
+        }
+        let imported: Vec<NodeId> = cands
+            .iter()
+            .copied()
+            .filter(|&id| {
+                let sym = &symbols[id as usize];
+                sym.scope.is_none() && self.file_imports_file(caller_file, sym.file_id)
+            })
+            .collect();
+        (!imported.is_empty() && imported.len() < cands.len()).then_some(imported)
     }
 
     fn resolve_targets(

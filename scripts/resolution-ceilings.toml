@@ -12,7 +12,7 @@ max = 670
 gauge = "graph_unresolved"
 max = 1170
 
-# SCIP oracle (rust-analyzer), measured on this repository: precision=0.9845, recall=0.9671.
+# SCIP oracle (rust-analyzer), measured on this repository: precision=0.9848, recall=0.9714.
 # Floors sit just under the measurement; raise one in the commit that improves it.
 
 [[floor]]
@@ -21,4 +21,4 @@ min = 0.984
 
 [[floor]]
 metric = "recall"
-min = 0.966
+min = 0.970
