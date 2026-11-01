@@ -1,4 +1,4 @@
-//! `--communities` and `--community ID`: Louvain module clustering of the call graph.
+//! `--communities` and `--community ID`: Leiden module clustering of the call graph.
 use super::{Plugin, Run, SharedOption};
 use crate::commands::context::{ExecutionContext, Paginated};
 use crate::domain::{IngestResult, Interner};
@@ -10,7 +10,7 @@ use std::io::{self, Write};
 
 #[derive(Args, Debug, Clone, Default, PartialEq)]
 pub struct CommunitiesArgs {
-    /// Cluster call graph into cohesive modules (Louvain community detection)
+    /// Cluster call graph into cohesive modules (Leiden community detection)
     #[arg(long)]
     pub communities: bool,
     /// Inspect members and bridges of one specific community module

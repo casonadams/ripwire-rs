@@ -19,7 +19,7 @@ use std::collections::BTreeSet;
 use std::io;
 
 const FLOW: &str = "pub fn target() {}\nfn a() { target(); }\nfn b() { target(); }\nfn c() { target(); }\nfn hub() { target(); a(); b(); }\ntrait Shape { fn area(&self) -> u32; }\nstruct Sq;\nstruct Ci;\nimpl Shape for Sq { fn area(&self) -> u32 { 1 } }\nimpl Shape for Ci { fn area(&self) -> u32 { 2 } }\n";
-const OTHER: &str = "pub fn other() {}\n";
+const OTHER: &str = "pub fn other() {}\nfn user() { other(); }\n";
 
 /// Commands that cannot be windowed in memory, each with the concrete reason.
 const ALLOWLIST: &[(&str, &str)] = &[
@@ -129,7 +129,7 @@ const ALLOWLIST: &[(&str, &str)] = &[
     ),
     (
         "zoom",
-        "in-memory fixture forms a single Louvain module (total=1); a window needs at least two modules",
+        "in-memory fixture forms a single Leiden module (total=1); a window needs at least two modules",
     ),
 ];
 

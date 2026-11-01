@@ -16,11 +16,12 @@
 - **Interpretation**: Authorities highlight core utility APIs relied on across files; hubs highlight orchestrators and test harnesses that reach into many files.
 - **Grading**: `scripts/eval-rank-scip.py REPO --scip INDEX --judge BIN [--bin LABEL=PATH]...` scores each binary's top 25 by the edges a compiler SCIP index pins (`--callers` for authority, `--callees` for hub): how many other files they reach and how many never leave their own file.
 
-## 3. Louvain Community Modularity
-- **Reference**: [Wikipedia: Louvain method](https://en.wikipedia.org/wiki/Louvain_method), [Wikipedia: Modularity (networks)](https://en.wikipedia.org/wiki/Modularity_(networks))
+## 3. Leiden Community Modularity
+- **Reference**: [Wikipedia: Leiden algorithm](https://en.wikipedia.org/wiki/Leiden_algorithm), [Wikipedia: Modularity (networks)](https://en.wikipedia.org/wiki/Modularity_(networks))
 - Partitions the call graph into architectural modules by maximizing Newman-Girvan modularity:
-  $$\Delta Q = \frac{k_{i,\text{in}}}{2m} - \frac{\Sigma_{\text{tot}} \cdot k_i}{2m^2}$$
-- Symmetrizes directed call edges and provides deterministic tie-breaking.
+  $$Q = \frac{1}{2m}\sum_{ij}\left(A_{ij} - \frac{k_i k_j}{2m}\right)\delta(c_i, c_j)$$
+- Local moving, refinement and aggregation, so every community is connected (Louvain can return disconnected ones). The `leiden-rs` crate runs it with a fixed seed: the same graph gives the same communities.
+- Symmetrizes directed call edges. Measured against our earlier single-level Louvain on five repositories at similar community counts: modularity 0.68-0.82 to 0.86-0.94 (`docs/BASELINE.md`).
 
 ## 4. AST Clone Detector (Type-1, Type-2, Type-3 Gapped)
 - **Reference**: [Wikipedia: Duplicate code](https://en.wikipedia.org/wiki/Duplicate_code)

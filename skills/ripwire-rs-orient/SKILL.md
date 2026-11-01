@@ -58,7 +58,7 @@ own slice (`share_bytes=` in the header discloses it). Full form in
 [`map-before-you-read.md`](map-before-you-read.md).
 
 **1. Architecture summary** — `ripwire-rs <dir> --report`
-Plain markdown: file + symbol count, call-graph modules (Louvain clusters with lead symbol), god-files
+Plain markdown: file + symbol count, call-graph modules (Leiden clusters with lead symbol), god-files
 ranked by `afferent` (dependents), cycle list, top PageRank symbols. **Read the god-file list carefully** —
 highest-leverage, highest-risk files. For most "orient me" asks this one rung is enough.
 
@@ -149,7 +149,7 @@ whole-symbol edits without a whole-file Read, the portable `--cache=FILE` one-li
 **[`compress-ladder.md`](compress-ladder.md)**. Both load on demand; neither is a separate skill.
 
 <example title="Landing cold on a new project">
-Good: Run `ripwire-rs <dir> --report` to get high-level Louvain modules and entry points without reading thousands of lines.
+Good: Run `ripwire-rs <dir> --report` to get high-level Leiden modules and entry points without reading thousands of lines.
 Bad: Opening random source files or running recursive grep searches.
 </example>
 </instructions>

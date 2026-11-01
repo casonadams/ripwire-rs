@@ -66,7 +66,7 @@ ripwire-rs <dir> --pack-task="<the task in words>" --legend=compact --partition=
 ```
 
 You get one `<ctx-partitions>` document: a **shared common core** (the anchors the task is literally about,
-what every agent needs) plus **N per-agent slices** carved along the call graph's own Louvain communities,
+what every agent needs) plus **N per-agent slices** carved along the call graph's own Leiden communities,
 so a slice is a union of whole modules rather than an arbitrary rank cut (symbols the call graph is silent
 about — edgeless data types — group by *file* instead, so one header's structs stay together). Each `<bundle>` wraps a complete,
 standalone bundle — hand one bundle to one agent verbatim. `--token-budget` here means **one agent's**
@@ -85,7 +85,7 @@ boundary — one `--pack-task` and one agent is the honest answer there.
 
 **7. Nested module hierarchy** — `ripwire-rs <dir> --zoom --legend=compact` (`--zoom=DEPTH` to cap levels; the default prints the top 2
 levels of the 40 largest modules — `levels_shown=`/`shown=` disclose it, `next=` pastes the next page, `--zoom-levels=0`
-prints every level): multi-level Louvain,
+prints every level): multi-level Leiden,
 `<module level=N id= size= dir=>`, indent = one level deeper, innermost `level="0"` lists top-ranked members.
 Read top-down; a `dir=` that doesn't match its parent's is a cross-cutting concern in the wrong place.
 Trailing `<bridge …>` entries name the high-traffic integration seams *between* top modules — pair with

@@ -46,7 +46,7 @@ fn test_plan_lanes_partition_and_brief() {
         Default::default(),
     );
     assert_eq!(val["source"], "partition");
-    assert_eq!(val["carve"]["strategy"], "louvain-community");
+    assert_eq!(val["carve"]["strategy"], "leiden-community");
     assert!(val["lanes"].as_array().is_some_and(|a| !a.is_empty()));
     assert!(
         val["landing_order"]

@@ -279,7 +279,7 @@ def build_command_list(target_file, target_sym, second_sym):
         ("--doctor", "Environment and tool diagnostics"),
         ("--notes", "Persistent session gotchas"),
         ("--mermaid", "Mermaid diagram generation"),
-        ("--zoom", "Hierarchical Louvain clustering"),
+        ("--zoom", "Hierarchical Leiden clustering"),
         ("--html", "Interactive HTML visualizer export"),
         (f"--whereis={target_sym}", "Symbol cross-ref locator"),
         ("--flags", "Dark-content gate harvest"),

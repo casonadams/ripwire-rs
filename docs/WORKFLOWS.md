@@ -28,7 +28,7 @@
   ripwire-rs . --for="implement user authentication"
   ```
 
-- **Interactive Visual Graph**: Export an in-browser, self-contained SVG/HTML call graph colorized by Louvain community.
+- **Interactive Visual Graph**: Export an in-browser, self-contained SVG/HTML call graph colorized by Leiden community.
   ```bash
   ripwire-rs . --html=graph.html --color-by=community
   ```
@@ -178,7 +178,7 @@
   ripwire-rs . --lint-catalog
   ```
 
-- **Modularity & Layering Rules**: Partition the call graph into Louvain communities, inspect hierarchical clusters, or enforce architectural boundaries.
+- **Modularity & Layering Rules**: Partition the call graph into Leiden communities, inspect hierarchical clusters, or enforce architectural boundaries.
   ```bash
   ripwire-rs . --communities
   ripwire-rs . --zoom
@@ -377,7 +377,7 @@ capping the number of reported violations.
 
 ### Core Operations
 
-- **Louvain Community Task Slicing**: Carve a goal into 1 shared core plus $N$ disjoint subagent bundles (N=2..16) along call-graph communities.
+- **Leiden Community Task Slicing**: Carve a goal into 1 shared core plus $N$ disjoint subagent bundles (N=2..16) along call-graph communities.
   ```bash
   ripwire-rs . --pack-task="refactor serialization" --partition=4
   ```
@@ -407,7 +407,7 @@ capping the number of reported violations.
   ```
 
 ### Benefits
-- **Zero Redundant Orientation**: `--pack-task --partition=N` carves the task surface along Louvain call-graph communities (with file-level fallback for edgeless data types and median splitting when $K < N$), emitting a `<ctx-partitions>` bundle with a shared core plus $N$ disjoint subagent `<bundle>` slices and Jaccard overlap telemetry (`overlap_mean`, `overlap_max`, `core_overlap`).
+- **Zero Redundant Orientation**: `--pack-task --partition=N` carves the task surface along Leiden call-graph communities (with file-level fallback for edgeless data types and median splitting when $K < N$), emitting a `<ctx-partitions>` bundle with a shared core plus $N$ disjoint subagent `<bundle>` slices and Jaccard overlap telemetry (`overlap_mean`, `overlap_max`, `core_overlap`).
 - **Pre-Hoc Collision Prevention**: `--plan-lanes` keys claims on path-qualified `fnv1a64(path\0scope\0name)` identities to separate true symbol `conflicts`, `same_file_risk`, and `contract_touch` (a lane's claim sitting inside another lane's transitive caller blast radius), computing a greedy fewest-conflicts-first `landing_order`. Per-lane `conflicts` and `contract_touches` are sums of those pair results; `ambiguous_calls` sums call-graph ambiguity over the lane's claims; `churn` and `hotspot_rank` come from the 12-month git window and are omitted outside a git repository.
 - **Epistemic Honesty**: `--help-task` inspects live repository facts (`git`, `dirty`, `trace`, `resolved_symbols`) and abstains when evidence is thin; `--verify` distinguishes `confirmed`, `refuted` (only under complete evidence), and `not-established` (when bounded by the static call-graph or reference floor).
 - **Fleet Governance Contract**: For drop-in configuration of autonomous subagents with deterministic static analysis gates, see the [AGENTS.md Integration Guide](AGENTS_GUIDE.md).

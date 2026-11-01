@@ -79,7 +79,7 @@ Run individual passes when drilling into a specific risk dimension:
 
 When restructuring a suspected god object or tangled module:
 
-1. **Locate the cluster**: Run `ripwire-rs <dir> --communities --legend=compact` (Louvain call-graph clusters and `<bridge>` seams) and `ripwire-rs <dir> --metrics --top-k=40` (`lcom4 > 1` indicates disjoint method groups that belong in separate types).
+1. **Locate the cluster**: Run `ripwire-rs <dir> --communities --legend=compact` (Leiden call-graph clusters and `<bridge>` seams) and `ripwire-rs <dir> --metrics --top-k=40` (`lcom4 > 1` indicates disjoint method groups that belong in separate types).
 2. **Size the blast radius**: Run `ripwire-rs <dir> --impact=SYM --legend=compact` on the cluster's lead symbol (`reaches=` callers, `radius_tested=` vs `radius_untested=`).
 3. **Check behavioral co-change coupling**: Run `ripwire-rs <dir> --cochange [--cochange-groups] [--cochange-recur=2] --legend=compact`. Pairs with `surprising="1"` change together in git across multiple sub-windows (`recur >= 2`) despite having no static import/call dependency.
 4. **Check structural file coupling**: Run `ripwire-rs <dir> --deps --legend=compact` to inspect `<godfiles>` (highest `afferent` dependents), `<cycles>` (Tarjan SCCs), and `<stabledeps>` instability violations.

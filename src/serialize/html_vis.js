@@ -292,7 +292,7 @@
   var provStamp = '';            // ...against the caption's loaded-subset totals (see draw()'s closing block)
   var MAX_HULLS = 12, MIN_HULL_MEMBERS = 3;
   var HULL_PAD_PX = 16;          // how far the outline stands off its outermost members, in SCREEN px
-  // A convex hull only means "these belong together" if the group IS spatially together, and Louvain
+  // A convex hull only means "these belong together" if the group IS spatially together, and Leiden
   // communities are not always laid out that way: on this repository's own default map the three largest
   // are `size`/`find`/`empty` — name-based hubs whose members are scattered across the whole picture —
   // and their hulls came out as huge overlapping lenses covering most of the canvas. That is not
@@ -1591,7 +1591,7 @@
   //
   // WHY IT HAD TO EXIST. --html's own --help line calls the artifact a "force-directed call graph", and
   // until this route the page had no view that drew one: #module/ID and #node/ID[/DEPTH] are both proper
-  // SUBSETS, and the landing view was a grid of Louvain cards. Two consequences, and the second is the
+  // SUBSETS, and the landing view was a grid of Leiden cards. Two consequences, and the second is the
   // one that mattered.
   //
   //   1. The cards are a weak first screen on their own terms. Measured on this repository's own map:

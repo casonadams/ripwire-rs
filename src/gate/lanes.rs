@@ -818,7 +818,7 @@ pub fn compute_plan_lanes(
     let core_surface: BTreeSet<NodeId> = plan.core_ids.iter().copied().collect();
     let ov = measure_partition_overlap(&lane_surfaces, &core_surface);
     let carve_val = json!({
-        "strategy": "louvain-community",
+        "strategy": "leiden-community",
         "surface": plan.surface_count,
         "modules": plan.module_count,
         "split": plan.split_count,

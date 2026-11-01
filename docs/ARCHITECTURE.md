@@ -31,7 +31,7 @@
            ▼                        ▼                        ▼
 ┌──────────────────────┐ ┌──────────────────────┐ ┌──────────────────────┐
 │ PageRank / HITS      │ │ Community Detection  │ │ Academic Lenses      │
-│ 1024-block reduction │ │ Louvain modularity   │ │ ARISE, Clones, Churn │
+│ 1024-block reduction │ │ Leiden modularity   │ │ ARISE, Clones, Churn │
 └──────────┬───────────┘ └──────────┬───────────┘ └──────────┬───────────┘
            │                        │                        │
            └────────────────────────┴────────────────────────┘

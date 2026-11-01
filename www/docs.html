@@ -534,7 +534,7 @@ cargo install ripwire-rs</code></pre>
           </div>
           <div class="cmd-field">
             <span class="cmd-label">How It Works</span>
-            <p class="cmd-desc">Embeds graph topology and metadata into an SVG canvas with interactive controls, supporting coloring by language, Louvain community clusters, cognitive complexity, or churn.</p>
+            <p class="cmd-desc">Embeds graph topology and metadata into an SVG canvas with interactive controls, supporting coloring by language, Leiden community clusters, cognitive complexity, or churn.</p>
           </div>
           <div class="cmd-field">
             <span class="cmd-label">When To Use It</span>
@@ -660,7 +660,7 @@ cargo install ripwire-rs</code></pre>
           </div>
           <div class="cmd-field">
             <span class="cmd-label">How It Works</span>
-            <p class="cmd-desc">Carves assignable task symbols along Louvain call-graph communities (falling back to file grouping for edgeless types and median-splitting when K &lt; N), packs bins largest-first, and reports pairwise Jaccard overlap.</p>
+            <p class="cmd-desc">Carves assignable task symbols along Leiden call-graph communities (falling back to file grouping for edgeless types and median-splitting when K &lt; N), packs bins largest-first, and reports pairwise Jaccard overlap.</p>
           </div>
           <div class="cmd-field">
             <span class="cmd-label">When To Use It</span>
@@ -920,7 +920,7 @@ cargo install ripwire-rs</code></pre>
       <ul>
         <li><strong><a href="https://en.wikipedia.org/wiki/PageRank" target="_blank" rel="noopener">Personalized PageRank</a></strong>: Power iteration over transpose in-edge CSR matrix with dangling mass redistribution. 1024-block reduction sums with early convergence checking.</li>
         <li><strong><a href="https://en.wikipedia.org/wiki/HITS_algorithm" target="_blank" rel="noopener">Kleinberg HITS (Hubs &amp; Authorities)</a></strong>: Coupled iterative eigenvector convergence distinguishing core utility APIs (authorities) from orchestrators and test suites (hubs).</li>
-        <li><strong><a href="https://en.wikipedia.org/wiki/Louvain_method" target="_blank" rel="noopener">Louvain Community Modularity</a></strong>: Partitions the call graph into architectural modules by maximizing Newman-Girvan modularity (<a href="https://en.wikipedia.org/wiki/Modularity_(networks)" target="_blank" rel="noopener">modularity</a>) with deterministic tie-breaking.</li>
+        <li><strong><a href="https://en.wikipedia.org/wiki/Leiden_algorithm" target="_blank" rel="noopener">Leiden Community Modularity</a></strong>: Partitions the call graph into architectural modules by maximizing Newman-Girvan modularity (<a href="https://en.wikipedia.org/wiki/Modularity_(networks)" target="_blank" rel="noopener">modularity</a>) with deterministic tie-breaking.</li>
         <li><strong><a href="https://en.wikipedia.org/wiki/Duplicate_code" target="_blank" rel="noopener">AST Clone Detector</a></strong>: Token-level normalization detecting exact Type-1, renamed Type-2, and near-miss Type-3 gapped duplicates with $k$-gram Jaccard prefiltering and LCS.</li>
         <li><strong><a href="https://en.wikipedia.org/wiki/Program_slicing" target="_blank" rel="noopener">ARISE Slicing</a></strong>: Intra-procedural forward and backward def-use dataflow slicing tracing reaching definitions and assignment propagation (<a href="https://arxiv.org/abs/2605.03117" target="_blank" rel="noopener">arXiv:2605.03117</a>).</li>
         <li><strong><a href="https://en.wikipedia.org/wiki/Shotgun_surgery" target="_blank" rel="noopener">Fowler's Co-Change Mining</a></strong>: Exponential half-life decay weighting commits over time to expose hidden Shotgun Surgery change coupling.</li>

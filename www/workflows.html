@@ -397,7 +397,7 @@
             <div class="workflow-step">
               <div class="step-desc">
                 <span class="step-num">5</span>
-                <span>Partition call graph into cohesive modules via Louvain community detection</span>
+                <span>Partition call graph into cohesive modules via Leiden community detection</span>
               </div>
               <div class="code-wrap">
                 <code>ripwire-rs . --communities</code>
@@ -758,7 +758,7 @@ jobs:
         <div class="cmd-field">
           <span class="cmd-label">Why &amp; Key Benefits</span>
           <ul style="padding-left: 20px; color: var(--text-secondary); font-size: 0.95rem; margin-top: 6px;">
-            <li><strong>Louvain Community Slicing:</strong> <code>--pack-task --partition=N</code> groups symbols by call-graph communities (with file fallback for edgeless data types) and reports Jaccard overlap (<code>overlap_mean</code>, <code>overlap_max</code>, <code>core_overlap</code>) so parallel agents work on genuinely disjoint modules.</li>
+            <li><strong>Leiden Community Slicing:</strong> <code>--pack-task --partition=N</code> groups symbols by call-graph communities (with file fallback for edgeless data types) and reports Jaccard overlap (<code>overlap_mean</code>, <code>overlap_max</code>, <code>core_overlap</code>) so parallel agents work on genuinely disjoint modules.</li>
             <li><strong>Pre-Hoc Collision &amp; Contract-Touch Oracle:</strong> <code>--plan-lanes</code> separates direct symbol <code>conflicts</code>, <code>same_file_risk</code>, and <code>contract_touch</code> (a claim inside another lane's blast radius) and computes a greedy fewest-conflicts-first <code>landing_order</code>.</li>
             <li><strong>Epistemic Honesty:</strong> <code>--help-task</code> inspects live repository facts and abstains when evidence is thin; <code>--verify</code> proves or refutes 6 closed claim shapes with inline witness rows.</li>
             <li><strong>Autonomous Agent Governance:</strong> Learn how to embed these verification workflows directly into your agent instructions in the <a href="agents.html" style="color: var(--accent); text-decoration: underline;">AGENTS.md Guide</a>.</li>

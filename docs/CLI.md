@@ -188,7 +188,7 @@ ripwire-rs . --edit-target-file="src/domain.rs" --no-post-check --allow-remote-e
 # whose name appears as an identifier in no test-free file other than their definition
 ripwire-rs . --dead-code
 
-# Partition call graph into cohesive modules (Louvain community detection)
+# Partition call graph into cohesive modules (Leiden community detection)
 ripwire-rs . --communities
 
 # Extract ego-graph around a symbol (depth 1, fanout 32)
@@ -215,7 +215,7 @@ ripwire-rs . --arch=rules.txt
 # Export Mermaid flowchart of module call dependencies
 ripwire-rs . --mermaid
 
-# Multi-level Louvain module hierarchy (computed levels=, top 2 printed)
+# Multi-level Leiden module hierarchy (computed levels=, top 2 printed)
 ripwire-rs . --zoom
 
 # Print every hierarchy level

@@ -93,7 +93,7 @@ binding forms remain evidence floors.
 - **[Pre-Commit Safety Gates](docs/GATES.md)** — Verification gates (`--edit-check`, `--affected`, `--quality-delta`, `--test-gate`, `--seams`, `--pr-context`, `--merge-scout`, `--arch`).
 - **[Model Context Protocol (MCP)](docs/MCP.md)** — Optional stdio MCP server for clients without direct CLI/skill support.
 - **[Architecture & Pipeline](docs/ARCHITECTURE.md)** — Tree-Sitter grammars, lock-free interning, CSR in-edge graph, and streaming XML.
-- **[Algorithms & Academic Lenses](docs/ALGORITHMS.md)** — PageRank, HITS, Louvain modularity, clone detector, and dataflow slicing.
+- **[Algorithms & Academic Lenses](docs/ALGORITHMS.md)** — PageRank, HITS, Leiden modularity, clone detector, and dataflow slicing.
 - **[Interactive Documentation Site](https://casonadams.github.io/ripwire-rs/)** — Showcase, command catalog, and visualizer.
 
 ---

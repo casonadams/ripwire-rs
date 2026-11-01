@@ -1,4 +1,4 @@
-//! `--zoom [DEPTH]`: multi-level hierarchical Louvain clustering; honors `--limit` / `--offset`.
+//! `--zoom [DEPTH]`: multi-level hierarchical Leiden clustering; honors `--limit` / `--offset`.
 use super::{Plugin, Run, SharedOption};
 use crate::commands::context::{ExecutionContext, Paginated};
 use clap::Args;
@@ -6,7 +6,7 @@ use std::io::{self, Write};
 
 #[derive(Args, Debug, Clone, Default, PartialEq)]
 pub struct ZoomArgs {
-    /// Multi-level hierarchical Louvain community clustering
+    /// Multi-level hierarchical Leiden community clustering
     #[arg(long = "zoom", value_name = "DEPTH")]
     pub zoom: Option<Option<u32>>,
     /// Max depth levels for --zoom

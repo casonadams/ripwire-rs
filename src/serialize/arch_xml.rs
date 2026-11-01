@@ -573,7 +573,7 @@ impl crate::serialize::XmlReport for CommunitiesReport<'_> {
         "communities",
         "ripwire-rs.communities/v1",
         root: true,
-        comment: "ripwire-rs communities schema=ripwire-rs.communities/v1: call-graph modules (Louvain): <community id= size= dir= label=> of <member t= n= p=>."
+        comment: "ripwire-rs communities schema=ripwire-rs.communities/v1: call-graph modules (Leiden): <community id= size= dir= label=> of <member t= n= p=>."
     );
     fn pr_iters(&self) -> Option<u32> {
         Some(self.summary.pr_iters.max(1))

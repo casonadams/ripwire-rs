@@ -163,7 +163,7 @@ impl crate::serialize::XmlReport for ZoomReport<'_> {
         "zoom",
         "ripwire-rs.zoom/v1",
         root: false,
-        comment: "ripwire-rs zoom schema=ripwire-rs.zoom/v1: nested Louvain module hierarchy: <module level= id= size= dir=>; level 0 is the finest partition; levels_shown= of levels= are printed from the top; symbols= = isolated= + size= of all top_modules=. children=K: K child modules below the levels_shown= cut, unprinted. id= is the module's lowest member node id; dir= its most common directory. pr_iters=N: PageRank iterations."
+        comment: "ripwire-rs zoom schema=ripwire-rs.zoom/v1: nested Leiden module hierarchy: <module level= id= size= dir=>; level 0 is the finest partition; levels_shown= of levels= are printed from the top; symbols= = isolated= + size= of all top_modules=. children=K: K child modules below the levels_shown= cut, unprinted. id= is the module's lowest member node id; dir= its most common directory. pr_iters=N: PageRank iterations."
     );
     fn graph_gauges(&self) -> Option<crate::serialize::GraphGauges> {
         Some(self.gauges)
@@ -221,7 +221,7 @@ fn node_dirs<'a>(ingest: &'a IngestResult, interner: &'a Interner, nodes: usize)
         .collect()
 }
 
-/// `--zoom`: multi-level Louvain hierarchy over the call graph.
+/// `--zoom`: multi-level Leiden hierarchy over the call graph.
 pub fn execute_zoom_query<W: Write>(
     ingest: &IngestResult,
     graph: &Graph,

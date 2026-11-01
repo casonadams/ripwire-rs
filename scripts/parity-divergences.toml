@@ -298,11 +298,11 @@ why = "A commit touching more than 100 changed paths (MERGE_BOMB_MAX_FILES, rena
 evidence = "measured: ours ranked=277 files=536 unranked_no_churn=16; upstream ranked=285 unranked_no_churn=0; the eight extra upstream rows each have churn=1 from commit 2771653."
 
 [[divergence]]
-id = "zoom-louvain-granularity"
+id = "zoom-leiden-granularity"
 command = "--zoom"
 case = ""
 kind = "richer"
-why = "Our Louvain pass over our own call graph yields a different partition from upstream's (96 against 46 top modules over 7520 against 7075 symbols), because the two graphs differ in resolved edges; totals and module membership therefore cannot match. The default window is budget-derived and shows more modules than upstream's fixed 40."
+why = "Our Leiden pass over our own call graph yields a different partition from upstream's Louvain (96 against 46 top modules over 7520 against 7075 symbols), because the algorithms and the two graphs' resolved edges differ; totals and module membership therefore cannot match. The default window is budget-derived and shows more modules than upstream's fixed 40."
 evidence = "measured: ours levels=5 top_modules=96 symbols=7520; upstream levels=5 top_modules=46 symbols=7075; both print the top 2 levels by default."
 
 [[divergence]]

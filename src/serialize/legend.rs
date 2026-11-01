@@ -172,7 +172,7 @@ pub const LEGEND_DICT_ENTRIES: &[(&str, &str, &str)] = &[
     (
         "schema",
         "ripwire-rs.communities/v1",
-        "Louvain modularity call-graph community clusters",
+        "Leiden modularity call-graph community clusters",
     ),
     (
         "schema",

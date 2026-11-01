@@ -245,7 +245,7 @@ Enforce architectural layering rules from file \fIFILE\fR. Exits with code \fB2\
 Export a Mermaid flowchart diagram of module call dependency topology to stdout.
 .TP
 .BR \-\-zoom [=\fIDEPTH\fR]
-Multi-level Louvain module hierarchy over the call graph. \fBlevels=\fR is the computed depth (level 0 is the finest partition); the top \fB2\fR levels print by default, and modules at the cut carry \fBchildren=\fIK\fR. \fIDEPTH\fR keeps only the finest \fIDEPTH\fR levels. Top modules are windowed at 40 (\fB\-\-limit\fR/\fB\-\-offset\fR page them).
+Multi-level Leiden module hierarchy over the call graph. \fBlevels=\fR is the computed depth (level 0 is the finest partition); the top \fB2\fR levels print by default, and modules at the cut carry \fBchildren=\fIK\fR. \fIDEPTH\fR keeps only the finest \fIDEPTH\fR levels. Top modules are windowed at 40 (\fB\-\-limit\fR/\fB\-\-offset\fR page them).
 .TP
 .BI \-\-zoom\-levels= N
 With \fB\-\-zoom\fR, print \fIN\fR levels from the top (\fB0\fR = every level). Refused alone.
@@ -277,7 +277,7 @@ Resolve innermost symbol definition enclosing \fIFILE:LINE\fR. Exits 1 if no sym
 Formally verify a closed-world code claim across 6 shapes (\fBcalls(A,B)\fR, \fBuses(SYM)\fR, \fBunused(SYM)\fR, \fBcontains(FILE,"LIT")\fR, \fBdefines(FILE,SYM)\fR, \fBreaches(SYM,"FILE"|LAYER)\fR), emitting inline witness rows and a 3-valued verdict (\fBconfirmed\fR, \fBrefuted\fR, \fBnot-established\fR).
 .TP
 .BI \-\-pack\-task= TASK
-Assemble single-call orientation task bundle under budget tailored to task description. Compose with \fB\-\-partition=N\fR (\fIN\fR=2..16) to carve 1 shared core plus \fIN\fR Louvain-community subagent slices.
+Assemble single-call orientation task bundle under budget tailored to task description. Compose with \fB\-\-partition=N\fR (\fIN\fR=2..16) to carve 1 shared core plus \fIN\fR Leiden-community subagent slices.
 .TP
 .BI \-\-graph\-query= QUERY
 Evaluate functional graph query expression (e.g. \fBcallers(main)\fR).
@@ -344,7 +344,7 @@ Disable stable dependency violation warnings in \fB\-\-deps\fR output.
 Detect internal functions with zero incoming callers across the repository. Functions whose every indexed caller is test code are listed apart as \fB<to>\fR rows, counted by \fBto=\fR and not by \fBcount=\fR.
 .TP
 .B \-\-communities
-Partition call graph into cohesive modular clusters using Louvain community detection.
+Partition call graph into cohesive modular clusters using Leiden community detection.
 .TP
 .BI \-\-community= ID
 Inspect member symbols and bridges of a specific community cluster.

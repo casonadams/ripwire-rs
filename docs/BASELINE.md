@@ -124,6 +124,53 @@ skips loudly without).
 real/asked 1.2 to 1.02; `--pack-task` 23943 to 16496 bytes (6000-token budget, 5641 real). Retrieval at budget
 2000 is unchanged in quality (top1 0.52, mrr 0.604) at 6008 median bytes instead of 6599.
 
+## Communities: Leiden from the `leiden-rs` crate
+
+`--communities`, `--zoom` and `--pack-task --partition` ran a hand-written, single-level Louvain pass.
+`graphrs` was rejected first: its public `leiden()` seeds from the thread RNG, so the same graph gives
+different communities. `leiden-rs` (rand, rustc-hash, thiserror; rayon off) takes a seed and also returns the
+per-level hierarchy `--zoom` needs. Same graph, similar community counts:
+
+| repository | nodes | Louvain Q | Leiden Q | Leiden / Louvain time |
+|---|---|---|---|---|
+| this repo | 7701 | 0.679 | 0.876 | 6.2 ms / 1.2 ms |
+| TypeScript service | 3181 | 0.729 | 0.910 | 1.6 ms / 0.1 ms |
+| TypeScript web app | 19498 | 0.673 | 0.861 | 11.6 ms / 0.6 ms |
+| Lua/JS app | 11611 | 0.650 | 0.825 | 8.3 ms / 1.8 ms |
+| C++ tool (43600 nodes) | 43600 | 0.819 | 0.943 | 53 ms / 4.4 ms |
+
+Output is identical across runs (checked three times). About 200 lines of Louvain, aggregation and
+compaction code are deleted. The `lanes` strategy is renamed `leiden-community`.
+
+## Resolver: oracle-measured, then fixed
+
+`make resolution` builds a rust-analyzer SCIP index and scores the resolver against it (precision: a binding
+we made names SCIP's target; recall: SCIP's targets we reached). Floors: precision 0.98, recall 0.96.
+
+| Rust (this repo) | precision | recall | false name edges |
+|---|---|---|---|
+| first measurement | 0.9523 | 0.9620 | 340 |
+| decline `count`, `parent`, `parse`, `bytes`, `peek` | 0.9762 | 0.9616 | 88 |
+| std-named member call needs a proven receiver | 0.9832 | 0.9625 | 26 |
+
+TypeScript against scip-typescript: 0.995 / 0.993 and 0.997 / 0.976 (unchanged by the Rust work).
+
+## Language audit (36 languages)
+
+Seven parallel audits (fixture, upstream comparison, real corpus) found and fixed: Go method arity counted the
+receiver; ObjC receivers untyped; Java `record`/`@interface`, Kotlin `typealias`, Scala `enum`/`new`
+undefined; Python bare builtins bound to same-named defs and decorators were not calls; Erlang BIFs bound to
+same-named defs; JS `module.exports.x = function y` and `X.prototype.m = function n` named by the inner name;
+Markdown fenced code and URLs became links; SQL had no table references; GraphQL had no fragments or types;
+HCL blocks all named by their keyword; proto/Solidity/COBOL/Fortran missed references or definitions; C
+headers parsed as C++; C++/CUDA destructors and `new` missing; Metal kernels unparsed; Zig return types
+defined as functions and imports ignored; Dart constructors made every construction ambiguous (ambiguous
+calls 6093 to 116 on a 1189-file app). Already correct: C#, Ruby, PHP, BrightScript, CUDA kernels.
+
+Open, needing shared resolver or ingest work: C++ typed receivers across in-class and out-of-line methods;
+JS/Swift/Go/Python typed receivers; Python method kind; JS namespace imports; Markdown heading links;
+`definition.type` maps to `var` for enums and aliases.
+
 Still open:
 
 - A Rust `test_*.rs` file outside a test directory is classified as a test (the universal `test_` stem rule,
