@@ -80,12 +80,12 @@ why = "Full legend adds its explanation only as a header comment, keeping total 
 evidence = "bytes rw=27239 rip=33486; facts rw=2127 rip=2382; density rw=0.07809 rip=0.07113; ours full-legend delta is comment-only (+1030 bytes vs default). Expected to grow by about 36 bytes once the root schema attribute is restored (see report)."
 
 [[divergence]]
-id = "map-top20-richer"
+id = "map-top20-smaller"
 command = "--top-k=20"
 case = ""
-kind = "richer"
-why = "A 20-symbol map carries more facts and denser facts-per-byte than upstream within 26% fewer bytes."
-evidence = "bytes rw=9144 rip=12291; facts rw=677 rip=635; density rw=0.07404 rip=0.05166; ours has 12 file rows and 110 ls rows vs upstream 14 and 92, c rows 53 vs 54."
+kind = "smaller"
+why = "A 20-symbol map carries about the same facts as upstream's (the count moves with how many files the repository has) at denser facts-per-byte and 29% fewer bytes."
+evidence = "bytes rw=9742 rip=13719; facts rw=713 rip=715; density rw=0.07319 rip=0.05212."
 
 [[divergence]]
 id = "map-top50-smaller"
