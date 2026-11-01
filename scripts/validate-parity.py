@@ -207,6 +207,9 @@ def detect_merge_ref(repo_dir):
     return "HEAD"
 
 
+PINNED_TARGETS = ("row_bytes", "fit_rows")
+
+
 def discover_repo_targets(rw_bin, repo_dir):
     proc = subprocess.run([rw_bin, repo_dir, "--top-k=50"], capture_output=True, text=True)
     files = re.findall(r'<f p="([^"]+)"', proc.stdout)
@@ -220,6 +223,9 @@ def discover_repo_targets(rw_bin, repo_dir):
         counts[s] = counts.get(s, 0) + 1
     unique_fns = [s for s in fn_syms if counts[s] == 1 and s not in ("new", "main", "name", "init")]
     pool = unique_fns if unique_fns else fn_syms
+    # The ledger's per-symbol entries are measured on these two; a near-tie in PageRank must not swap them.
+    pinned = [s for s in PINNED_TARGETS if s in pool]
+    pool = pinned + [s for s in pool if s not in pinned]
     target_file = files[0] if files else "src/main.rs"
     target_sym = pool[0] if pool else "main"
     second_sym = pool[1] if len(pool) > 1 else target_sym
