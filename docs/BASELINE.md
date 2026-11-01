@@ -177,7 +177,7 @@ translation units) 0.996 / 0.960; TypeScript 0.995 / 0.993 and 0.997 / 0.976. Th
 audits found on toy fixtures cost under one wrong edge in 200 on these corpora, so Rust (0.985 / 0.967) is the
 only language with error worth chasing. C++ misses are mostly calls into a header guarded by `#error` (a
 section file) and `os::open` style wrappers around libc names; Python misses are `build`, `fold` and
-`__call__` dispatch.
+dunder-call dispatch.
 
 Rust typing added: struct field types (`ctx.graph.gauges()`) and free-function return types, including
 module-qualified paths (`build::make().m()`), type a receiver. Precision 0.9832 to 0.9845, recall 0.9625 to

@@ -124,5 +124,5 @@ more correct, or more honest.
   `scripts/validate-parity.py` (`PINNED_TARGETS`) because the ledger is measured on them; a ranking change
   that swaps the probes is a harness artefact, not a regression. `make size` needs `uv` for tiktoken and
   skips loudly without it.
-- **Parallel work uses git worktrees**, each with its own `CARGO_TARGET_DIR`, and every edit path under its
+- **Parallel work uses git worktrees**, each with its own CARGO_TARGET_DIR, and every edit path under its
   own worktree. Merge on `main`, rebuild, and run `make all` once. Never edit the main tree from a worktree.
