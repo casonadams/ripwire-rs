@@ -33,6 +33,21 @@ more correct, or more honest.
   matches its facts only where they help an agent. Record deliberate differences in
   `scripts/parity-divergences.toml` with the reason; a "richer" entry that depends on larger output is a
   smell.
+- **Use a proven crate before hand-rolling an algorithm.** BM25 (`bm25`) and Leiden (`leiden-rs`) replaced
+  hand-written scorers and cut code while improving quality. Check determinism first (a seedable RNG), then
+  the dependency footprint (`default-features = false`), then measure quality and latency against the code it
+  replaces; adopt it when it is no worse on either.
+- **Compilers are the oracle for resolution.** `make resolution` scores the call graph against a
+  rust-analyzer SCIP index (`--eval-scip`): precision and recall floors live in
+  `scripts/resolution-ceilings.toml`. For another language, index a real corpus (`scip-typescript`,
+  `scip-python`, `scip-clang`) and score it before and after a change; a fixture alone does not show whether a
+  gap matters on real code. A resolver change that adds wrong edges is rejected even if recall rises.
+- **Token prices are measured, not assumed.** `est_tokens=` and `budget_tokens=` come from
+  `serialize::est_tokens` / `budget_bytes`, calibrated with a tokenizer (`make size` checks the disclosed
+  price against tiktoken within 0.8 to 1.2). Change the constant only with a new measurement.
+- **Retrieval is BM25 over subtokens.** Tune with `scripts/retrieval-eval.py`; a parameter sweep that moves
+  mrr by under 0.01 is noise on 52 questions, so do not ship it. New scoring signals must beat the baseline in
+  `docs/BASELINE.md`.
 
 ## Core mission: Maximum intelligence in the smallest token footprint
 
@@ -74,6 +89,13 @@ more correct, or more honest.
 - **Semantics & enum stability**: Implement language rules via
   `LanguageSemantics` in `src/languages/`. Append new `enum Lang` variants
   before `Lang::Unknown`; never reorder existing variants (serialized in cache).
+- **A language change needs a fixture and a std-name case.** Cover a free call, a typed-receiver call, two
+  same-named methods, and an in-tree name that collides with a builtin (`len`, `get`, `map`) called on a
+  builtin and on an in-tree receiver. Add a name to a `std_*_names` list only on evidence from a real corpus:
+  a listed name halves that symbol's PageRank prior and blocks unpinned cross-file binding. When unsure
+  whether a call binds, decline it; a labelled name edge is acceptable, a wrong precise edge is not.
+- **Edit a `tags.scm`, then `touch` the language's `mod.rs`.** The grammar is `include_str!`ed and the test
+  binary can miss a tags-only change.
 
 ## Testing, linting, and verification
 
@@ -97,3 +119,10 @@ more correct, or more honest.
   size ceilings (`make size`), call-resolution ceilings (`make resolution`),
   generated reference freshness (`make docs-check`), test coverage CRAP `<= 30`,
   upstream parity, and `fmt` as the final step).
+- **Gate hygiene**: Run `make all` on a clean, committed tree after `ripwire-rs . --quality-baseline`;
+  a dirty tree or a stale baseline gives false parity and quality failures. Parity probe symbols are pinned in
+  `scripts/validate-parity.py` (`PINNED_TARGETS`) because the ledger is measured on them; a ranking change
+  that swaps the probes is a harness artefact, not a regression. `make size` needs `uv` for tiktoken and
+  skips loudly without it.
+- **Parallel work uses git worktrees**, each with its own `CARGO_TARGET_DIR`, and every edit path under its
+  own worktree. Merge on `main`, rebuild, and run `make all` once. Never edit the main tree from a worktree.
