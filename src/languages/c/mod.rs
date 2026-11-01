@@ -473,16 +473,40 @@ fn is_invalid_c_callable_scope(fn_decl: tree_sitter::Node<'_>) -> bool {
 }
 
 fn has_cpp_header_markers(text: &str) -> bool {
-    text.contains("namespace ")
-        || text.contains("template<")
-        || text.contains("template <")
-        || text.contains("class ")
-        || text.contains("constexpr")
-        || text.contains("std::")
-        || text.contains("::")
-        || text.contains("public:")
-        || text.contains("private:")
-        || text.contains("noexcept")
+    [
+        "namespace ",
+        "template<",
+        "template <",
+        "class ",
+        "constexpr",
+        "std::",
+        "::",
+        "public:",
+        "private:",
+        "noexcept",
+        "extern \"C\"",
+        "virtual ",
+        "typename",
+        "nullptr",
+        "operator",
+        "friend ",
+        "using ",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker))
+}
+
+/// True when the C grammar parses the header with no error. C++-only spellings the markers miss (`const T& x`)
+/// leave an error here, and such a header stays on the C++ grammar, which parses C as well.
+fn parses_as_c(source: &[u8]) -> bool {
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_c::LANGUAGE.into())
+        .is_ok_and(|()| {
+            parser
+                .parse(source, None)
+                .is_some_and(|tree| !tree.root_node().has_error())
+        })
 }
 
 pub(super) fn refine_c_header_dialect(
@@ -498,7 +522,8 @@ pub(super) fn refine_c_header_dialect(
         {
             return crate::domain::Lang::ObjC;
         }
-        if base_lang == crate::domain::Lang::C && !has_cpp_header_markers(text) {
+        let c_base = matches!(base_lang, crate::domain::Lang::C | crate::domain::Lang::Cpp);
+        if c_base && !has_cpp_header_markers(text) && parses_as_c(source_bytes) {
             return crate::domain::Lang::C;
         }
     }
@@ -654,6 +679,17 @@ impl LanguageSemantics for CLanguage {
         source_bytes: &[u8],
     ) -> crate::domain::Lang {
         refine_c_header_dialect(base_lang, rel_path, source_bytes)
+    }
+
+    /// In C a member call `x->f(...)` or `x.f(...)` can only reach a function-pointer field, never a
+    /// free function, so the call is declined rather than bound by name to a same-named function.
+    fn is_callable_field_access(&self, name_node: tree_sitter::Node<'_>) -> bool {
+        let Some(member) = name_node.parent().filter(|p| p.kind() == "field_expression") else {
+            return false;
+        };
+        member.parent().is_some_and(|call| {
+            call.kind() == "call_expression" && call.child_by_field_name("function") == Some(member)
+        })
     }
 
     fn is_builtin_keyword(&self, name: &str) -> bool {

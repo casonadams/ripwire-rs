@@ -8,6 +8,63 @@ use std::collections::HashMap;
 pub struct MetalLanguage;
 pub static METAL_LANG: MetalLanguage = MetalLanguage;
 
+/// Metal qualifiers the C++ grammar cannot parse: function kinds (`kernel`, `vertex`, `fragment`) and address
+/// spaces (`device`, `constant`, `thread`, `threadgroup`). Reserved words in Metal, so no identifier carries them.
+const METAL_QUALIFIERS: &[&[u8]] = &[
+    b"kernel",
+    b"vertex",
+    b"fragment",
+    b"device",
+    b"constant",
+    b"thread",
+    b"threadgroup",
+    b"threadgroup_imageblock",
+    b"ray_data",
+    b"object_data",
+];
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// The source with every Metal qualifier word blanked to spaces, so byte offsets and names are unchanged.
+/// Preprocessor lines are left alone: an include path such as `"device.h"` is not a qualifier.
+fn blank_metal_qualifiers(source: &[u8]) -> Option<Vec<u8>> {
+    let mut out = source.to_vec();
+    let mut changed = false;
+    let mut at_line_start = true;
+    let mut i = 0;
+    while i < source.len() {
+        let b = source[i];
+        if b == b'\n' {
+            at_line_start = true;
+            i += 1;
+        } else if at_line_start && b == b'#' {
+            i = source[i..]
+                .iter()
+                .position(|&c| c == b'\n')
+                .map_or(source.len(), |p| i + p);
+        } else if b.is_ascii_whitespace() {
+            i += 1;
+        } else if is_ident_byte(b) {
+            at_line_start = false;
+            let end = source[i..]
+                .iter()
+                .position(|&c| !is_ident_byte(c))
+                .map_or(source.len(), |p| i + p);
+            if METAL_QUALIFIERS.contains(&&source[i..end]) {
+                out[i..end].fill(b' ');
+                changed = true;
+            }
+            i = end;
+        } else {
+            at_line_start = false;
+            i += 1;
+        }
+    }
+    changed.then_some(out)
+}
+
 const KINDS: ComplexityKinds = ComplexityKinds {
     nesting: &[
         "if_statement",
@@ -31,6 +88,11 @@ const KINDS: ComplexityKinds = ComplexityKinds {
 
 impl LanguageSemantics for MetalLanguage {
     crate::languages::c::flags::c_family_hooks!();
+
+    /// Metal shaders use qualifiers the C++ grammar rejects; the parser retries on this blanked source.
+    fn blank_error_macros(&self, source_bytes: &[u8]) -> Option<Vec<u8>> {
+        blank_metal_qualifiers(source_bytes)
+    }
 
     fn complexity_kinds(&self) -> &'static ComplexityKinds {
         &KINDS

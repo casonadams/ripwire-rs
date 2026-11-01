@@ -13,6 +13,11 @@
 
 (function_declarator declarator: (qualified_identifier name: (identifier) @name)) @definition.method
 
+; ---- destructors (ripwire addition — the destructor round; same shape as queries/cpp/tags.scm) ----
+(function_declarator declarator: (destructor_name) @name) @definition.method
+
+(function_declarator declarator: (qualified_identifier (destructor_name) @name)) @definition.method
+
 ; ---- out-of-line definitions at 2+ qualifier segments (ripwire addition — C1, memgraph F1) ----
 ; The upstream pattern above is the DEFINITION twin of the 2-segment CALL pattern the §H4 round replaced,
 ; and it fails for the same reason: tree-sitter-cpp nests qualified_identifier RIGHT-recursively, so
@@ -356,6 +361,14 @@
 (base_class_clause
   (type_identifier) @name) @reference.extends
 
+
+; CONSTRUCTOR CALLS THROUGH `new` (same shape as queries/cpp/tags.scm): the type name is the reference.
+(new_expression
+  type: (type_identifier) @name) @reference.call
+
+(new_expression
+  type: (qualified_identifier
+    name: (type_identifier) @name)) @reference.call
 
 (function_definition
   type: (type_identifier) @name) @reference.type
