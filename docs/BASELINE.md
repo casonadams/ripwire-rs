@@ -171,6 +171,18 @@ Open, needing shared resolver or ingest work: C++ typed receivers across in-clas
 JS/Swift/Go/Python typed receivers; Python method kind; JS namespace imports; Markdown heading links;
 `definition.type` maps to `var` for enums and aliases.
 
+Measured against compiler SCIP indexes, those gaps barely show on real code (precision / recall):
+Python (scip-python) 0.998 / 0.981 on a service and 0.996 / 0.992 on a data-pipeline repo; C++ (scip-clang, 67
+translation units) 0.996 / 0.960; TypeScript 0.995 / 0.993 and 0.997 / 0.976. The typed-receiver defects the
+audits found on toy fixtures cost under one wrong edge in 200 on these corpora, so Rust (0.985 / 0.967) is the
+only language with error worth chasing. C++ misses are mostly calls into a header guarded by `#error` (a
+section file) and `os::open` style wrappers around libc names; Python misses are `build`, `fold` and
+`__call__` dispatch.
+
+Rust typing added: struct field types (`ctx.graph.gauges()`) and free-function return types, including
+module-qualified paths (`build::make().m()`), type a receiver. Precision 0.9832 to 0.9845, recall 0.9625 to
+0.9671.
+
 Still open:
 
 - A Rust `test_*.rs` file outside a test directory is classified as a test (the universal `test_` stem rule,

@@ -354,6 +354,33 @@ impl LanguageSemantics for RustLanguage {
         true
     }
 
+    /// `build(..).m()` and `module::build(..).m()`: the receiver is typed by the free function's declared
+    /// return type. A path whose owner segment is a type (`Type::build()`) is an associated function, not
+    /// the free function of that name, so it is left untyped.
+    fn call_receiver_name<'a>(
+        &self,
+        receiver: tree_sitter::Node<'_>,
+        source: &'a [u8],
+    ) -> Option<&'a str> {
+        let callee = receiver
+            .child_by_field_name("function")
+            .filter(|_| receiver.kind() == "call_expression")?;
+        match callee.kind() {
+            "identifier" => callee.utf8_text(source).ok(),
+            "scoped_identifier" => {
+                let owner = callee.child_by_field_name("path")?.utf8_text(source).ok()?;
+                let segment = owner.rsplit("::").next()?;
+                let is_module = segment
+                    .bytes()
+                    .next()
+                    .is_some_and(|b| b.is_ascii_lowercase() || b == b'_');
+                is_module
+                    .then(|| callee.child_by_field_name("name")?.utf8_text(source).ok())?
+            }
+            _ => None,
+        }
+    }
+
     fn crate_root_suffixes(&self) -> &'static [&'static str] {
         &["src/lib.rs", "src/main.rs"]
     }
@@ -1362,7 +1389,12 @@ fn extract_type_repr(cx: &TypeCx<'_>, ty: tree_sitter::Node<'_>) -> Option<Strin
                 name_repr(cx, ty, text)
             }
         }
-        "scoped_type_identifier" => Some(ty.utf8_text(cx.source).ok()?.trim().to_string()),
+        "scoped_type_identifier" => {
+            let text = ty.utf8_text(cx.source).ok()?.trim();
+            let in_crate = matches!(text.split("::").next(), Some("crate" | "self" | "super"));
+            let last = text.rsplit("::").next().unwrap_or(text);
+            Some(if in_crate { last } else { text }.to_string())
+        }
         _ => None,
     }
 }
@@ -1567,12 +1599,68 @@ fn is_item_name(node: tree_sitter::Node<'_>, ancestors: &[tree_sitter::Node<'_>]
     })
 }
 
+/// Declared field types of every `struct`, as `(struct, field)` members, so `x.field.method()` types its receiver.
+fn record_struct_fields(
+    cx: &TypeCx<'_>,
+    root: tree_sitter::Node<'_>,
+    bindings: &mut super::reads::ReadBindings<'_>,
+) {
+    for item in super::reads::nodes(root).filter(|n| n.kind() == "struct_item") {
+        let (Some(owner), Some(body)) = (
+            field_text(item, "name", cx.source),
+            item.child_by_field_name("body"),
+        ) else {
+            continue;
+        };
+        let mut cursor = body.walk();
+        for field in body
+            .children(&mut cursor)
+            .filter(|c| c.kind() == "field_declaration")
+        {
+            if let (Some(name), Some(ty)) = (
+                field_text(field, "name", cx.source),
+                field
+                    .child_by_field_name("type")
+                    .and_then(|ty| extract_type_repr(cx, ty)),
+            ) {
+                bindings.insert_member(owner, name, ty);
+            }
+        }
+    }
+}
+
+/// Return types of free functions (not methods), keyed by name; two functions of one name that disagree
+/// leave the name untyped.
+fn record_free_returns<'a>(
+    cx: &TypeCx<'a>,
+    root: tree_sitter::Node<'_>,
+    bindings: &mut super::reads::ReadBindings<'a>,
+) {
+    let mut returns = super::typed::AgreedReturns::default();
+    for item in super::reads::nodes(root).filter(|n| n.kind() == "function_item") {
+        let in_impl = item
+            .parent()
+            .and_then(|body| body.parent())
+            .is_some_and(|owner| matches!(owner.kind(), "impl_item" | "trait_item"));
+        let Some(name) = field_text(item, "name", cx.source).filter(|_| !in_impl) else {
+            continue;
+        };
+        let ty = item
+            .child_by_field_name("return_type")
+            .and_then(|ty| extract_type_repr(cx, ty));
+        returns.note(name, ty);
+    }
+    returns.insert_into(bindings);
+}
+
 fn collect_rust_read_bindings<'a>(
     root: tree_sitter::Node<'_>,
     source: &'a [u8],
 ) -> super::reads::ReadBindings<'a> {
     let cx = TypeCx::new(root, source);
     let mut bindings = super::reads::ReadBindings::default();
+    record_struct_fields(&cx, root, &mut bindings);
+    record_free_returns(&cx, root, &mut bindings);
     super::reads::walk_with_ancestors(root, |node, ancestors| {
         if is_self_binding(node) {
             if let Some(func) = super::reads::enclosing_scope(node, rust_scope) {

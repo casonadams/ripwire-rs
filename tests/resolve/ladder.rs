@@ -638,6 +638,20 @@ fn test_python_property_reads_bind_to_the_property_but_plain_and_standard_names_
 }
 
 #[test]
+fn test_a_receiver_typed_through_a_field_or_a_free_function_binds_one_owner() {
+    let src = "struct Graph;\nimpl Graph {\n    fn gauges(&self) {}\n}\nstruct Other;\nimpl Other {\n    fn gauges(&self) {}\n}\nstruct Ctx<'a> {\n    graph: &'a Graph,\n}\nmod build {\n    pub fn make() -> super::Graph {\n        super::Graph\n    }\n}\nfn by_field(ctx: &Ctx) {\n    ctx.graph.gauges();\n}\nfn by_path() {\n    build::make().gauges();\n}\n";
+    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
+    assert_eq!(
+        call_edges("src/lib.rs", Lang::Rust, src),
+        vec![
+            edge("by_field", "Graph::gauges"),
+            edge("by_path", "Graph::gauges"),
+            edge("by_path", "build::make")
+        ]
+    );
+}
+
+#[test]
 fn test_a_std_named_call_on_a_field_does_not_bind_to_the_callers_own_method() {
     let src = "struct Heap {\n    items: Vec<u8>,\n}\nimpl Heap {\n    fn is_empty(&self) -> bool {\n        true\n    }\n    fn drained(&self) -> bool {\n        self.items.is_empty()\n    }\n    fn idle(&self) -> bool {\n        self.is_empty()\n    }\n}\n";
     let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
