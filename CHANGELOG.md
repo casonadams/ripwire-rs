@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.6.9](https://github.com/casonadams/ripwire-rs/compare/v0.6.8...v0.6.9) (2026-11-01)
+
+
+### Features
+
+* **budget:** 8 KiB default per list, a quarter for secondary lists, size gate in make all ([c103055](https://github.com/casonadams/ripwire-rs/commit/c10305566eb7ebab9aad7c3a167e7dd9a7528fe4))
+* **cli:** -h lists only the core Find and Check flags; --help lists all ([bd1c77b](https://github.com/casonadams/ripwire-rs/commit/bd1c77b6aac1540d15cb82924f1e98104bbfaabf))
+* **communities:** Leiden from the leiden-rs crate replaces hand-written Louvain ([cc8ac0b](https://github.com/casonadams/ripwire-rs/commit/cc8ac0be4086237c201d45d316dea91c6a40465c))
+* **dead-code:** list functions only tests call as &lt;to&gt; rows ([7861578](https://github.com/casonadams/ripwire-rs/commit/786157871ecb350450dad513400bd585384603ea))
+* **for:** doc comments, constants and body length shape conceptual ranking ([3778b53](https://github.com/casonadams/ripwire-rs/commit/3778b530319845fbf4e4168f9880d2a8d4125d46))
+* **for:** list direct callers on a name-exact answer for one definition ([c7688dc](https://github.com/casonadams/ripwire-rs/commit/c7688dc4bd9ca7abc82119fb3813b263f76baaf3))
+* **for:** rank conceptual queries with BM25 from the bm25 crate ([9df598d](https://github.com/casonadams/ripwire-rs/commit/9df598dc44d8fafc97683ad167f64299ba04051a))
+* **graphql:** fragments, enum/input/union/scalar types, type references ([2157530](https://github.com/casonadams/ripwire-rs/commit/215753052d668511301f316bdea5374c792a1fdb))
+* **impact,ci:** hedged callers are not counted as reach; resolver ceilings in make all ([a14392c](https://github.com/casonadams/ripwire-rs/commit/a14392c93d093bad54c1756d27b86ba745d6d11e))
+* **impact:** mark rows first reached by a name-only edge with via=name ([16e1c08](https://github.com/casonadams/ripwire-rs/commit/16e1c087e69b11db8d6dc93e9f4f334c2f00043c))
+* **proto:** message and rpc type mentions are edges ([ed3acbd](https://github.com/casonadams/ripwire-rs/commit/ed3acbdbc4452099935da1d4aa3ee9f040c506d2))
+* **query:** add --defs verb listing definitions bound by names ([f5fc1ad](https://github.com/casonadams/ripwire-rs/commit/f5fc1adf5743797d9b5318a2ba01cf934054b23b))
+* **resolve:** bind a bare call to the file the caller imports ([a42e86d](https://github.com/casonadams/ripwire-rs/commit/a42e86d3711dafed7e5e391c32c846164d2a462c))
+* **resolve:** gate on SCIP precision/recall; decline Rust std names count, parent, parse, bytes, peek ([93957a3](https://github.com/casonadams/ripwire-rs/commit/93957a3788e24b07eb51721b88f79ad5535d9b3c))
+* **rust:** type receivers through struct fields and free-function return types ([458a4d4](https://github.com/casonadams/ripwire-rs/commit/458a4d41b07a8607311b1f1c826374c5e81314f5))
+* **rust:** Type::default() types a binding like Type::new() ([2c12b58](https://github.com/casonadams/ripwire-rs/commit/2c12b58543fe09bba217f5621b05d48105a09a3a))
+* **solidity:** new-expressions are calls to the constructed contract ([2c3108a](https://github.com/casonadams/ripwire-rs/commit/2c3108ad4ef8a32c63572d72c42c1b82a0e192dc))
+* **sql:** reference the tables a .sql file's statements touch ([4d8181e](https://github.com/casonadams/ripwire-rs/commit/4d8181e6abb7d34a0d5456b5dd645838541464b2))
+
+
+### Bug Fixes
+
+* **cobol:** PERFORM THRU and GO TO reach their paragraphs ([337faff](https://github.com/casonadams/ripwire-rs/commit/337faff7377a26d04c9467c860688be4afd198c6))
+* **dart:** bind C() calls to the class, index named constructors as members ([5d6db3a](https://github.com/casonadams/ripwire-rs/commit/5d6db3a4923e9375cc9e72712e56606bcdca1c33))
+* **fortran:** named generic interfaces are definitions ([403da99](https://github.com/casonadams/ripwire-rs/commit/403da99ffdfd1e22d3b5e01f4f36e6b13e7d7445))
+* **go:** count method parameters without the receiver list ([6e40ce8](https://github.com/casonadams/ripwire-rs/commit/6e40ce8b7de0e03b54b93b9e4ae7d50a7cc0f1de))
+* **hcl:** name labelled blocks by their final label ([ffd7609](https://github.com/casonadams/ripwire-rs/commit/ffd7609ffabf879edfe3a5114d4f983285d5f3bf))
+* **java:** record and [@interface](https://github.com/interface) declarations are definitions ([a8e31d0](https://github.com/casonadams/ripwire-rs/commit/a8e31d0f1253f846121efb9dddf23db048127a5f))
+* **javascript:** name member-assigned functions by their property ([f412204](https://github.com/casonadams/ripwire-rs/commit/f412204c02048d9ca838102db3c582d728992b5e))
+* **kotlin:** typealias declarations are definitions ([1efb8bc](https://github.com/casonadams/ripwire-rs/commit/1efb8bc2719ff0c073695425327e6aff96054f47))
+* **languages:** a Rust test_*.rs file outside a test directory is production code ([31a1e01](https://github.com/casonadams/ripwire-rs/commit/31a1e01b6d6267b078631acec006318dbe156783))
+* **languages:** C/C++/CUDA/Metal/Zig definition and call-form defects ([6acd1f3](https://github.com/casonadams/ripwire-rs/commit/6acd1f347791f5ac87286ade2ae319d6d4248b60))
+* **markdown:** scan links only in prose and name real link targets ([61826fc](https://github.com/casonadams/ripwire-rs/commit/61826fcfe19a02a0092cca1e6c061a6f2a5b2610))
+* **objc:** type message-send receivers by their declaration and index class methods ([273745b](https://github.com/casonadams/ripwire-rs/commit/273745ba0991e40cbbbe665b0177e1e1b7893d56))
+* **python,erlang:** stop builtin and BIF calls binding to same-named defs; type declared receivers ([c79c032](https://github.com/casonadams/ripwire-rs/commit/c79c0320e3766b97ede191d7edd8abedcf7fc693))
+* **quality-delta:** a sidecar baseline no longer calls every callable in a changed file touched ([88f956e](https://github.com/casonadams/ripwire-rs/commit/88f956e54f0b89c3321511dae9ff4f7d2c836ea8))
+* **resolve:** a std-named member call needs a receiver proven to be the owner ([1957627](https://github.com/casonadams/ripwire-rs/commit/19576272e74c3e747853a04f1c8cc1d9bc21e6bd))
+* **rust:** bind module-qualified type calls through the type segment ([56bbf8e](https://github.com/casonadams/ripwire-rs/commit/56bbf8e26567791b22046fab81193eae921c48e4))
+* **scala:** enum definitions and new-expression constructor edges ([83a4256](https://github.com/casonadams/ripwire-rs/commit/83a4256af7a1894acb575d120adfc5f0ae8e6b07))
+* **slice:** treat a Rust for-loop pattern as a local binding ([d77ff85](https://github.com/casonadams/ripwire-rs/commit/d77ff856a92d01b05026bce7105e0d4133b255ad))
+* **tokens:** price answers from a tokenizer measurement and bound budgets by the whole answer ([e6acb49](https://github.com/casonadams/ripwire-rs/commit/e6acb49d23f74a8ce7ae07e9f58ae1bcf8683e85))
+
+
+### Performance Improvements
+
+* **for:** build the lego resolution index once (--for 130 ms -&gt; 61 ms warm) ([34abf87](https://github.com/casonadams/ripwire-rs/commit/34abf87f7e661670340568bdaff32771c2a374e6))
+
 ## [0.6.8](https://github.com/casonadams/ripwire-rs/compare/v0.6.7...v0.6.8) (2026-10-30)
 
 
