@@ -1,5 +1,9 @@
 # Deliberate divergences from upstream ripwire, read by scripts/validate-parity.py with tomllib.
 #
+# Measured against upstream ripwire 0.6.9 (built_from=bedc0cdcf). Every evidence= line below was taken with
+# that release. When the installed upstream differs (`ripwire --version`), expect entries to fail for reasons
+# that are not regressions: re-measure the failing entries, then update this line in the same commit.
+#
 # Paged row lists follow one generic rule in the checker and need no entry: same schema, totals
 # equal upstream's, every shown row in upstream's full (--limit) set, rows in our ranking order,
 # and bytes within upstream's or richer by density. An entry records only what that rule cannot.
