@@ -138,6 +138,14 @@ fn cases() -> Vec<(Case, bool, usize)> {
             true,
             2,
         ),
+        (
+            go(
+                "go param removed",
+                GO_HEAD.replace("(name string) {}", "() {}"),
+            ),
+            true,
+            2,
+        ),
     ]
 }
 
@@ -169,36 +177,66 @@ fn visibility_only_change_flags_no_call_site() {
 }
 
 #[test]
-fn path_call_passing_the_receiver_explicitly_is_compatible() {
-    let now = "pub struct S;
-impl S {
-    pub fn go(&mut self, name: &str) {}
-    pub fn a(&mut self) { S::go(self, \"x\"); }
-}
-";
-    let got = check("src/s.rs", Lang::Rust, now, now, "go");
-    assert_eq!((got.callers, got.incompatible), (1, 0));
-}
-
-#[test]
-fn python_staticmethod_takes_no_receiver() {
-    let now = "class S:
-    @staticmethod
-    def go(name):
-        pass
-
-    def a(self):
-        S.go('x')
-        self.go('y')
-";
-    let got = check("s.py", Lang::Python, now, now, "go");
-    assert_eq!((got.callers, got.incompatible), (1, 0));
-}
-
-#[test]
 fn caller_with_wrong_arity_is_flagged_even_when_contract_is_unchanged() {
     let now = RUST_HEAD.replace("self.go(\"x\")", "self.go(\"x\", 1)");
     let got = check("src/s.rs", Lang::Rust, RUST_HEAD, &now, "go");
     assert_eq!(got.status, ContractStatus::Unchanged);
     assert_eq!((got.callers, got.incompatible), (2, 1));
+}
+
+#[test]
+fn callers_left_with_the_old_argument_count_are_found_when_the_resolver_drops_them() {
+    let head = "pub fn go(x: u8) {}\npub fn a() { go(1); }\npub fn b() { go(2); }\n";
+    let now = head.replace("go(x: u8)", "go()");
+    let got = check("src/s.rs", Lang::Rust, head, &now, "go");
+    assert_eq!((got.callers, got.incompatible, got.sites), (2, 2, 2));
+}
+
+#[test]
+fn an_unbound_call_with_some_other_argument_count_is_not_blamed_on_the_edit() {
+    let head = "pub fn go(x: u8) {}\npub fn a() { go(1); }\npub fn b() { go(1, 2, 3); }\n";
+    let now = head.replace("go(x: u8)", "go()");
+    let got = check("src/s.rs", Lang::Rust, head, &now, "go");
+    assert_eq!((got.callers, got.incompatible), (1, 1));
+}
+
+#[test]
+fn an_unbound_call_is_not_blamed_when_the_contract_did_not_change() {
+    let now = "pub fn go(x: u8) {}\npub fn a() { go(1, 2); }\n";
+    let got = check("src/s.rs", Lang::Rust, now, now, "go");
+    assert_eq!(
+        (got.status, got.callers, got.incompatible),
+        (ContractStatus::Unchanged, 0, 0)
+    );
+}
+
+#[test]
+fn calls_that_fit_the_definition_they_bind_are_never_flagged() {
+    let cases: [(&str, &str, Lang, &str, usize); 3] = [
+        (
+            "path call writing the receiver",
+            "src/s.rs",
+            Lang::Rust,
+            "pub struct S;\nimpl S {\n    pub fn go(&mut self, name: &str) {}\n    pub fn a(&mut self) { S::go(self, \"x\"); }\n}\n",
+            1,
+        ),
+        (
+            "python staticmethod",
+            "s.py",
+            Lang::Python,
+            "class S:\n    @staticmethod\n    def go(name):\n        pass\n\n    def a(self):\n        S.go('x')\n        self.go('y')\n",
+            1,
+        ),
+        (
+            "same name on another type",
+            "src/s.rs",
+            Lang::Rust,
+            "pub struct P;\npub struct Q;\nimpl P { pub fn go(&self, a: u8) {} }\nimpl Q { pub fn go(&self) {} }\npub fn via_p(p: P) { p.go(1); }\npub fn via_q(q: Q) { q.go(); }\n",
+            1,
+        ),
+    ];
+    for (label, path, lang, src, callers) in cases {
+        let got = check(path, lang, src, src, "go");
+        assert_eq!((got.callers, got.incompatible), (callers, 0), "{label}");
+    }
 }

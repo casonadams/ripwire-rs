@@ -27,7 +27,8 @@ Verifies whether an edited symbol's signature changed in parameters, arity, or p
 - **Acknowledged**: a row the `.ripwire-rs_quality_acks` ledger acknowledges is suppressed entirely and counted in `acked=`.
 - **Exit Code**: Non-zero if `incompatible > 0`.
 - **Disclosures**: Explicitly reports argument counts and required parameter counts at each callsite.
-- **Receivers**: a method's receiver (`self`, `&mut self`, Python `self`/`cls`) is not written at `recv.method(args)`, so `required=` excludes it there; a path call that writes it (`Type::method(recv, args)`) is compared against the full parameter list. A Python `@staticmethod` has no receiver. Every same-named call in a caller is compared with this one definition, so when several definitions share the name a call that binds another one can be flagged.
+- **Receivers**: a method's receiver (`self`, `&mut self`, Python `self`/`cls`) is not written at `recv.method(args)`, so `required=` excludes it there; a path call that writes it (`Type::method(recv, args)`) is compared against the full parameter list. A Python `@staticmethod` has no receiver.
+- **Binding**: a call is compared only when the resolver binds it to this definition alone; a call that binds another definition of the name, or several, is skipped. When the contract changed, a call the resolver could not bind (its argument count no longer fits any definition) is listed as `<site via="name">` if it passes exactly the argument count HEAD required; any other unbound call is not blamed on the edit.
 - **Rows**: Every caller row is emitted; incompatible callers always print, and `--limit=N --offset=M` pages the compatible ones (`shown_unflagged=`, `total=`, `has_more=`, `next_offset=`).
 
 ---
