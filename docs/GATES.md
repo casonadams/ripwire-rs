@@ -27,6 +27,7 @@ Verifies whether an edited symbol's signature changed in parameters, arity, or p
 - **Acknowledged**: a row the `.ripwire-rs_quality_acks` ledger acknowledges is suppressed entirely and counted in `acked=`.
 - **Exit Code**: Non-zero if `incompatible > 0`.
 - **Disclosures**: Explicitly reports argument counts and required parameter counts at each callsite.
+- **Receivers**: a method's receiver (`self`, `&mut self`, Python `self`/`cls`) is not written at `recv.method(args)`, so `required=` excludes it there; a path call that writes it (`Type::method(recv, args)`) is compared against the full parameter list. A Python `@staticmethod` has no receiver. Every same-named call in a caller is compared with this one definition, so when several definitions share the name a call that binds another one can be flagged.
 - **Rows**: Every caller row is emitted; incompatible callers always print, and `--limit=N --offset=M` pages the compatible ones (`shown_unflagged=`, `total=`, `has_more=`, `next_offset=`).
 
 ---
@@ -51,7 +52,7 @@ Maps modified files and symbols to transitively reachable test files across the 
 
 ## 3. Quality Delta Gate (`--quality-delta`)
 
-Enforces regression-free commits across 10 architectural quality dimensions against git `HEAD` or a pinned baseline (`--quality-baseline`). `--quality-delta=REV` (or `REV..HEAD`) instead rebuilds the baseline from the merge base of `REV` and `HEAD`, ignoring any sidecar, and reports `baseline="git-ref" base_ref="<sha>"`: the delta of everything since that base, for CI or review bots that check out a fresh head. The value needs `=`, so `--quality-delta .` still names the path:
+Enforces regression-free commits across 10 architectural quality dimensions against git `HEAD` or a pinned baseline (`--quality-baseline`); `baseline="sidecar"` with `sidecar="<file>"` names the pinned file read, and `baseline="git-HEAD"` means none was found. `--quality-delta=REV` (or `REV..HEAD`) instead rebuilds the baseline from the merge base of `REV` and `HEAD`, ignoring any sidecar, and reports `baseline="git-ref" base_ref="<sha>"`: the delta of everything since that base, for CI or review bots that check out a fresh head. The value needs `=`, so `--quality-delta .` still names the path:
 1. **Cognitive Complexity** ($CCX \le 15$ Campbell standard)
 2. **Cyclomatic Complexity** (McCabe paths)
 3. **Function Length / Line Count**
@@ -200,7 +201,37 @@ Emits canonical `ripwire-rs.situ/v1` XML summarizing a working tree diff: blast 
 
 ---
 
-## 11. Parity Ledger (`make parity`)
+## 11. Enforcing the Gates with a Hook
+
+An instruction asking to run the gates gets skipped; a hook does not. A hook runs a command
+*before* `git commit` and blocks it on a non-zero result.
+
+For oh-my-pi (`omp`), the [`gate` plugin](https://github.com/casonadams/omp-plugins/tree/main/plugins/gate)
+does this:
+
+```bash
+omp plugin marketplace add casonadams/omp-plugins
+omp plugin install gate@casonadams-plugins
+```
+
+It runs `ripwire-rs` (falling back to `ripwire`) over what differs from `HEAD`, one step at a time, and stops at
+the first step that fails:
+
+1. `--edit-check` for each public symbol the diff adds or changes. Blocks when a contract changed and a caller
+   no longer fits.
+2. `--quality-delta`. Blocks when it exits `2`.
+
+Once both are green it lists, without blocking, the untested rows from `--test-gate` and the files `--situ`
+reports as usual co-changes. Run `--quality-baseline` at the start of a task or `--quality-delta` has nothing
+to compare with. `OMP_GATE_DISABLE=1` turns the plugin off.
+
+Any tool with a hook that runs before a shell command can do the same: trigger on a command that runs
+`git commit`, run the steps in order in the repository being committed, stop at the first non-zero result, and
+block with that step's output. The plugin's source is a reference implementation.
+
+---
+
+## 12. Parity Ledger (`make parity`)
 
 `scripts/validate-parity.py` compares every command, and the gate runs on explicit changed sets, against upstream ripwire. A child-tag count difference or a structural mismatch is a divergence and must be recorded in `scripts/parity-divergences.toml`, except paged row lists: a root carrying `total`, `has_more`, or `next_offset` follows one generic rule with no entry. That rule requires the same schema, `total`/`count` equal to upstream's, every shown row (keys `p`/`n`) present in upstream's full `--limit` run, rows in our ranking order, and bytes at or below upstream's or richer by density. Structure (root attributes, row attributes, child tags) of a paged list is judged on both tools' full `--limit` runs, because a default window is a byte budget and says nothing about which attributes a row can carry; default answer sizes are held by `make size` (`scripts/output-budgets.toml`). An entry whose run no longer diverges is stale and fails. Kinds: `smaller` (our bytes <= upstream), `richer` (our facts > upstream and facts-per-byte >= upstream), `fixes-upstream-defect` (evidence names an existing regression test), `defect` (our known defect: printed as a warning and counted; `defect_budget` in the ledger header must equal the count). Fixture entries run in a temp directory outside the tree.
 
