@@ -72,6 +72,8 @@ pub struct RawRef {
     pub macro_arg: bool,
     /// The reference is written as a member access (`x.f()`), not a bare or path name.
     pub member_call: bool,
+    /// The name is reached through a path (`Type::f`), so a method's receiver is written as its first argument.
+    pub path_call: bool,
 }
 
 /// Parsed facts from a single file.
@@ -750,6 +752,7 @@ fn record_ref_item(
                 .name_node
                 .is_some_and(|n| lang.semantics().is_macro_argument(n)),
         member_call: ext.name_node.is_some_and(is_member_access),
+        path_call: ext.name_node.is_some_and(is_path_access),
     });
 }
 
@@ -770,6 +773,10 @@ fn is_member_access(name_node: tree_sitter::Node<'_>) -> bool {
     name_node
         .prev_sibling()
         .is_some_and(|s| matches!(s.kind(), "." | "?." | "optional_chain" | "->" | "::"))
+}
+
+fn is_path_access(name_node: tree_sitter::Node<'_>) -> bool {
+    name_node.prev_sibling().is_some_and(|s| s.kind() == "::")
 }
 
 const NON_BINDING_PARAM_FIELDS: &[&str] = &[
@@ -863,6 +870,7 @@ fn scan_macro_body_calls(
                 callable_field: false,
                 macro_arg: false,
                 member_call: false,
+                path_call: false,
             });
         }
     }

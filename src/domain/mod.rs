@@ -481,6 +481,8 @@ pub struct Reference {
     pub macro_arg: bool,
     /// The reference is a member access (`x.f()`), so its target is a property, not a bare name.
     pub member_call: bool,
+    /// The name is reached through a path (`Type::f`), so a method's receiver is written as its first argument.
+    pub path_call: bool,
 }
 
 impl Reference {
@@ -508,6 +510,7 @@ impl Reference {
             callable_field: false,
             macro_arg: false,
             member_call: false,
+            path_call: false,
         }
     }
 

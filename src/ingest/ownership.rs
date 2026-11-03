@@ -53,6 +53,7 @@ pub fn build_file_references(
             reference.callable_field = r.callable_field;
             reference.macro_arg = r.macro_arg;
             reference.member_call = r.member_call;
+            reference.path_call = r.path_call;
             reference.start_byte = r.start_byte as u32;
             reference.name_line = r.name_line;
             reference.arg_count = r.arg_count;

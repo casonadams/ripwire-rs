@@ -972,3 +972,15 @@ fn a_sidecar_baseline_does_not_call_an_unchanged_clone_member_touched() {
         "a member whose ccx moved is touched"
     );
 }
+
+#[test]
+fn a_sidecar_baseline_names_its_file_and_a_git_baseline_does_not() {
+    let snap = QualitySnapshot::default();
+    let from_sidecar = compute_quality_delta(&snap, &snap, "sidecar").to_xml_string();
+    assert!(
+        from_sidecar.contains(" sidecar=\".ripwire-rs_quality_baseline\""),
+        "{from_sidecar}"
+    );
+    let from_git = compute_quality_delta(&snap, &snap, "git-HEAD").to_xml_string();
+    assert!(!from_git.contains(" sidecar=\""), "{from_git}");
+}

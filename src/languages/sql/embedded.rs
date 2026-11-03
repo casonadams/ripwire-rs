@@ -127,6 +127,7 @@ fn scan_sql_tokens_in_literal(text: &str, start_byte: usize, line: u32, refs: &m
                     callable_field: false,
                 macro_arg: false,
                     member_call: false,
+                    path_call: false,
                 });
             }
         }

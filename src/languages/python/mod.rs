@@ -125,6 +125,26 @@ const PYTHON_ENUM_BASES: &[&str] = &[
     "IntegerChoices",
 ];
 
+fn is_staticmethod(ctx: &DefCaptureGateContext<'_>) -> bool {
+    has_decorator(ctx, |name| name == "staticmethod")
+}
+
+fn has_decorator(ctx: &DefCaptureGateContext<'_>, matches: impl Fn(&str) -> bool) -> bool {
+    let Some(decorated) = ctx
+        .def_node
+        .and_then(|def| def.parent())
+        .filter(|p| p.kind() == "decorated_definition")
+    else {
+        return false;
+    };
+    let mut cursor = decorated.walk();
+    decorated.children(&mut cursor).any(|d| {
+        d.kind() == "decorator"
+            && d.utf8_text(ctx.source_bytes)
+                .is_ok_and(|text| matches(text.trim_start_matches('@').trim()))
+    })
+}
+
 fn has_enclosing_method_in_class(node: tree_sitter::Node<'_>) -> bool {
     let mut saw_fn = false;
     let mut curr = node.parent();
@@ -332,30 +352,24 @@ impl LanguageSemantics for PythonLanguage {
         "py"
     }
 
-    /// Python: a `def` in a class body is reached through an instance or the class, not the module.
+    /// Python: a `def` in a class body is reached through an instance or the class, not the module,
+    /// and takes the receiver as its first parameter unless it is a `@staticmethod`.
     fn def_takes_self(&self, ctx: &super::DefCaptureGateContext<'_>) -> bool {
         let mut node = ctx.def_node;
         while let Some(current) = node.filter(|n| n.kind() != "block") {
             node = current.parent();
         }
-        node.and_then(|block| block.parent())
-            .is_some_and(|owner| owner.kind() == "class_definition")
+        let in_class = node
+            .and_then(|block| block.parent())
+            .is_some_and(|owner| owner.kind() == "class_definition");
+        in_class && !is_staticmethod(ctx)
     }
 
     /// A `@property` or `@cached_property` method: reading `x.name` runs it.
     fn def_is_accessor(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
-        let Some(decorated) = ctx.def_node.and_then(|def| def.parent()) else {
-            return false;
-        };
-        let mut cursor = decorated.walk();
-        decorated.kind() == "decorated_definition"
-            && decorated.children(&mut cursor).any(|d| {
-                d.kind() == "decorator"
-                    && d.utf8_text(ctx.source_bytes).is_ok_and(|text| {
-                        let name = text.trim_start_matches('@').trim();
-                        name == "property" || name.ends_with("cached_property")
-                    })
-            })
+        has_decorator(ctx, |name| {
+            name == "property" || name.ends_with("cached_property")
+        })
     }
 
     fn def_is_registered(&self, ctx: &DefCaptureGateContext<'_>) -> bool {

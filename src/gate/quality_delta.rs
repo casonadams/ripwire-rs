@@ -241,6 +241,10 @@ impl QualityDeltaReport {
         let text = [
             ("head_basis", self.head_basis.map(str::to_string)),
             ("base_ref", self.base_ref.clone()),
+            (
+                "sidecar",
+                (self.baseline_source == "sidecar").then(|| DEFAULT_BASELINE_FILE.to_string()),
+            ),
             ("baseline_absorbed", nonzero(self.baseline_absorbed)),
             ("renames", nonzero(self.renames)),
             ("acked_by_rename", nonzero(self.acked_by_rename)),
@@ -288,7 +292,7 @@ impl crate::serialize::ToXmlString for QualityDeltaReport {
         }
         writeln!(
             out,
-            "<!-- ripwire-rs quality-delta schema=ripwire-rs.quality-delta/v1: only what the change made WORSE vs baseline=: regressions= minor= gating=; <r kind= sym= p= was= now= bar= gating=1 sev=minor origin=> (clone rows: members= tokens=), <sa> acked; with no regressions the <sa> rows collapse to stale_by_kind= and stale_next= prints them. baseline_absorbed=N: the pinned sidecar was taken on a dirty tree that already held N gating findings, so a green exit means clean since the pin. -->\n<quality-delta schema=\"ripwire-rs.quality-delta/v1\" baseline=\"{}\" regressions=\"{}\" minor=\"{}\" acked=\"{}\" stale=\"{}\" preexisting-worse=\"{}\" new-symbol=\"{}\" gating=\"{}\" api-new-surface=\"{}\" at=\"{}\"{hb_attr}{stale_attr}>",
+            "<!-- ripwire-rs quality-delta schema=ripwire-rs.quality-delta/v1: only what the change made WORSE vs baseline=: regressions= minor= gating=; <r kind= sym= p= was= now= bar= gating=1 sev=minor origin=> (clone rows: members= tokens=), <sa> acked; with no regressions the <sa> rows collapse to stale_by_kind= and stale_next= prints them. baseline_absorbed=N: the pinned sidecar was taken on a dirty tree that already held N gating findings, so a green exit means clean since the pin. sidecar=FILE: the pinned file read (baseline=sidecar); without it the baseline is git-HEAD. -->\n<quality-delta schema=\"ripwire-rs.quality-delta/v1\" baseline=\"{}\" regressions=\"{}\" minor=\"{}\" acked=\"{}\" stale=\"{}\" preexisting-worse=\"{}\" new-symbol=\"{}\" gating=\"{}\" api-new-surface=\"{}\" at=\"{}\"{hb_attr}{stale_attr}>",
             self.baseline_source.xml_escaped(),
             self.regressions.len(),
             self.minor_count,

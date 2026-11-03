@@ -1,4 +1,4 @@
-use crate::domain::{IngestResult, Interner, NodeId, RefRole};
+use crate::domain::{IngestResult, Interner, NodeId, RefRole, Reference, Symbol};
 use crate::gate::contract::{ContractStatus, SignatureContract, compare_contracts};
 use crate::graph::Graph;
 use crate::serialize::XmlEscapeExt;
@@ -145,10 +145,20 @@ fn write_caller_row<W: Write>(c: &CallerCheckResult, out: &mut W) -> io::Result<
     writeln!(out, "  </c>")
 }
 
+/// Arguments a call site must pass to `target`: `recv.method(args)` does not write the receiver the
+/// definition's parameter list counts, while a path call (`Type::method(recv, args)`) does.
+fn expected_arg_count(target: &Symbol, r: &Reference) -> u16 {
+    if target.takes_self && r.member_call && !r.path_call {
+        target.params.saturating_sub(1)
+    } else {
+        target.params
+    }
+}
+
 fn check_caller_compatibility(
     caller_id: NodeId,
     sym_name: &str,
-    target_params: u16,
+    target: &Symbol,
     ingest: &IngestResult,
     interner: &Interner,
 ) -> CallerCheckResult {
@@ -160,11 +170,12 @@ fn check_caller_compatibility(
     for r in &ingest.references {
         if r.from_symbol == caller_id && r.role == RefRole::Call {
             let callee = &interner[r.callee_name];
-            if callee == sym_name && r.arg_count_known && r.arg_count != target_params {
+            let required = expected_arg_count(target, r);
+            if callee == sym_name && r.arg_count_known && r.arg_count != required {
                 sites.push(IncompatibleCallSite {
                     line: r.line,
                     arg_count: r.arg_count,
-                    required_params: target_params,
+                    required_params: required,
                 });
             }
         }
@@ -217,7 +228,7 @@ pub fn check_symbol_contract(
     let mut incompatible_callers = 0usize;
 
     for caller_id in caller_nodes {
-        let res = check_caller_compatibility(caller_id, &sym_name, sym.params, ingest, interner);
+        let res = check_caller_compatibility(caller_id, &sym_name, sym, ingest, interner);
         if res.is_incompatible {
             incompatible_callers += 1;
         }

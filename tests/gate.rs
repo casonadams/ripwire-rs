@@ -4,6 +4,7 @@ mod gate {
     mod baseline;
     mod contract;
     mod edit_check;
+    mod edit_check_receiver;
     mod lanes;
     mod merge_scout;
     mod pr_context;
