@@ -3,7 +3,7 @@
 `ripwire-rs` provides a native stdio Model Context Protocol (MCP) server conforming to JSON-RPC 2.0.
 
 
-> **Skills vs. MCP**: If your coding agent supports skills (`ripwire-rs --add-skills`) or project instructions ([`AGENTS.md`](AGENTS_GUIDE.md)) with shell execution, **you do not need the MCP server**—the agent invokes the `ripwire-rs` CLI directly with lower tool-schema overhead. Use `ripwire-rs mcp` only for MCP-native clients or environments without direct CLI/skill execution.
+> **Skills vs. MCP**: If your coding agent supports skills (`ripwire-rs --add-skills`) or shell execution, **you do not need the MCP server**—the agent invokes the `ripwire-rs` CLI directly with lower tool-schema overhead. Use `ripwire-rs mcp` only for MCP-native clients or environments without direct CLI/skill execution.
 ## Client Registration
 
 ### Standard MCP Configuration (`mcp.json`)

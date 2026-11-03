@@ -50,11 +50,9 @@ See the **[Workflow Guide](docs/WORKFLOWS.md)** (or **[online](https://casonadam
 
 1. **[Orientation & Scoping](docs/WORKFLOWS.md#1-orientation--scoping-landing-cold-in-a-repository)**: Cold-start repository maps and task-ranked context (`--top-k`, `--tree`, `--for`, `--html`).
 2. **[Navigation & Blast Radius](docs/WORKFLOWS.md#2-navigation--blast-radius-safe-refactoring--impact-analysis)**: Dependency tracing, SQL table lineage, and dataflow slicing (`--callers`, `--callees`, `--impact`, `--uses`, `--connect`, `--slice`).
-3. **[Pre-Commit & PR Safety Gates](docs/WORKFLOWS.md#3-pre-commit--pr-safety-gates-zero-broken-contracts)**: Contract checks, test reachability, and diff awareness (`--edit-check`, `--affected`, `--test-gate`, `--situ`, `--pr-context`).
+3. **[Pre-Commit & PR Safety Gates](docs/WORKFLOWS.md#3-pre-commit--pr-safety-gates-zero-broken-contracts)**: Contract checks, test reachability, and diff awareness, enforceable with a commit hook (`--edit-check`, `--affected`, `--test-gate`, `--situ`, `--pr-context`).
 4. **[Code Health & Technical Debt](docs/WORKFLOWS.md#4-code-health--technical-debt-auditing)**: Quality regressions, dead code, hotspots, clones, and coupling (`--quality-delta`, `--quality-panel`, `--dead-code`, `--hotspots`, `--clones`, `--cochange`, `--deps`).
-5. **[Deep Inspection & Agent Context](docs/WORKFLOWS.md#5-deep-inspection--agent-context-delivery)**: Token-budgeted symbol bodies, trace mapping, and multi-query batching (`--expand`, `--outline`, `--compress`, `--from-trace`, `--batch`, `--json`).
-6. **[CI Gates & Agent Integration](docs/WORKFLOWS.md#6-continuous-integration-ci-workflows--automated-pr-gates)**: Automated PR gates, stdio MCP server, LSP bridge, and 17 agent skills (`--add-skills`, `ripwire-rs mcp`, `--lsp`, `--scan-skills`).
-7. **[Multi-Agent Fleet Orchestration](docs/WORKFLOWS.md#7-multi-agent-fleet-orchestration-parallel-worktrees--subagent-slicing)**: Community-carved task partitioning, pre-hoc worktree lane collision planning, cross-branch merge scouting, and session handoffs (`--pack-task --partition=N`, `--plan-lanes`, `--brief`, `--merge-scout`, `--handoff`, `--help-task`, `--verify`).
+5. **[CI Gates](docs/WORKFLOWS.md#5-continuous-integration-ci-workflows--automated-pr-gates)**: Automated PR gates and a GitHub Actions recipe (`--arch`, `--test-gate`, `--quality-delta`, `--situ`).
 
 Compiler-backed resolution is available with `--scip=index.scip` on top-level
 queries, `navigate`, `orient` (including `--for`), and `mcp`:
@@ -88,9 +86,8 @@ binding forms remain evidence floors.
 
 - **[Installation Guide](docs/INSTALL.md)** — Homebrew, APT, DNF/RPM, `cargo-binstall`, and source build instructions.
 - **[Workflow Guide](docs/WORKFLOWS.md)** — In-depth guide to the 7 primary workflows: when, where, and why to use each command.
-- **[AGENTS.md Governance Guide](docs/AGENTS_GUIDE.md)** — Drop-in `AGENTS.md` template, 5-step autonomous verification loop, and CI/CD parity.
 - **[CLI Reference](docs/CLI.md)** — Complete command catalog, top-level flags, streaming budgets, and selector syntax. **[Generated flag and MCP tool index](docs/REFERENCE.md)** — every flag and tool, produced from the binary.
-- **[Pre-Commit Safety Gates](docs/GATES.md)** — Verification gates (`--edit-check`, `--affected`, `--quality-delta`, `--test-gate`, `--seams`, `--pr-context`, `--merge-scout`, `--arch`).
+- **[Pre-Commit Safety Gates](docs/GATES.md)** — Verification gates (`--edit-check`, `--affected`, `--quality-delta`, `--test-gate`, `--seams`, `--pr-context`, `--merge-scout`, `--arch`) and how to enforce them with a hook.
 - **[Model Context Protocol (MCP)](docs/MCP.md)** — Optional stdio MCP server for clients without direct CLI/skill support.
 - **[Architecture & Pipeline](docs/ARCHITECTURE.md)** — Tree-Sitter grammars, lock-free interning, CSR in-edge graph, and streaming XML.
 - **[Algorithms & Academic Lenses](docs/ALGORITHMS.md)** — PageRank, HITS, Leiden modularity, clone detector, and dataflow slicing.

@@ -1,6 +1,6 @@
 # Real-World Workflows: When, Where, & Why to Use ripwire-rs
 
-`ripwire-rs` provides static analysis, call graph navigation, and pre-commit verification gates. Rather than running commands in isolation, `ripwire-rs` is designed around 7 high-impact development and agentic workflows.
+`ripwire-rs` provides static analysis, call graph navigation, and pre-commit verification gates. Rather than running commands in isolation, `ripwire-rs` is designed around 5 development workflows.
 
 ---
 
@@ -42,7 +42,6 @@
 ### Benefits
 - **Zero Hallucinated Dependencies**: Produces an in-context AST schema dictionary teaching agents the meaning of minified attributes (`t`, `n`, `sc`, `k`, `c`).
 - **Prompt Token Savings**: Emits `shown="K"` truncation markers so LLMs know absence in a top-K slice does not mean absence in the codebase.
-- **Sub-Second Speed**: Renders complete repository topologies across 36 languages in ~25 ms.
 
 ---
 
@@ -62,7 +61,7 @@
   ripwire-rs . --callees="ingest_files"
   ```
 
-- **Transitive Blast Radius**: Trace full transitive reachability across downstream callers (up to 16 hops deep) ranked by PageRank.
+- **Transitive Blast Radius**: Trace full transitive reachability across downstream callers (bound it with `--impact-depth=N`) ranked by PageRank.
   ```bash
   ripwire-rs . --impact="Interner"
   ```
@@ -91,7 +90,7 @@
   ```
 
 ### Benefits
-- **Full Transitive Impact**: Identifies downstream callers up to 16 hops deep ranked by Personalized PageRank.
+- **Full Transitive Impact**: Identifies downstream callers, ranked by Personalized PageRank.
 - **Root-Cause Tracing**: `--path-between` and `--connect` expose the exact sequence of intermediary function calls bridging two components.
 - **Side-Effect Verification**: ARISE slicing isolates exact variable lifetimes and mutation points inside a function.
 - **Cross-Language Database Lineage**: Embedded SQL queries come for free during standard AST ingestion. Any string literal in Dart, Rust, Python, TypeScript, Go, Java, etc. containing SQL DML automatically maps to `.sql` table symbols with typed `read` and `write` roles.
@@ -103,7 +102,7 @@
 ## 3. Pre-Commit & PR Safety Gates (Zero Broken Contracts)
 
 ### When & Where
-- In local Git pre-commit hooks (`.git/hooks/pre-commit`).
+- In a hook that runs before `git commit`; see [Enforcing the Gates with a Hook](GATES.md#11-enforcing-the-gates-with-a-hook).
 - Before running `git push` or opening a pull request.
 - In automated CI/CD PR verification workflows.
 
@@ -144,7 +143,7 @@
   ```
 
 ### Benefits
-- **Surgical Test Execution**: Identifies the exact test files that transitively reach your changes, letting you run a 5-second test subset instead of a 20-minute test suite.
+- **Surgical Test Execution**: Identifies the exact test files that transitively reach your changes, so you run only those tests.
 - **Contract Enforcement**: Detects parameter count additions, removals, and visibility changes that break existing callers before you commit.
 - **Fowler's Shotgun Surgery Protection**: `--situ` surfaces companion files historically edited together with your diff that you may have forgotten to touch.
 - **Proactive Conflict Detection**: `--merge-scout` warns of semantic conflicts across branches before rebasing.
@@ -200,50 +199,7 @@
 
 ---
 
-## 5. Deep Inspection & Agent Context Delivery
-
-### When & Where
-- Extracting exact function implementations for LLM prompts.
-- Debugging stack traces and compiler error messages.
-- High-efficiency agent tooling over the Model Context Protocol (MCP).
-
-### Core Operations
-
-- **Symbol Implementation Bodies**: Extract full symbol bodies and callee signatures in CDATA XML blocks, or skeletonize control flow.
-  ```bash
-  ripwire-rs . --expand="Symbol::new"
-  ripwire-rs . --outline="Interner::intern"
-  ripwire-rs . --pack-top-n=5
-  ripwire-rs . --at="src/main.rs:25"
-  ```
-
-- **Verification, Queries & Batching**: Prove relationship claims, query call-graphs with DSL, map compiler traces, or run up to 16 heterogeneous queries in a single turn.
-  ```bash
-  ripwire-rs . --verify="calls(main,run_cli)"
-  ripwire-rs . --graph-query="callers(main)"
-  ripwire-rs . --from-trace=error.log
-  ripwire-rs . --batch=queries.txt
-  ripwire-rs . --callers="Interner::len" --json
-  ```
-
-- **Diagnostics, Notes & Agent Protocols**: Run engine health checks, persist symbol notes across sessions, run the stdio MCP server, or install agent skills.
-  ```bash
-  ripwire-rs . --doctor
-  ripwire-rs . --notes
-  ripwire-rs . --note-add="symbol: gotcha note"
-  ripwire-rs mcp
-  ripwire-rs --add-skills
-  ```
-
-### Benefits
-- **Precision Context Bundles**: Extracts only relevant symbol bodies into CDATA blocks, conserving prompt token budgets.
-- **Batching Economy**: `--batch` executes up to 16 queries in a single turn, eliminating agent tool-call round-trip latency.
-- **Instant Agent Skills**: `--add-skills` automatically provisions 17 standardized agent skills and active manifest into `~/.agents/skills`.
-- **Autonomous Governance**: To make AI coding agents execute these workflows autonomously via pre-commit verification loops, see the [AGENTS.md Integration Guide](AGENTS_GUIDE.md).
-
----
-
-## 6. Continuous Integration (CI) Workflows & Automated PR Gates
+## 5. Continuous Integration (CI) Workflows & Automated PR Gates
 
 ### When & Where
 - Automated GitHub Actions (`.github/workflows/`), GitLab CI, or Jenkins pipelines.
@@ -275,11 +231,11 @@ The 4 automated gates designed to run in continuous integration pipelines:
 
 ### What is `.github/workflows/ripwire-rs-gate.yml`?
 
-The `ripwire-rs-gate.yml` file is a continuous integration (CI) workflow that automatically validates every Pull Request against deterministic static analysis gates before merging into `main` or `master`. It provides 1:1 remote parity with the local pre-commit checks enforced in `AGENTS.md`.
+The `ripwire-rs-gate.yml` file is a continuous integration (CI) workflow that automatically validates every Pull Request against deterministic static analysis gates before merging into `main` or `master`. It provides 1:1 remote parity with the local pre-commit checks a [hook](GATES.md#11-enforcing-the-gates-with-a-hook) enforces.
 
 ### When to Use It
 
-- **Governing AI Coding Agents**: When AI coding agents generate code and open PRs, this gate blocks untested code paths, broken caller contracts, or complexity spikes automatically.
+- **Catching Regressions**: This gate blocks untested code paths, broken caller contracts, or complexity spikes in any pull request.
 - **Preventing Architectural Rot**: When teams want automated enforcement of module boundaries (`rules.txt`), zero quality regressions (`--quality-delta`), and test coverage reachability (`--test-gate`).
 - **Automated PR Review Summaries**: When you want blast radius, affected test files, and historical co-change files rendered directly into GitHub's `$GITHUB_STEP_SUMMARY` review UI on every push.
 
@@ -362,52 +318,6 @@ capping the number of reported violations.
 
 ### Benefits
 - **Automated Merge Blocking**: Fails PR jobs automatically (exit code 4 on `--test-gate` or exit code 2 on `--quality-delta`) before untested changes or architectural rot merge into production branches.
-- **Microsecond Gate Execution**: Executes static analysis and graph traversals in milliseconds, eliminating slow CI runner bottlenecks.
 - **Zero Configuration**: Reads native git repository history, remotes, and branch merge bases automatically.
 
 ---
-
-## 7. Multi-Agent Fleet Orchestration (Parallel Worktrees & Subagent Slicing)
-
-### When & Where
-- Fanning a multi-symbol feature or large refactoring out across $N$ parallel coding agents or isolated git worktrees.
-- Preventing duplicate orientation token spend where every spawned subagent re-reads the same files from scratch.
-- Predicting symbol-level merge conflicts, same-file risks, and contract-touch dependencies *before* writing code or before landing concurrent branches.
-- Handing off in-flight work and institutional gotcha notes across agent sessions.
-
-### Core Operations
-
-- **Leiden Community Task Slicing**: Carve a goal into 1 shared core plus $N$ disjoint subagent bundles (N=2..16) along call-graph communities.
-  ```bash
-  ripwire-rs . --pack-task="refactor serialization" --partition=4
-  ```
-
-- **Pre-Hoc Lane Conflict Planning**: Predict pairwise symbol collisions, same-file risks, and contract-touch dependencies across worktree lanes before writing code.
-  ```bash
-  ripwire-rs . --plan-lanes=3 --task="refactor serialization"
-  ripwire-rs . --plan-lanes --brief=lanes.txt
-  ```
-
-- **Cross-Branch Merge Scouting**: Scout semantic collisions and compute optimal fewest-conflicts-first landing order across concurrent branches.
-  ```bash
-  ripwire-rs . --merge-scout="feat/auth,feat/billing"
-  ```
-
-- **Epistemic Intent Routing & Verification**: Recommend the optimal ripwire-rs verb based on repository evidence, or prove 6 closed relation shapes.
-  ```bash
-  ripwire-rs . --help-task="plan the new feature for authentication"
-  ripwire-rs . --verify="calls(main,run_cli)"
-  ```
-
-- **Session Handoff & Symbol Notes**: Package verified changes and co-change partners for subsequent agents, or persist symbol-level gotchas. Co-change partners are mined from the 18-month git window of the first changed file (`score` = co-changes / commits touching that file); `blast_files` counts files outside the changed set that transitively call changed symbols. Branch, subject, and `at` appear only inside a git repository.
-  ```bash
-  ripwire-rs . --handoff
-  ripwire-rs . --note-add="Interner: Spur IDs are 1-based; never index directly without resolve()"
-  ripwire-rs . --notes
-  ```
-
-### Benefits
-- **Zero Redundant Orientation**: `--pack-task --partition=N` carves the task surface along Leiden call-graph communities (with file-level fallback for edgeless data types and median splitting when $K < N$), emitting a `<ctx-partitions>` bundle with a shared core plus $N$ disjoint subagent `<bundle>` slices and Jaccard overlap telemetry (`overlap_mean`, `overlap_max`, `core_overlap`).
-- **Pre-Hoc Collision Prevention**: `--plan-lanes` keys claims on path-qualified `fnv1a64(path\0scope\0name)` identities to separate true symbol `conflicts`, `same_file_risk`, and `contract_touch` (a lane's claim sitting inside another lane's transitive caller blast radius), computing a greedy fewest-conflicts-first `landing_order`. Per-lane `conflicts` and `contract_touches` are sums of those pair results; `ambiguous_calls` sums call-graph ambiguity over the lane's claims; `churn` and `hotspot_rank` come from the 12-month git window and are omitted outside a git repository.
-- **Epistemic Honesty**: `--help-task` inspects live repository facts (`git`, `dirty`, `trace`, `resolved_symbols`) and abstains when evidence is thin; `--verify` distinguishes `confirmed`, `refuted` (only under complete evidence), and `not-established` (when bounded by the static call-graph or reference floor).
-- **Fleet Governance Contract**: For drop-in configuration of autonomous subagents with deterministic static analysis gates, see the [AGENTS.md Integration Guide](AGENTS_GUIDE.md).

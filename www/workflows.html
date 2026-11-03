@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
   <title>Workflows · ripwire-rs Code Intelligence</title>
-  <meta name="description" content="Real-world development workflows for ripwire-rs: codebase orientation, blast radius navigation, pre-commit PR safety gates, code health audits, and agent context routing.">
+  <meta name="description" content="Real-world development workflows for ripwire-rs: codebase orientation, blast radius navigation, pre-commit PR safety gates, code health audits, and CI gates.">
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="css/style.css?v=3">
@@ -37,7 +37,7 @@
       <div class="nav-actions">
         <a href="./" class="nav-link">Home</a>
         <a href="workflows.html" class="nav-link active">Workflows</a>
-        <a href="agents.html" class="nav-link">Agents</a>
+        <a href="hooks.html" class="nav-link">Hooks</a>
         <a href="docs.html" class="nav-link">Docs</a>
         <a href="https://crates.io/crates/ripwire-rs" target="_blank" rel="noopener" class="nav-link">crates.io</a>
         <a href="https://github.com/casonadams/ripwire-rs" target="_blank" rel="noopener" class="btn-icon" aria-label="GitHub Repository">
@@ -56,7 +56,7 @@
       <div class="badge"><span>PRACTICAL GUIDE · 7 PRIMARY WORKFLOWS</span></div>
       <h1 style="font-size: 2.5rem; font-weight: 800; margin-top: 12px; margin-bottom: 12px;">When, Where, &amp; Why to Use ripwire-rs</h1>
       <p style="color: var(--text-secondary); max-width: 780px; font-size: 1.1rem;">
-        <code>ripwire-rs</code> is engineered around 7 high-impact workflows: from landing cold in a foreign codebase to surgical test execution, automated CI/CD PR verification, and multi-agent fleet orchestration.
+        <code>ripwire-rs</code> is engineered around 5 workflows: from landing cold in a foreign codebase to surgical test execution and automated CI/CD PR verification.
       </p>
     </div>
   </header>
@@ -70,9 +70,7 @@
       <a href="#navigation" class="wf-pill">2. Navigation &amp; Blast Radius</a>
       <a href="#safety-gates" class="wf-pill">3. Pre-Commit &amp; PR Gates</a>
       <a href="#code-health" class="wf-pill">4. Code Health &amp; Auditing</a>
-      <a href="#agent-context" class="wf-pill">5. Agent Context Delivery</a>
-      <a href="#ci-cd" class="wf-pill">6. CI / CD &amp; PR Gates</a>
-      <a href="#agent-orchestration" class="wf-pill">7. Multi-Agent Orchestration</a>
+      <a href="#ci-cd" class="wf-pill">5. CI / CD &amp; PR Gates</a>
     </div>
 
     <!-- Workflow 1 -->
@@ -253,7 +251,7 @@
         <div class="cmd-field">
           <span class="cmd-label">When &amp; Where</span>
           <ul class="cmd-scenario-list">
-            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>In local Git pre-commit hooks (<code>.git/hooks/pre-commit</code>).</li>
+            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>In a hook that runs before <code>git commit</code> (see <a href="hooks.html" style="color: var(--accent); text-decoration: underline;">Hooks</a>).</li>
             <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>Before running <code>git push</code> or opening a pull request.</li>
             <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>In automated CI/CD pull request verification gates before merging code.</li>
           </ul>
@@ -326,7 +324,7 @@
         <div class="cmd-field">
           <span class="cmd-label">Why &amp; Key Benefits</span>
           <ul style="padding-left: 20px; color: var(--text-secondary); font-size: 0.95rem; margin-top: 6px;">
-            <li><strong>Surgical Test Execution:</strong> Identifies the exact test files that transitively reach your changes, running a 5-second test subset instead of a 20-minute suite.</li>
+            <li><strong>Surgical Test Execution:</strong> Identifies the exact test files that transitively reach your changes, so you run only those tests.</li>
             <li><strong>Contract Breakage Prevention:</strong> Catches parameter count changes and visibility regressions across all direct callers before you commit.</li>
             <li><strong>Fowler's Shotgun Surgery Protection:</strong> Surfaces companion files historically edited with your diff that you may have forgotten to update.</li>
           </ul>
@@ -428,124 +426,10 @@
     </div>
 
     <!-- Workflow 5 -->
-    <div class="cmd-card" id="agent-context" style="margin-bottom: 32px;">
-      <div class="cmd-header">
-        <div class="cmd-title">
-          5. Deep Inspection &amp; Agent Context Delivery
-        </div>
-        <span class="cmd-badge">AI Context</span>
-      </div>
-      <div class="cmd-body">
-        <div class="cmd-field">
-          <span class="cmd-label">When &amp; Where</span>
-          <ul class="cmd-scenario-list">
-            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>Extracting exact function implementations for LLM prompts without token bloat.</li>
-            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>Debugging compiler error messages and stack traces against source definitions.</li>
-            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>Multi-query agent pipelines and native Model Context Protocol (MCP) tooling.</li>
-          </ul>
-        </div>
-        <div class="cmd-field">
-          <span class="cmd-label">Instructions &amp; Commands</span>
-          <div class="workflow-steps">
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">1</span>
-                <span>Expand full source body of symbols and callee signatures in CDATA XML</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --expand="Symbol::new"</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --expand=&quot;Symbol::new&quot;">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">2</span>
-                <span>Outline control-flow skeletons of symbols (loops, branches, declarations)</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --outline="Interner::intern"</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --outline=&quot;Interner::intern&quot;">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">3</span>
-                <span>Pack source bodies of the top N highest PageRank symbols</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --pack-top-n=5</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --pack-top-n=5">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">4</span>
-                <span>Map compiler error / stack trace frames directly onto indexed symbols</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --from-trace=error.log</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --from-trace=error.log">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">5</span>
-                <span>Execute up to 16 heterogeneous sub-queries in a single turn</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --batch=queries.txt</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --batch=queries.txt">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">6</span>
-                <span>Structured JSON output for navigation queries</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --callers="Interner::len" --json</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --callers=&quot;Interner::len&quot; --json">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">7</span>
-                <span>Launch native stdio Model Context Protocol (MCP) server for coding agents</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs mcp</code>
-                <button class="btn-copy" data-copy="ripwire-rs mcp">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">8</span>
-                <span>Install 17 pre-packaged ripwire-rs agent skills to ~/.agents/skills (or custom path)</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs --add-skills</code>
-                <button class="btn-copy" data-copy="ripwire-rs --add-skills">Copy</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="cmd-field">
-          <span class="cmd-label">Why &amp; Key Benefits</span>
-          <ul style="padding-left: 20px; color: var(--text-secondary); font-size: 0.95rem; margin-top: 6px;">
-            <li><strong>Precision Context Bundles:</strong> Extracts only relevant symbol bodies into CDATA blocks, conserving prompt token budgets.</li>
-            <li><strong>Batching Economy:</strong> <code>ripwire-rs . --batch</code> executes up to 16 queries in a single turn, eliminating agent tool-call round-trip latency.</li>
-            <li><strong>Native Agent Protocol:</strong> 33 built-in MCP tools accessible over stdio for any MCP-compatible client or coding agent.</li>
-            <li><strong>Instant Agent Skills:</strong> <code>ripwire-rs --add-skills</code> provisions 17 standardized skills and active manifest into <code>~/.agents/skills</code> for zero-configuration onboarding.</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- Workflow 6 -->
     <div class="cmd-card" id="ci-cd" style="margin-bottom: 32px;">
       <div class="cmd-header">
         <div class="cmd-title">
-          6. Continuous Integration (CI) Workflows &amp; Automated PR Gates
+          5. Continuous Integration (CI) Workflows &amp; Automated PR Gates
         </div>
         <span class="cmd-badge">CI / CD</span>
       </div>
@@ -601,6 +485,7 @@
                 <button class="btn-copy" data-copy="ripwire-rs . --quality-delta">Copy</button>
               </div>
             </div>
+          </div>
         </div>
         <div class="cmd-field">
           <span class="cmd-label">CI Pipeline Recipe · GitHub Actions Example</span>
@@ -672,101 +557,6 @@ jobs:
       </div>
     </div>
 
-    <!-- Workflow 7 -->
-    <div class="cmd-card" id="agent-orchestration" style="margin-bottom: 32px;">
-      <div class="cmd-header">
-        <div class="cmd-title">
-          7. Multi-Agent Fleet Orchestration: Parallel Worktrees &amp; Subagent Slicing
-        </div>
-        <span class="cmd-badge">Orchestration</span>
-      </div>
-      <div class="cmd-body">
-        <div class="cmd-field">
-          <span class="cmd-label">When &amp; Where</span>
-          <ul class="cmd-scenario-list">
-            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>Fanning a multi-symbol feature or wave refactor out across N parallel coding agents or isolated git worktrees.</li>
-            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>Eliminating duplicate orientation spend where every spawned subagent re-discovers the same repository map from scratch.</li>
-            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>Predicting symbol conflicts, same-file risks, and contract-touch dependencies before writing code or landing branches.</li>
-            <li class="cmd-scenario-item"><span class="cmd-scenario-bullet">▸</span>Handing off in-flight session state and persistent symbol gotchas between contexts that never met.</li>
-          </ul>
-        </div>
-        <div class="cmd-field">
-          <span class="cmd-label">Commands</span>
-          <div class="workflow-steps">
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">1</span>
-                <span>Community-Carved Context Fan-Out: 1 shared core + N minimally-overlapping subagent bundles</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --pack-task="refactor serialization" --partition=4</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --pack-task=&quot;refactor serialization&quot; --partition=4">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">2</span>
-                <span>Pre-Hoc Worktree Lane Planner: predict pairwise conflicts, contract touches, and landing order</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --plan-lanes=3 --task="refactor serialization"</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --plan-lanes=3 --task=&quot;refactor serialization&quot;">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">3</span>
-                <span>Explicit Brief Lane Planner: rank one non-blank task line per lane from a brief file</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --plan-lanes --brief=lanes.txt</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --plan-lanes --brief=lanes.txt">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">4</span>
-                <span>Cross-Branch Merge Scout: detect symbol overlaps across concurrent branches and order landings</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --merge-scout="feat/auth,feat/billing"</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --merge-scout=&quot;feat/auth,feat/billing&quot;">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">5</span>
-                <span>Deterministic Intent Router &amp; Closed-Claim Verifier: route tasks or verify 6-shape code claims</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --help-task="plan the new feature" &amp;&amp; ripwire-rs . --verify="calls(main,run_cli)"</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --help-task=&quot;plan the new feature&quot; &amp;&amp; ripwire-rs . --verify=&quot;calls(main,run_cli)&quot;">Copy</button>
-              </div>
-            </div>
-            <div class="workflow-step">
-              <div class="step-desc">
-                <span class="step-num">6</span>
-                <span>Session Handoff &amp; Persistent Symbol Notes: pass verified diff state and gotchas to the next agent</span>
-              </div>
-              <div class="code-wrap">
-                <code>ripwire-rs . --handoff &amp;&amp; ripwire-rs . --notes</code>
-                <button class="btn-copy" data-copy="ripwire-rs . --handoff &amp;&amp; ripwire-rs . --notes">Copy</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="cmd-field">
-          <span class="cmd-label">Why &amp; Key Benefits</span>
-          <ul style="padding-left: 20px; color: var(--text-secondary); font-size: 0.95rem; margin-top: 6px;">
-            <li><strong>Leiden Community Slicing:</strong> <code>--pack-task --partition=N</code> groups symbols by call-graph communities (with file fallback for edgeless data types) and reports Jaccard overlap (<code>overlap_mean</code>, <code>overlap_max</code>, <code>core_overlap</code>) so parallel agents work on genuinely disjoint modules.</li>
-            <li><strong>Pre-Hoc Collision &amp; Contract-Touch Oracle:</strong> <code>--plan-lanes</code> separates direct symbol <code>conflicts</code>, <code>same_file_risk</code>, and <code>contract_touch</code> (a claim inside another lane's blast radius) and computes a greedy fewest-conflicts-first <code>landing_order</code>.</li>
-            <li><strong>Epistemic Honesty:</strong> <code>--help-task</code> inspects live repository facts and abstains when evidence is thin; <code>--verify</code> proves or refutes 6 closed claim shapes with inline witness rows.</li>
-            <li><strong>Autonomous Agent Governance:</strong> Learn how to embed these verification workflows directly into your agent instructions in the <a href="agents.html" style="color: var(--accent); text-decoration: underline;">AGENTS.md Guide</a>.</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
   </main>
 
   <!-- Footer -->
@@ -778,7 +568,7 @@ jobs:
       <div class="footer-links">
         <a href="./">Home</a>
         <a href="workflows.html">Workflows</a>
-        <a href="agents.html">Agents</a>
+        <a href="hooks.html">Hooks</a>
         <a href="docs.html">Docs</a>
         <a href="https://crates.io/crates/ripwire-rs" target="_blank" rel="noopener">Crates.io</a>
         <a href="https://github.com/casonadams/ripwire-rs" target="_blank" rel="noopener">GitHub</a>
