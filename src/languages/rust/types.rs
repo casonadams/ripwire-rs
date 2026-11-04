@@ -1,5 +1,5 @@
-use super::names::WRAPPER_PATHS;
-use super::scope::{LexicalNames, NameBinding, collect_lexical_names, field_text};
+use super::names::{UNWRAP_PATHS, WRAPPER_PATHS};
+use super::scope::{LexicalNames, NameBinding, collect_lexical_names, field_text, note_agreed};
 
 fn is_unit_struct(node: tree_sitter::Node<'_>) -> bool {
     let mut cursor = node.walk();
@@ -87,8 +87,8 @@ pub(super) struct TypeCx<'s> {
     lexical: LexicalNames,
     aliases: std::collections::HashMap<&'s str, Option<String>>,
     pub(super) unit_structs: std::collections::HashSet<&'s str>,
-    pub(super) assoc_returns:
-        std::collections::HashMap<&'s str, std::collections::HashMap<&'s str, Option<String>>>,
+    pub(super) assoc_returns: std::collections::HashMap<&'s str, Assoc<'s>>,
+    pub(super) free_returns: std::collections::HashMap<&'s str, Option<Returned>>,
 }
 
 impl<'s> TypeCx<'s> {
@@ -100,9 +100,11 @@ impl<'s> TypeCx<'s> {
             aliases: std::collections::HashMap::new(),
             unit_structs: std::collections::HashSet::new(),
             assoc_returns: std::collections::HashMap::new(),
+            free_returns: std::collections::HashMap::new(),
         };
         cx.aliases = resolve_aliases(&cx, &decls);
         cx.assoc_returns = collect_assoc_returns(&cx, root);
+        cx.free_returns = collect_free_returns(&cx, root);
         cx.unit_structs = decls.unit;
         cx
     }
@@ -294,18 +296,37 @@ fn first_type_argument(args: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<
     None
 }
 
-/// Whether `path`, as written at `at`, denotes the std `Box`, `Arc`, or `Rc`.
-/// Qualified paths name std directly; bare names resolve lexically, and only an unshadowed `Box` is the prelude.
-pub(super) fn names_std_wrapper(cx: &TypeCx<'_>, at: tree_sitter::Node<'_>, path: &str) -> bool {
+/// Whether `path`, as written at `at`, denotes one of the std `paths` types. Qualified paths name std
+/// directly; bare names resolve lexically, and an unshadowed bare name is std only when `prelude` admits it.
+fn names_std(
+    cx: &TypeCx<'_>,
+    at: tree_sitter::Node<'_>,
+    path: &str,
+    paths: &[&str],
+    prelude: fn(&str) -> bool,
+) -> bool {
     let path = path.trim_start_matches("::");
     if path.contains("::") {
-        return WRAPPER_PATHS.contains(&path);
+        return paths.contains(&path);
     }
     match cx.lexical.lookup(at, path) {
-        Some(NameBinding::Import(target)) => WRAPPER_PATHS.contains(&target.as_str()),
+        Some(NameBinding::Import(target)) => paths.contains(&target.as_str()),
         Some(NameBinding::Local) => false,
-        None => path == "Box",
+        None => prelude(path),
     }
+}
+
+/// Whether `path`, as written at `at`, denotes the std `Box`, `Arc`, or `Rc`.
+pub(super) fn names_std_wrapper(cx: &TypeCx<'_>, at: tree_sitter::Node<'_>, path: &str) -> bool {
+    names_std(cx, at, path, WRAPPER_PATHS, |bare| bare == "Box")
+}
+
+/// Whether `path`, as written at `at`, denotes the std `Result` or `Option`, whose `Ok` or `Some` value
+/// `unwrap`, `expect`, and `?` reach.
+fn names_std_unwrap(cx: &TypeCx<'_>, at: tree_sitter::Node<'_>, path: &str) -> bool {
+    names_std(cx, at, path, UNWRAP_PATHS, |bare| {
+        matches!(bare, "Result" | "Option")
+    })
 }
 
 fn generic_type_repr(cx: &TypeCx<'_>, ty: tree_sitter::Node<'_>) -> Option<String> {
@@ -357,33 +378,46 @@ pub(super) fn bare_path(text: &str) -> &str {
         .trim_end_matches("::")
 }
 
-fn record_assoc<'s>(
-    map: &mut std::collections::HashMap<
-        &'s str,
-        std::collections::HashMap<&'s str, Option<String>>,
-    >,
-    subject: &'s str,
-    name: &'s str,
-    ret: Option<String>,
-) {
-    let fns = map.entry(subject).or_default();
-    match fns.entry(name) {
-        std::collections::hash_map::Entry::Vacant(slot) => {
-            slot.insert(ret);
-        }
-        std::collections::hash_map::Entry::Occupied(mut slot) => {
-            if *slot.get() != ret {
-                *slot.get_mut() = None;
-            }
-        }
+pub(super) type Assoc<'s> = std::collections::HashMap<&'s str, Option<Returned>>;
+
+/// What a call to an in-tree function yields: its declared type, and for a `Result<T, _>` or `Option<T>`
+/// return the `T` that `unwrap`, `expect`, or `?` reach.
+#[derive(Clone, PartialEq, Default)]
+pub(super) struct Returned {
+    pub(super) ty: Option<String>,
+    pub(super) ok: Option<String>,
+}
+
+fn returned_of(cx: &TypeCx<'_>, ret: Option<tree_sitter::Node<'_>>) -> Returned {
+    let Some(ty) = ret else {
+        return Returned::default();
+    };
+    Returned {
+        ty: extract_type_repr(cx, ty),
+        ok: unwrapped_repr(cx, ty),
     }
 }
 
-/// Associated function return types keyed by `(impl subject, fn name)`; conflicting declarations become `None`.
+/// The `T` of a `Result<T, _>` or `Option<T>` return type naming the std types.
+fn unwrapped_repr(cx: &TypeCx<'_>, ty: tree_sitter::Node<'_>) -> Option<String> {
+    if ty.kind() != "generic_type" {
+        return None;
+    }
+    let outer = ty.child_by_field_name("type")?.utf8_text(cx.source).ok()?;
+    if !names_std_unwrap(cx, ty, outer.trim()) {
+        return None;
+    }
+    let inner = ty
+        .child_by_field_name("type_arguments")
+        .and_then(first_type_argument)?;
+    extract_type_repr(cx, inner)
+}
+
+/// Associated function returns keyed by `(impl subject, fn name)`; conflicting declarations become `None`.
 fn collect_assoc_returns<'s>(
     cx: &TypeCx<'s>,
     root: tree_sitter::Node<'_>,
-) -> std::collections::HashMap<&'s str, std::collections::HashMap<&'s str, Option<String>>> {
+) -> std::collections::HashMap<&'s str, Assoc<'s>> {
     let mut out = std::collections::HashMap::new();
     for imp in super::super::reads::nodes(root).filter(|node| node.kind() == "impl_item") {
         let Some(subject) = imp
@@ -403,11 +437,38 @@ fn collect_assoc_returns<'s>(
             let Some(name) = field_text(item, "name", cx.source) else {
                 continue;
             };
-            let ret = item
-                .child_by_field_name("return_type")
-                .and_then(|ty| extract_type_repr(cx, ty));
-            record_assoc(&mut out, subject, name, ret);
+            let fns: &mut Assoc<'s> = out.entry(subject).or_default();
+            note_agreed(
+                fns,
+                name,
+                Some(returned_of(cx, item.child_by_field_name("return_type"))),
+                None,
+            );
         }
+    }
+    out
+}
+
+/// Free function returns keyed by name (methods excluded); conflicting declarations become `None`.
+fn collect_free_returns<'s>(
+    cx: &TypeCx<'s>,
+    root: tree_sitter::Node<'_>,
+) -> std::collections::HashMap<&'s str, Option<Returned>> {
+    let mut out = std::collections::HashMap::new();
+    for item in super::super::reads::nodes(root).filter(|node| node.kind() == "function_item") {
+        let in_impl = item
+            .parent()
+            .and_then(|body| body.parent())
+            .is_some_and(|owner| matches!(owner.kind(), "impl_item" | "trait_item"));
+        let Some(name) = field_text(item, "name", cx.source).filter(|_| !in_impl) else {
+            continue;
+        };
+        note_agreed(
+            &mut out,
+            name,
+            Some(returned_of(cx, item.child_by_field_name("return_type"))),
+            None,
+        );
     }
     out
 }

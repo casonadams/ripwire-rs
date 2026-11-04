@@ -449,6 +449,22 @@ pub trait LanguageSemantics: Sync {
         false
     }
 
+    /// The struct type a call builds the base of, for `S { f: 1, ..Default::default() }`: the call binds to
+    /// `S`'s own `Default` impl. None for any other call.
+    fn struct_update_base_type(
+        &self,
+        _name_node: tree_sitter::Node<'_>,
+        _source: &[u8],
+    ) -> Option<String> {
+        None
+    }
+
+    /// The method a type's own impl provides to build it with no arguments (Rust's `Default::default`). None
+    /// where the language has no such convention.
+    fn default_constructor_name(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Standard library / builtin member names declined on untyped receivers.
     fn std_member_names(&self) -> &'static [&'static str] {
         &[]

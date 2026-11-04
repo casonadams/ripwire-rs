@@ -1,6 +1,8 @@
 mod callables;
 mod imported_std_names;
 mod ladder;
+mod receiver_call_results;
+mod rust_calls;
 mod rust_imports;
 mod rust_reexports;
 mod scip;

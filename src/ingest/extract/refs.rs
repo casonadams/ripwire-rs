@@ -43,6 +43,14 @@ fn ref_qualifiers(
     lang: Lang,
     source_bytes: &[u8],
 ) -> (Option<String>, Option<String>) {
+    if role == RefRole::Call
+        && let Some(name_node) = ext.name_node
+        && let Some(base_type) = lang
+            .semantics()
+            .struct_update_base_type(name_node, source_bytes)
+    {
+        return (Some(base_type), None);
+    }
     if role == RefRole::Extends && lang.semantics().has_trait_impls() {
         let recv_ty = ext
             .name_node

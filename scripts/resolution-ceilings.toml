@@ -1,24 +1,24 @@
 # Resolver gauges on this repository, read by scripts/check-resolution.py (make resolution).
 # Ceilings sit about a tenth above the measured value. Raise one only with a reason in the commit;
 # lower one in the commit that improves resolution so the gain cannot be lost.
-# Measured with the three Python gate scripts indexed: graph_ambiguous=605, graph_unresolved=1062
+# Measured with the three Python gate scripts indexed: graph_ambiguous=555, graph_unresolved=855
 # (each script adds standard-library calls the resolver cannot bind).
 
 [[ceiling]]
 gauge = "graph_ambiguous"
-max = 670
+max = 605
 
 [[ceiling]]
 gauge = "graph_unresolved"
-max = 935
+max = 930
 
-# SCIP oracle (rust-analyzer), measured on this repository: precision=0.9848, recall=0.9714.
+# SCIP oracle (rust-analyzer), measured on this repository: precision=0.9858, recall=0.9733.
 # Floors sit just under the measurement; raise one in the commit that improves it.
 
 [[floor]]
 metric = "precision"
-min = 0.984
+min = 0.9855
 
 [[floor]]
 metric = "recall"
-min = 0.970
+min = 0.972

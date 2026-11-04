@@ -43,7 +43,8 @@ fn record_resolved_ref(
     if resolved.is_ambiguous() {
         amb_out[resolved.from as usize] += 1;
     }
-    for to in resolved.targets {
+    let from = resolved.from;
+    for to in resolved.targets.into_iter().filter(|&to| to != from) {
         let acc = edge_accumulators.entry((resolved.from, to)).or_default();
         acc.conf_sum += resolved.conf_per_target;
         acc.n_ref += 1;

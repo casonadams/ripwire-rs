@@ -220,13 +220,8 @@ pub trait ResolutionLookup {
     /// Whether `sym`'s scope names an indexed type.
     #[must_use]
     fn type_scoped(&self, sym: &Symbol) -> bool {
-        let symbols = self.symbols();
-        sym.scope.is_some_and(|scope| {
-            self.by_name().get(&scope).is_some_and(|ids| {
-                ids.iter()
-                    .any(|&id| symbols[id as usize].kind.is_type_container())
-            })
-        })
+        sym.scope
+            .is_some_and(|scope| self.indexed_type_count(scope) > 0)
     }
 
     /// A member of a type: scoped to one and not nested in a function body. Python tags its methods
@@ -304,6 +299,63 @@ pub trait ResolutionLookup {
         interner.get(leaf)
     }
 
+    /// Whether two or more indexed types carry the name `name`.
+    #[must_use]
+    fn names_several_types(&self, name: Spur) -> bool {
+        self.indexed_type_count(name) > 1
+    }
+
+    /// How many indexed types carry the name `name`, counting at most two.
+    #[must_use]
+    fn indexed_type_count(&self, name: Spur) -> usize {
+        let symbols = self.symbols();
+        self.by_name().get(&name).map_or(0, |ids| {
+            ids.iter()
+                .filter(|&&id| symbols[id as usize].kind.is_type_container())
+                .take(2)
+                .count()
+        })
+    }
+
+    /// A `T::default()` where several indexed types are named `T` binds only to the impl in the caller's file
+    /// or in the file the caller imports `T` from. A derived `Default` has no impl of its own, so an impl for
+    /// a same-named type elsewhere is another type's.
+    #[must_use]
+    fn shared_type_default_is_ambiguous(
+        &self,
+        r: &Reference,
+        q: Spur,
+        qualified: &CandBuffer,
+    ) -> bool {
+        let Some(name) = r.lang.semantics().default_constructor_name() else {
+            return false;
+        };
+        if self.interner().and_then(|i| i.try_resolve(&r.callee_name)) != Some(name)
+            || !self.names_several_types(q)
+        {
+            return false;
+        }
+        let symbols = self.symbols();
+        let module_file = self.qualifier_module_file(r.file_id, q);
+        !qualified.iter().any(|&id| {
+            let file = symbols[id as usize].file_id;
+            file == r.file_id || Some(file) == module_file
+        })
+    }
+
+    fn narrow_to_imported_module(
+        &self,
+        cands: &CandBuffer,
+        r: &Reference,
+        q: Spur,
+    ) -> Option<CandBuffer> {
+        let symbols = self.symbols();
+        let module_file = self.qualifier_module_file(r.file_id, q)?;
+        let in_module = filter_in_file(cands, symbols, module_file);
+        let free = filter_unscoped(&in_module, symbols);
+        [free, in_module].into_iter().find(|set| !set.is_empty())
+    }
+
     /// Candidates a qualified reference can mean: those scoped by the qualifier, else those in the module
     /// file the qualifier is bound to by an import, else all of them unless the qualifier is std/builtin.
     #[must_use]
@@ -327,20 +379,18 @@ pub trait ResolutionLookup {
             } else {
                 Narrowing::FinalSegment
             };
+            if narrowing == Narrowing::FinalSegment
+                && self.shared_type_default_is_ambiguous(r, q, &qualified)
+            {
+                return None;
+            }
             return Some((qualified, narrowing));
         }
         if let Some(inherited) = self.inherited_candidates(r, q) {
             return Some((inherited, Narrowing::Owner));
         }
-        if let Some(module_file) = self.qualifier_module_file(r.file_id, q) {
-            let in_module = filter_in_file(&cands, symbols, module_file);
-            let free = filter_unscoped(&in_module, symbols);
-            if !free.is_empty() {
-                return Some((free, Narrowing::Import));
-            }
-            if !in_module.is_empty() {
-                return Some((in_module, Narrowing::Import));
-            }
+        if let Some(imported) = self.narrow_to_imported_module(&cands, r, q) {
+            return Some((imported, Narrowing::Import));
         }
         let is_std_qual = self
             .interner()
@@ -627,11 +677,7 @@ pub trait ResolutionLookup {
             };
         };
         if narrowing == Narrowing::Owner {
-            let targets = cands
-                .iter()
-                .copied()
-                .filter(|&id| id != r.from_symbol)
-                .collect();
+            let targets = callees_other_than_caller(&cands, r);
             return ResolvedRef::bound(r.from_symbol, targets, EdgeProv::Typed)
                 .map_or(RefOutcome::Ignored, RefOutcome::Resolved);
         }
@@ -699,10 +745,7 @@ pub trait ResolutionLookup {
         tier: Tier,
         template: bool,
     ) -> RefOutcome {
-        let real_targets: Vec<NodeId> = targets
-            .into_iter()
-            .filter(|&target| target != r.from_symbol)
-            .collect();
+        let real_targets = callees_other_than_caller(&targets, r);
         if real_targets.is_empty() {
             return RefOutcome::Ignored;
         }
@@ -720,4 +763,22 @@ pub trait ResolutionLookup {
             type_use: false,
         })
     }
+}
+
+/// The candidates other than the caller. A call whose only binding is its own caller is a recursive call and
+/// stays resolved to that caller (the graph keeps no self-loop, `record_resolved_ref`). A member call on
+/// another receiver may dispatch elsewhere, so it is not bound to its caller.
+fn callees_other_than_caller(cands: &[NodeId], r: &Reference) -> Vec<NodeId> {
+    let others: Vec<NodeId> = cands
+        .iter()
+        .copied()
+        .filter(|&id| id != r.from_symbol)
+        .collect();
+    if !others.is_empty() {
+        return others;
+    }
+    if r.member_call && r.qualifier.is_none() {
+        return Vec::new();
+    }
+    cands.iter().take(1).copied().collect()
 }

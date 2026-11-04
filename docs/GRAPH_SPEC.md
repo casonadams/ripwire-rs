@@ -64,10 +64,12 @@ locations, and `--nonlocal-state`; target resolution does not turn them into cal
      4. Same-directory symbol match (bounded by starburst fan-out cap)
      5. Unique global symbol match across compatible dialects
      6. Polymorphic interface/trait contract fallback (`RefRole::Extends` implementors)
-   - Self-loops (`from_symbol == to_symbol`) are discarded when building the CSR `Graph`.
+   - Self-loops (`from_symbol == to_symbol`) are discarded when building the CSR `Graph`. A call whose only binding is its own caller (a recursive `f()` or a `self.f()`) still resolves to that caller, so it counts as bound, but records no edge. A member call on another receiver (`x.f()`) is never bound to its own caller.
    - An unqualified call or read whose name is a parameter of an enclosing function or closure is local and never enters the ladder; `LanguageSemantics::parameters_shadow_calls` is false for Ruby, where `name(...)` always calls the method.
    - A member call `x.f()` on a receiver the index does not type (`Reference::member_call`) never binds to a non-callable `Var` named `f` when `LanguageSemantics::member_call_targets_callables_only` holds (JavaScript and TypeScript). A property call cannot reach a module or local variable; the call stays unresolved and disclosed.
    - A fluent builder `export const f = createServerFn({..}).handler(async (x) => ..)` takes the parameter count of its final callback (`LanguageSemantics::resolve_def_params_and_name`), so calls to `f` pass the arity check.
+   - A call inside a macro argument list (`vec![f(x)]`) takes its argument count from its own parenthesized token tree, never from an enclosing call.
+   - `S { field: v, ..Default::default() }` qualifies the `default` call by the literal's type `S` (`LanguageSemantics::struct_update_base_type`). When several indexed types are named `S`, a `default` bound by name alone is declined unless its impl sits in the caller's file or in the file the caller imports `S` from; a derived `Default` has no impl of its own to bind.
 2. **`RefOutcome::External`**:
    - Unresolved call whose qualifier matches `LanguageSemantics::is_std_or_builtin_qualifier` (`std`, `fmt`, `os`, `Array`, `Promise`, `System`, `Console`, `Enum`, `NSString`, etc.) or whose unpinned member name matches `LanguageSemantics::is_std_or_builtin_member`.
 3. **`RefOutcome::Declined`**:

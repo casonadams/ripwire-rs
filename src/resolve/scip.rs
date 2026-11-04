@@ -81,6 +81,21 @@ fn by_name<T: Copy + Ord>(entries: impl Iterator<Item = (u32, Spur, u32, T)>) ->
     index
 }
 
+/// The definition a reference names when its symbol string has one definition, or exactly one in
+/// the reference's own file. A string shared by several definitions elsewhere names none of them.
+fn pinned_target(defs: &[(u32, NodeId)], file_id: u32) -> Option<NodeId> {
+    match defs {
+        [(_, id)] => Some(*id),
+        _ => {
+            let mut same_file = defs.iter().filter(|(def_file, _)| *def_file == file_id);
+            match (same_file.next(), same_file.next()) {
+                (Some(&(_, id)), None) => Some(id),
+                _ => None,
+            }
+        }
+    }
+}
+
 struct Overlay<'a> {
     interner: &'a Interner,
     file_ids: HashMap<&'a str, u32>,
@@ -88,7 +103,10 @@ struct Overlay<'a> {
     calls: HashSet<(u32, u32, Spur)>,
     names: HashMap<String, Option<Spur>>,
     defined: HashSet<String>,
-    pinned: HashMap<String, NodeId>,
+    /// Every definition a symbol string has, with the file that defines it. rust-analyzer gives a
+    /// library item and a same-named item in a test crate one symbol string, so a string can name
+    /// several of our definitions.
+    pinned: HashMap<String, Vec<(u32, NodeId)>>,
 }
 
 impl<'a> Overlay<'a> {
@@ -147,7 +165,10 @@ impl<'a> Overlay<'a> {
                 continue;
             };
             if let Some(id) = nearest_at_or_before(&self.defs, file_id, name, line) {
-                self.pinned.insert(occ.symbol.clone(), id);
+                let entry = self.pinned.entry(occ.symbol.clone()).or_default();
+                if !entry.contains(&(file_id, id)) {
+                    entry.push((file_id, id));
+                }
             }
         }
     }
@@ -169,7 +190,10 @@ impl<'a> Overlay<'a> {
                 continue;
             }
             let target = match self.pinned.get(&occ.symbol) {
-                Some(&id) => ScipTarget::Def(id),
+                Some(defs) => match pinned_target(defs, file_id) {
+                    Some(id) => ScipTarget::Def(id),
+                    None => continue,
+                },
                 None if !self.defined.contains(&occ.symbol) => ScipTarget::External,
                 None => continue,
             };

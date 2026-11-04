@@ -82,6 +82,25 @@ pub(super) enum NameBinding {
     Import(String),
 }
 
+/// Records `value` under `key`; a key declared with a disagreeing value takes `conflict`.
+pub(super) fn note_agreed<K: Eq + std::hash::Hash, V: PartialEq>(
+    map: &mut std::collections::HashMap<K, V>,
+    key: K,
+    value: V,
+    conflict: V,
+) {
+    match map.entry(key) {
+        std::collections::hash_map::Entry::Vacant(slot) => {
+            slot.insert(value);
+        }
+        std::collections::hash_map::Entry::Occupied(mut slot) => {
+            if *slot.get() != value {
+                *slot.get_mut() = conflict;
+            }
+        }
+    }
+}
+
 /// Type-name bindings keyed by the AST id of the container that holds the declaration.
 #[derive(Default)]
 pub(super) struct LexicalNames {
@@ -91,16 +110,7 @@ pub(super) struct LexicalNames {
 impl LexicalNames {
     fn bind(&mut self, container: tree_sitter::Node<'_>, name: &str, binding: NameBinding) {
         let names = self.scopes.entry(container.id()).or_default();
-        match names.entry(name.to_string()) {
-            std::collections::hash_map::Entry::Vacant(slot) => {
-                slot.insert(binding);
-            }
-            std::collections::hash_map::Entry::Occupied(mut slot) => {
-                if *slot.get() != binding {
-                    *slot.get_mut() = NameBinding::Local;
-                }
-            }
-        }
+        note_agreed(names, name.to_string(), binding, NameBinding::Local);
     }
 
     /// The binding of `name` in the nearest enclosing container that declares it.

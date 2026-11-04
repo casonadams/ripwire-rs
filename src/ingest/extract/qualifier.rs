@@ -85,6 +85,14 @@ pub(super) fn receiver_type_at(
     bindings: &crate::languages::reads::ReadBindings<'_>,
     lang: Lang,
 ) -> Option<String> {
+    if let Some((base, method)) = receiver.strip_suffix("()").and_then(|c| c.rsplit_once('.')) {
+        // `self.method()`: the declared return of the method on the base's type.
+        let base_ty = receiver_type_at(base, byte, bindings, lang)?;
+        return bindings
+            .member_type(&base_ty, &format!("{method}()"))
+            .filter(|ty| is_plain_type_name(ty))
+            .map(str::to_string);
+    }
     if let Some(callee) = receiver.strip_suffix("()") {
         let declared = bindings
             .return_type(callee)

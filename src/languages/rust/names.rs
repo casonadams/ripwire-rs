@@ -148,3 +148,10 @@ pub(super) const WRAPPER_PATHS: &[&str] = &[
     "std::rc::Rc",
     "alloc::rc::Rc",
 ];
+
+pub(super) const UNWRAP_PATHS: &[&str] = &[
+    "std::result::Result",
+    "core::result::Result",
+    "std::option::Option",
+    "core::option::Option",
+];

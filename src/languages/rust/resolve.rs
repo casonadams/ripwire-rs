@@ -4,6 +4,21 @@ use super::super::{
 use std::collections::HashMap;
 use std::path::Path;
 
+/// The directory a non-root module file's child modules live in (`src/git/repo.rs` declares `src/git/repo/`).
+fn rust_child_module_dir(importer_path: &str) -> Option<String> {
+    let path = Path::new(importer_path);
+    let stem = path.file_stem()?.to_str()?;
+    if matches!(stem, "mod" | "lib" | "main") {
+        return None;
+    }
+    let dir = path.parent()?.to_str()?;
+    Some(if dir.is_empty() {
+        stem.to_string()
+    } else {
+        format!("{dir}/{stem}")
+    })
+}
+
 fn find_rust_crate_src_dir(importer_path: &str) -> &str {
     if let Some(pos) = importer_path.rfind("/src/") {
         &importer_path[..pos + 4]
@@ -126,7 +141,14 @@ pub(super) fn resolve_rust_use_target(
         .parent()
         .and_then(|p| p.to_str())
         .unwrap_or("");
-    for base in [self_dir, find_rust_crate_src_dir(importer_path)] {
+    // A non-root module file (`repo.rs`) declares its children in its own directory (`repo/`), and a
+    // bare `use child::item` names them before anything beside the file.
+    let child_dir = rust_child_module_dir(importer_path);
+    let bases = child_dir
+        .iter()
+        .map(String::as_str)
+        .chain([self_dir, find_rust_crate_src_dir(importer_path)]);
+    for base in bases {
         if let Some(id) = probe_rust_segs_in_base(base, &segs, file_index) {
             return Some(id);
         }

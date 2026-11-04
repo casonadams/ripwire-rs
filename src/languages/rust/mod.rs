@@ -190,6 +190,11 @@ impl LanguageSemantics for RustLanguage {
             .filter(|_| receiver.kind() == "call_expression")?;
         match callee.kind() {
             "identifier" => callee.utf8_text(source).ok(),
+            "field_expression" => {
+                let receiver = callee.child_by_field_name("value")?;
+                (receiver.utf8_text(source).ok()? == "self")
+                    .then(|| callee.utf8_text(source).ok())?
+            }
             "scoped_identifier" => {
                 let owner = callee.child_by_field_name("path")?.utf8_text(source).ok()?;
                 let segment = owner.rsplit("::").next()?;
@@ -242,6 +247,34 @@ impl LanguageSemantics for RustLanguage {
 
     fn is_macro_argument(&self, node: tree_sitter::Node<'_>) -> bool {
         std::iter::successors(Some(node), |n| n.parent()).any(|n| n.kind() == "token_tree")
+    }
+
+    fn struct_update_base_type(
+        &self,
+        name_node: tree_sitter::Node<'_>,
+        source: &[u8],
+    ) -> Option<String> {
+        let path = name_node
+            .parent()
+            .filter(|p| p.kind() == "scoped_identifier")?;
+        let call = path.parent().filter(|c| c.kind() == "call_expression")?;
+        let base = call
+            .parent()
+            .filter(|b| b.kind() == "base_field_initializer")?;
+        let literal = base
+            .parent()?
+            .parent()
+            .filter(|s| s.kind() == "struct_expression")?;
+        if path.child_by_field_name("path")?.utf8_text(source).ok()? != "Default" {
+            return None;
+        }
+        let text = literal.child_by_field_name("name")?.utf8_text(source).ok()?;
+        let leaf = text.split('<').next()?.rsplit("::").next()?.trim();
+        (!leaf.is_empty() && leaf != "Self").then(|| leaf.to_string())
+    }
+
+    fn default_constructor_name(&self) -> Option<&'static str> {
+        Some("default")
     }
 
     fn std_member_names(&self) -> &'static [&'static str] {
