@@ -1,4 +1,4 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::cli::TopModifierArgs;
 use ripwire_rs::commands::dead_code::{DeadCodeContext, execute_dead_code_query_paged};
 use ripwire_rs::commands::external_surface::execute_external_surface_query;
@@ -28,7 +28,7 @@ fn symbol_names(xml: &str) -> Vec<&str> {
 }
 
 fn external_surface_xml(files: &[(&str, Lang, &[u8])]) -> String {
-    let (ingest, _, interner) = index(files);
+    let (ingest, _, interner) = index_files(files);
     let mut out = Vec::new();
     execute_external_surface_query(
         "memory",
@@ -93,7 +93,7 @@ fn external_surface_ignores_doc_links_shell_builtins_and_callable_fields() {
 
 #[test]
 fn community_members_exclude_module_scope_owners() {
-    let (ingest, graph, interner) = index(&[(
+    let (ingest, graph, interner) = index_files(&[(
         "pkg/app.py",
         Lang::Python,
         b"def entry():\n    helper()\n\ndef helper():\n    pass\n\nentry()\n",
@@ -111,7 +111,7 @@ fn community_members_exclude_module_scope_owners() {
 
 #[test]
 fn rust_struct_literal_is_an_edge_to_the_constructed_type() {
-    let (ingest, graph, interner) = index(&[(
+    let (ingest, graph, interner) = index_files(&[(
         "src/lib.rs",
         Lang::Rust,
         b"struct Hook { run: u8 }\nstruct Unused;\nfn build() -> Hook {\n    Hook { run: 1 }\n}\nfn plain() {}\n",
@@ -143,7 +143,7 @@ fn rust_struct_literal_is_an_edge_to_the_constructed_type() {
 }
 #[test]
 fn community_anchor_prefers_production_code_then_substantial_callable() {
-    let (ingest, _, interner) = index(&[
+    let (ingest, _, interner) = index_files(&[
         (
             "tests/check.rs",
             Lang::Rust,
@@ -182,7 +182,7 @@ fn community_anchor_prefers_production_code_then_substantial_callable() {
 
 #[test]
 fn community_summary_partitions_isolated_documents_declarations_and_bodies() {
-    let (ingest, graph, interner) = index(&[
+    let (ingest, graph, interner) = index_files(&[
         (
             "src/lib.rs",
             Lang::Rust,
@@ -222,7 +222,7 @@ fn community_summary_partitions_isolated_documents_declarations_and_bodies() {
 
 #[test]
 fn dependency_report_deduplicates_file_edges_and_detects_transitive_cycles() {
-    let (ingest, graph, interner) = index(&[
+    let (ingest, graph, interner) = index_files(&[
         (
             "src/a.rs",
             Lang::Rust,
@@ -253,7 +253,7 @@ fn dependency_report_deduplicates_file_edges_and_detects_transitive_cycles() {
 
 #[test]
 fn ranked_stream_selects_authorities_hubs_and_preserves_complete_rows_at_budget() {
-    let (ingest, graph, interner) = index(&[(
+    let (ingest, graph, interner) = index_files(&[(
         "src/lib.rs",
         Lang::Rust,
         b"fn entry() { sink_a(); sink_b(); }\nfn sink_a() {}\nfn sink_b() {}\nfn isolated() {}\n",
@@ -323,7 +323,7 @@ fn ranked_stream_selects_authorities_hubs_and_preserves_complete_rows_at_budget(
 
 #[test]
 fn navigation_reports_direct_neighbors_and_transitive_impact_without_reversing_edges() {
-    let (ingest, graph, interner) = index(&[
+    let (ingest, graph, interner) = index_files(&[
         ("src/entry.rs", Lang::Rust, b"fn entry() { middle(); }\n"),
         ("src/middle.rs", Lang::Rust, b"fn middle() { leaf(); }\n"),
         (
@@ -373,7 +373,7 @@ fn navigation_reports_direct_neighbors_and_transitive_impact_without_reversing_e
 
 #[test]
 fn mermaid_aggregates_cross_directory_calls_without_internal_or_isolated_edges() {
-    let (ingest, graph, interner) = index(&[
+    let (ingest, graph, interner) = index_files(&[
         (
             "src/ui/entry.rs",
             Lang::Rust,
@@ -401,7 +401,7 @@ fn mermaid_aggregates_cross_directory_calls_without_internal_or_isolated_edges()
 }
 
 fn dead_code_names(files: &[(&str, Lang, &[u8])], page: &TopModifierArgs) -> Vec<String> {
-    let (ingest, graph, interner) = index(files);
+    let (ingest, graph, interner) = index_files(files);
     let sources: Vec<(&str, &[u8])> = files.iter().map(|&(path, _, src)| (path, src)).collect();
     let ctx = DeadCodeContext {
         root: ":memory:",

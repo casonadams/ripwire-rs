@@ -1,4 +1,5 @@
-use crate::corpus_support::{Fixture, fixture as corpus_fixture};
+use crate::support::corpus::{Fixture, fixture as corpus_fixture};
+use crate::support::symbols::sorted_names;
 use ripwire_rs::{Lang, NodeId, Symbol};
 
 const TASKS: &str = "export interface Task {\n  id: string;\n}\n\
@@ -275,26 +276,19 @@ impl Fixture {
             })
             .unwrap_or_else(|| panic!("{owner}.{name} not indexed"))
     }
-
-    fn caller_names(&self, target: NodeId) -> Vec<String> {
-        let mut names: Vec<String> = self
-            .graph
-            .callers(target)
-            .map(|(id, _)| {
-                let sym = self.ingest.sym(id).expect("caller symbol");
-                self.interner.resolve(&sym.name).to_string()
-            })
-            .collect();
-        names.sort();
-        names
-    }
 }
 
 #[test]
 fn dispatch_reaches_declared_owners_and_contracts_only() {
     for row in REACH_ROWS {
         let fx = fixture(row.files);
-        let callers = fx.caller_names(fx.method(row.owner, row.name));
+        let target = fx.method(row.owner, row.name);
+        let callers = sorted_names(
+            &fx.ingest,
+            &fx.interner,
+            fx.graph.callers(target).map(|(id, _)| id),
+            |sym| sym.name,
+        );
         for caller in row.includes {
             assert!(
                 callers.contains(&caller.to_string()),
@@ -351,5 +345,11 @@ fn object_type_literal_is_not_a_member_and_rest_params_bind() {
         .find(|sym| fx.interner.resolve(&sym.name) == "cn")
         .expect("cn indexed")
         .id;
-    assert_eq!(fx.caller_names(cn), ["field"]);
+    let callers = sorted_names(
+        &fx.ingest,
+        &fx.interner,
+        fx.graph.callers(cn).map(|(id, _)| id),
+        |sym| sym.name,
+    );
+    assert_eq!(callers, ["field"]);
 }

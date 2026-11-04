@@ -1,4 +1,4 @@
-use crate::b_ingest::one_function_ingest;
+use crate::support::ingest::one_function_ingest;
 use ripwire_rs::metrics::execute_biggest_first_query;
 use ripwire_rs::serialize::PageRequest;
 use ripwire_rs::{

@@ -1,4 +1,4 @@
-use crate::index_support::with_typescript_module;
+use crate::support::index::with_typescript_module;
 use ripwire_rs::SymKind;
 
 fn symbols_of(source: &str) -> Vec<(String, SymKind)> {

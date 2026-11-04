@@ -16,7 +16,7 @@ fn run<const N: usize>(
         .iter()
         .map(|(path, source)| (*path, Lang::TypeScript, *source))
         .collect();
-    let (ingest, graph, interner) = crate::index_support::index(&inputs);
+    let (ingest, graph, interner) = crate::support::index::index_files(&inputs);
     let ranks = graph.page_rank(&PageRankConfig::default());
     call_for_task_with_options(
         &ingest,

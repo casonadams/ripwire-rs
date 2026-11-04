@@ -1,4 +1,5 @@
-use crate::corpus_support::{Fixture, fixture as corpus_fixture};
+use crate::support::corpus::{Fixture, fixture as corpus_fixture};
+use crate::support::symbols::sorted_names;
 use ripwire_rs::{Lang, NodeId, Symbol};
 
 /// A fluent server function whose handler reads a response body through a property call.
@@ -40,14 +41,7 @@ impl Fixture {
     }
 
     fn named(&self, ids: impl Iterator<Item = NodeId>) -> Vec<String> {
-        let mut names: Vec<String> = ids
-            .map(|id| {
-                let sym = self.ingest.sym(id).expect("symbol");
-                self.interner.resolve(&sym.name).to_string()
-            })
-            .collect();
-        names.sort();
-        names
+        sorted_names(&self.ingest, &self.interner, ids, |sym| sym.name)
     }
 
     fn callers(&self, name: &str) -> Vec<String> {

@@ -1,4 +1,4 @@
-use crate::a_callees::callees_described;
+use crate::support::callees::callees_described;
 use ripwire_rs::{IngestResult, Interner, Lang, NodeId};
 
 /// A callee described by its file path and name.

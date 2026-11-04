@@ -5,7 +5,7 @@ use ripwire_rs::{
 };
 
 pub fn owner_qualified_callees(files: &[(&str, Lang, &[u8])], caller: &str) -> Vec<String> {
-    crate::a_callees::callees_described(files, caller, |ingest, interner, id| {
+    crate::support::callees::callees_described(files, caller, |ingest, interner, id| {
         let sym = &ingest.symbols[id as usize];
         let owner = sym.scope.map_or("", |s| interner.resolve(&s));
         format!("{owner}.{}", interner.resolve(&sym.name))

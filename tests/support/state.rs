@@ -1,4 +1,4 @@
-use crate::nonlocal_support::state_report;
+use crate::support::nonlocal::state_report;
 use ripwire_rs::Lang;
 
 /// Asserts that reads of immutable bindings in `files` are not reported as mutable state.

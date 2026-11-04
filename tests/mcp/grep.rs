@@ -1,4 +1,4 @@
-use crate::uses_support::uses_json;
+use crate::support::uses::uses_json;
 use ripwire_rs::query::grep::{TierCounts, enclosing_metadata, tier_attrs};
 use ripwire_rs::serialize::serialize_grep_xml;
 use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ingest_in_memory_files};

@@ -1,3 +1,4 @@
+use crate::support::symbols::find_symbol;
 use ripwire_rs::query::navigation::{NavContext, NavMode, execute_nav_symbol_query_in_root};
 use ripwire_rs::serialize::PageRequest;
 use ripwire_rs::{
@@ -13,12 +14,7 @@ fn ingest(files: &[(&str, Lang, &[u8])]) -> (IngestResult, Interner) {
 }
 
 fn sym_id(ingest: &IngestResult, interner: &Interner, name: &str) -> u32 {
-    ingest
-        .symbols
-        .iter()
-        .find(|s| interner.resolve(&s.name) == name)
-        .unwrap_or_else(|| panic!("symbol {name}"))
-        .id
+    find_symbol(ingest, interner, |sym| sym.name, name).id
 }
 
 #[test]

@@ -331,12 +331,15 @@ fn whereis_catalogue_advertises_selectors_and_renderer_exposes_refs() {
 #[test]
 fn edit_check_pages_preserve_flagged_callers_and_offset_unflagged_rows() {
     let source = b"pub fn target(a: i32, b: i32) {}\nfn broken() { target(1); }\nfn first() { target(1, 2); }\nfn second() { target(3, 4); }\n";
-    crate::a_safety_context::with_safety_context(
+    crate::support::safety_context::with_safety_context(
         ":memory:",
         &[("virtual.rs", std::str::from_utf8(source).unwrap())],
         |context| {
-            let xml =
-                crate::a_safety_context::target_edit_check_xml(context, Some((1, 1)), "memory");
+            let xml = crate::support::safety_context::target_edit_check_xml(
+                context,
+                Some((1, 1)),
+                "memory",
+            );
             assert!(xml.contains("n=\"broken\""));
             assert!(xml.contains("shown_unflagged=\"1\""));
             assert!(xml.contains("offset=\"1\" limit=\"1\""));

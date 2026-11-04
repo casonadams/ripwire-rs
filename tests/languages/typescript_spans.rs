@@ -1,4 +1,4 @@
-use crate::index_support::with_typescript_module;
+use crate::support::index::with_typescript_module;
 use ripwire_rs::query::edit::{EditOp, splice_file_bytes};
 use ripwire_rs::{Interner, Symbol};
 

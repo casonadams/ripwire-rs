@@ -1,4 +1,4 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::Lang;
 use ripwire_rs::commands::common::changes::resolve_changed_or_spec_files;
 use ripwire_rs::commands::common::gate::validate_gate_modifiers;
@@ -62,7 +62,8 @@ fn test_render_skill_scan_report_verdicts_and_xml() {
 
 #[test]
 fn test_execute_edit_plan_from_facts_behavior() {
-    let (ingest, graph, interner) = index(&[("src/lib.rs", Lang::Rust, b"pub fn original() {}\n")]);
+    let (ingest, graph, interner) =
+        index_files(&[("src/lib.rs", Lang::Rust, b"pub fn original() {}\n")]);
     let ctx = SafetyContext {
         root: "root",
         ingest: &ingest,
@@ -80,7 +81,8 @@ fn test_execute_edit_plan_from_facts_behavior() {
 
 #[test]
 fn test_execute_pr_context_from_facts() {
-    let (ingest, graph, interner) = index(&[("src/lib.rs", Lang::Rust, b"pub fn worker() {}\n")]);
+    let (ingest, graph, interner) =
+        index_files(&[("src/lib.rs", Lang::Rust, b"pub fn worker() {}\n")]);
     let ctx = SafetyContext {
         root: "root",
         ingest: &ingest,
@@ -114,7 +116,7 @@ fn test_execute_pr_context_from_facts() {
 
 #[test]
 fn test_execute_test_gate_and_situ_from_facts() {
-    let (ingest, graph, interner) = index(&[
+    let (ingest, graph, interner) = index_files(&[
         ("src/lib.rs", Lang::Rust, b"pub fn target() {}\n"),
         (
             "tests/test_lib.rs",
@@ -179,7 +181,7 @@ fn test_validate_gate_modifiers_policy() {
 
 #[test]
 fn seams_report_preserves_the_uncovered_edge() {
-    let (ingest, graph, interner) = index(&[
+    let (ingest, graph, interner) = index_files(&[
         ("api/entry.rs", Lang::Rust, b"pub fn entry() { store(); }\n"),
         ("data/store.rs", Lang::Rust, b"pub fn store() {}\n"),
     ]);
@@ -215,7 +217,7 @@ fn seams_report_preserves_the_uncovered_edge() {
 }
 
 fn safe_delete_xml(files: &[(&str, Lang, &[u8])], sym: &str) -> String {
-    let (ingest, graph, interner) = index(files);
+    let (ingest, graph, interner) = index_files(files);
     let facts = SafetyContext {
         root: ":memory:",
         ingest: &ingest,

@@ -1,11 +1,11 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::Lang;
 use ripwire_rs::cli::TopModifierArgs;
 use ripwire_rs::commands::dead_code::{DeadCodeContext, execute_dead_code_query_paged};
 
 fn dead_code_xml(files: &[(&str, &[u8])]) -> String {
     let typed: Vec<(&str, Lang, &[u8])> = files.iter().map(|&(p, c)| (p, Lang::C, c)).collect();
-    let (ingest, graph, interner) = index(&typed);
+    let (ingest, graph, interner) = index_files(&typed);
     let page = TopModifierArgs::default();
     let ctx = DeadCodeContext {
         root: ":memory:",

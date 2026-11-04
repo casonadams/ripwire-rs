@@ -1,8 +1,8 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::{Lang, RefRole};
 
 fn indexed_names(files: &[(&str, Lang, &[u8])]) -> Vec<String> {
-    let (ingest, _, interner) = index(files);
+    let (ingest, _, interner) = index_files(files);
     ingest
         .symbols
         .iter()
@@ -28,7 +28,7 @@ fn test_javascript_member_assigned_function_is_named_by_its_property() {
 
 #[test]
 fn test_javascript_and_jsx_graph_protocol() {
-    let (ingest, _, interner) = index(&[(
+    let (ingest, _, interner) = index_files(&[(
         "src/View.jsx",
         Lang::JavaScript,
         b"module.exports.exportedFn = () => {};\nother.notExport = () => {};\nFoo.prototype.protoFn = function() {};\nexport function View() { return <span><Footer /></span>; }",

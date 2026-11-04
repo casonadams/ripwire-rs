@@ -1,5 +1,5 @@
-use crate::index_support::index;
-use crate::nav_support::nav_report_paged;
+use crate::support::index::index_files;
+use crate::support::nav::nav_report_paged;
 use ripwire_rs::Lang;
 use ripwire_rs::query::navigation::{NavContext, NavMode, execute_nav_symbol_query_in_root};
 use ripwire_rs::serialize::PageRequest;
@@ -15,7 +15,7 @@ const SINGLE: &[u8] = b"def run_three():\n    return process(6)\n";
 const DC_ROW: &str = "<dc in=\"";
 
 fn render(files: &[(&str, Lang, &[u8])], mode: NavMode, sym: &str, page: PageRequest) -> String {
-    let (ingest, graph, interner) = index(files);
+    let (ingest, graph, interner) = index_files(files);
     let pr = graph.page_rank(&PageRankConfig::default());
     nav_report_paged(&ingest, &graph, &pr.ranks, &interner, sym, mode, page).unwrap()
 }

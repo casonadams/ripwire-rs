@@ -1,3 +1,4 @@
+use crate::support::syntax::parse_rust;
 use ripwire_rs::slice::list_sliceable_locals;
 use ripwire_rs::{Lang, LanguageRegistry, OccRole};
 
@@ -61,12 +62,8 @@ fn test_slice_locals_ts_rust_cpp_destructured_and_typed() {
 
 #[test]
 fn rust_for_loop_variable_is_a_sliceable_local() {
-    let reg = LanguageRegistry::new().unwrap();
-    let (rs_lang, _) = reg.get(Lang::Rust).unwrap();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(rs_lang).unwrap();
     let src = b"fn total(xs: &[i32]) -> i32 {\n  let mut sum = 0;\n  for x in xs {\n    sum += x;\n  }\n  sum\n}\n";
-    let tree = parser.parse(src, None).unwrap();
+    let tree = parse_rust(src);
     let locals =
         list_sliceable_locals(tree.root_node(), src, Lang::Rust.semantics().syntax_kinds());
     let names: Vec<&str> = locals.iter().map(|(n, _, _)| n.as_str()).collect();

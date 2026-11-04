@@ -1,5 +1,5 @@
 use super::harness::owner_qualified_callees;
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::{Lang, LanguageRegistry, SymKind};
 use std::collections::HashMap;
 
@@ -428,7 +428,7 @@ fn test_rust_scoped_call_site_is_not_also_a_read() {
 
 fn rust_callers_of(source: &[u8], name: &str) -> usize {
     use ripwire_rs::find_symbols_by_name;
-    let (ingest, graph, interner) = index(&[("src/lib.rs", Lang::Rust, source)]);
+    let (ingest, graph, interner) = index_files(&[("src/lib.rs", Lang::Rust, source)]);
     let ids = find_symbols_by_name(name, &ingest, &interner);
     assert_eq!(ids.len(), 1, "one definition of {name}");
     graph.callers(ids[0]).count()
@@ -468,7 +468,7 @@ fn test_rust_macro_argument_calls_bind_only_to_bare_calls() {
 
 fn external_surface_xml(src: &[u8]) -> String {
     use ripwire_rs::serialize::PageRequest;
-    let (ingest, _, interner) = index(&[("src/lib.rs", Lang::Rust, src)]);
+    let (ingest, _, interner) = index_files(&[("src/lib.rs", Lang::Rust, src)]);
     let mut out = Vec::new();
     ripwire_rs::commands::external_surface::execute_external_surface_query(
         ".",

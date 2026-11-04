@@ -1,3 +1,4 @@
+use crate::support::syntax::parse_rust;
 use ripwire_rs::gate::contract::{
     ContractStatus, SignatureContract, check_node_visibility, compare_contracts,
     extract_param_count, parse_head_signature_match, parse_symbol_contract_from_bytes,
@@ -61,11 +62,7 @@ fn test_compare_contracts_scenarios() {
 }
 
 fn parse_rust_fn_stats(code: &[u8]) -> (u16, bool) {
-    let reg = LanguageRegistry::new().unwrap();
-    let (ts_lang, _) = reg.get(Lang::Rust).unwrap();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(ts_lang).unwrap();
-    let tree = parser.parse(code, None).unwrap();
+    let tree = parse_rust(code);
     let fn_node = tree.root_node().child(0).unwrap();
     (
         extract_param_count(fn_node, Lang::Rust.semantics().syntax_kinds()),

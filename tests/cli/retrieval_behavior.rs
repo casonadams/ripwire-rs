@@ -1,4 +1,4 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::commands::{
     ast_match, at, connect, exemplar, for_task, from_trace, graph_query, lego, pack_task,
     path_between, verify,
@@ -15,7 +15,7 @@ const OTHER_RS: &[u8] = b"fn other() {}\n";
 static FIXTURE_SOURCES: &[(&str, &[u8])] = &[("src/flow.rs", FLOW_RS), ("other/flow.rs", OTHER_RS)];
 
 fn fixture() -> (IngestResult, Graph, Interner) {
-    index(&[
+    index_files(&[
         ("src/flow.rs", Lang::Rust, FLOW_RS),
         ("other/flow.rs", Lang::Rust, OTHER_RS),
     ])

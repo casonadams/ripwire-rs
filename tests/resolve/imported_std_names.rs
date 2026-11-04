@@ -1,4 +1,4 @@
-use crate::a_callees::callees_described;
+use crate::support::callees::callees_described;
 use ripwire_rs::{Interner, Lang};
 
 /// A callee described by its simple name.

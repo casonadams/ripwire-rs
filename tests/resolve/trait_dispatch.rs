@@ -1,3 +1,4 @@
+use crate::support::symbols::{find_symbol, sorted_names};
 use ripwire_rs::{EdgeProv, Graph, IngestResult, Interner, Lang, NodeId};
 
 struct Fixture {
@@ -8,7 +9,7 @@ struct Fixture {
 
 impl Fixture {
     fn new(files: &[(&str, &str)]) -> Self {
-        let fx = crate::corpus_support::fixture(Lang::Rust, files);
+        let fx = crate::support::corpus::fixture(Lang::Rust, files);
         Self {
             ingest: fx.ingest,
             interner: fx.interner,
@@ -17,26 +18,16 @@ impl Fixture {
     }
 
     fn id(&self, name: &str) -> NodeId {
-        self.ingest
-            .symbols
-            .iter()
-            .find(|symbol| self.interner.resolve(&symbol.canonical_id) == name)
-            .unwrap_or_else(|| panic!("missing symbol {name}"))
-            .id
+        find_symbol(&self.ingest, &self.interner, |sym| sym.canonical_id, name).id
     }
 
     fn callees(&self, name: &str) -> Vec<String> {
-        let mut targets: Vec<_> = self
-            .graph
-            .callees(self.id(name))
-            .map(|(id, _)| {
-                self.interner
-                    .resolve(&self.ingest.symbols[id as usize].canonical_id)
-                    .to_owned()
-            })
-            .collect();
-        targets.sort();
-        targets
+        sorted_names(
+            &self.ingest,
+            &self.interner,
+            self.graph.callees(self.id(name)).map(|(id, _)| id),
+            |sym| sym.canonical_id,
+        )
     }
 
     fn reaches(&self, from: &str, leaf: &str) -> bool {

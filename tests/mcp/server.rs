@@ -13,7 +13,7 @@ fn dispatch_json_rpc(line: &str, state: &mut Option<Workspace>, root: &str) -> O
 use std::io::Cursor;
 
 fn workspace(files: &[(&str, Lang, &[u8])]) -> Option<Workspace> {
-    let (ingest, _, interner) = crate::index_support::index(files);
+    let (ingest, _, interner) = crate::support::index::index_files(files);
     Some(Workspace::from_ingest(":memory:", ingest, interner))
 }
 
@@ -114,7 +114,7 @@ fn seed_lookup_matches_name_lookup_and_refuses_unspanned_lines() {
         Lang::Rust,
         b"pub fn alpha() {\n    beta();\n}\npub fn beta() {}\n",
     )];
-    let (ingest, _, interner) = crate::index_support::index(files);
+    let (ingest, _, interner) = crate::support::index::index_files(files);
     let by_seed = ripwire_rs::navigate::find_symbols_by_name("@src/lib.rs:4", &ingest, &interner);
     let by_name = ripwire_rs::navigate::find_symbols_by_name("beta", &ingest, &interner);
     assert_eq!(by_seed, by_name);

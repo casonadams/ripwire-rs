@@ -14,9 +14,12 @@ mod tests {
             "src/lib.rs",
             "pub fn target(a: i32, b: i32) -> i32 { a + b }\nfn caller() { target(1); }\n",
         )];
-        crate::a_safety_context::with_safety_context(":memory:", &files, |context| {
-            let xml =
-                crate::a_safety_context::target_edit_check_xml(context, Some((0, 0)), "abc:date");
+        crate::support::safety_context::with_safety_context(":memory:", &files, |context| {
+            let xml = crate::support::safety_context::target_edit_check_xml(
+                context,
+                Some((0, 0)),
+                "abc:date",
+            );
             assert!(xml.contains("status=\"contract-change\""));
             assert!(xml.contains("incompatible=\"1\""));
             assert!(xml.contains("n=\"caller\""));

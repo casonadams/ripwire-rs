@@ -1,4 +1,4 @@
-use crate::corpus_support::fixture;
+use crate::support::corpus::fixture;
 use ripwire_rs::gate::seams::{SeamsReport, find_integration_seams};
 use ripwire_rs::serialize::{PageRequest, XmlReport};
 use ripwire_rs::{Interner, Lang, LanguageRegistry, ingest_in_memory_files};

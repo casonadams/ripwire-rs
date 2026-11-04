@@ -1,4 +1,4 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::commands::batch::execute_batch_content;
 use ripwire_rs::commands::common::safety_queries::{
     execute_exercises_query, execute_safe_delete_query,
@@ -9,7 +9,7 @@ use ripwire_rs::serialize::PageRequest;
 use ripwire_rs::{Graph, IngestResult, Interner, Lang, PageRankConfig};
 
 fn fixture() -> (IngestResult, Graph, Interner) {
-    index(&[(
+    index_files(&[(
         "lib.rs",
         Lang::Rust,
         b"pub fn run_cli() { helper(); } fn helper() {}",
@@ -81,7 +81,7 @@ fn test_dispatched_queries_answer_the_fixture_graph() {
     );
     assert!(xml.ends_with("</batch>\n"), "{xml}");
 
-    let (ingest, graph, interner) = index(&[
+    let (ingest, graph, interner) = index_files(&[
         ("lib.rs", Lang::Rust, b"pub fn run_cli() {}"),
         (
             "tests/check.rs",

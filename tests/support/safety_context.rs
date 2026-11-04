@@ -1,4 +1,4 @@
-use crate::corpus_support::fixture;
+use crate::support::corpus::fixture;
 use ripwire_rs::Lang;
 use ripwire_rs::gate::contract::SignatureContract;
 use ripwire_rs::query::safety::{EditCheckRequest, SafetyContext, write_edit_check_from_facts};

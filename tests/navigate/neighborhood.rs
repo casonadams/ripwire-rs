@@ -70,7 +70,7 @@ fn test_navigate_1hop_and_impact() {
     assert_eq!(nav.callees[0].name, "c");
 
     let callers_xml =
-        crate::nav_support::nav_report(&ingest, &graph, &ranks, &interner, "b", NavMode::Callers)
+        crate::support::nav::nav_report(&ingest, &graph, &ranks, &interner, "b", NavMode::Callers)
             .unwrap();
     assert!(callers_xml.contains("sites_at=\"src/lib.rs:2\""));
 

@@ -2,7 +2,7 @@ use ripwire_rs::Lang;
 use ripwire_rs::query::navigation::NavMode;
 
 fn nav_xml(fixtures: &[(&str, Lang, &[u8])], sym: &str, mode: NavMode) -> std::io::Result<String> {
-    crate::nav_support::nav_xml(fixtures, None, sym, mode)
+    crate::support::nav::nav_xml(fixtures, None, sym, mode)
 }
 
 fn check_nav(

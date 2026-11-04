@@ -1,4 +1,4 @@
-use crate::b_ingest::one_function_ingest;
+use crate::support::ingest::one_function_ingest;
 use ripwire_rs::metrics::{
     classify_identifier_casing, compute_comment_coherence_with_sources,
     serialize_executive_report_md, serialize_naming_consistency_xml,

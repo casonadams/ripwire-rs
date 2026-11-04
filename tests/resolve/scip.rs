@@ -66,7 +66,7 @@ fn index_bytes() -> Vec<u8> {
 }
 
 fn callees(sym: &str, scip: Option<&[u8]>) -> String {
-    crate::nav_support::nav_xml(SOURCES, scip, sym, NavMode::Callees).unwrap()
+    crate::support::nav::nav_xml(SOURCES, scip, sym, NavMode::Callees).unwrap()
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn scip_symbol_defined_outside_the_index_is_external() {
 
 #[test]
 fn non_scip_bytes_are_rejected() {
-    let (ingest, _, interner) = crate::index_support::index(SOURCES);
+    let (ingest, _, interner) = crate::support::index::index_files(SOURCES);
     assert!(scip_sites(b"\xff\xff\xff\xff", &ingest, &interner).is_err());
 }
 
@@ -134,9 +134,15 @@ fn multiline_member_calls_use_identifier_lines_without_moving_reported_sites() {
     );
     let graph = Graph::build(&ingest, &interner);
     let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
-    let xml =
-        crate::nav_support::nav_report(&ingest, &graph, &ranks, &interner, "run", NavMode::Callers)
-            .unwrap();
+    let xml = crate::support::nav::nav_report(
+        &ingest,
+        &graph,
+        &ranks,
+        &interner,
+        "run",
+        NavMode::Callers,
+    )
+    .unwrap();
     assert!(
         xml.contains("n=\"go\" p=\"c/use.py:1\" of_def=\"2\" sites_at=\"c/use.py:2\""),
         "{xml}"

@@ -1,9 +1,9 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::serialize::graph_export::{GraphExport, GraphFormat};
 use ripwire_rs::{Lang, PageRankConfig};
 
 fn export(format: GraphFormat) -> String {
-    let (ingest, graph, interner) = index(&[(
+    let (ingest, graph, interner) = index_files(&[(
         "src/a&b.rs",
         Lang::Rust,
         b"fn entry() { helper(); }\nfn helper() {}\n".as_slice(),

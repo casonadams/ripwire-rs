@@ -1,4 +1,4 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::Lang;
 
 #[test]
@@ -10,7 +10,7 @@ fn test_go_graph_protocol() {
 #[test]
 fn test_go_method_arity_ignores_receiver_list() {
     let source = b"package main\ntype Store struct{}\nfunc (s *Store) Put(key string, v int) {}\nfunc run() {\n\ts := &Store{}\n\ts.Put(\"a\", 1)\n}\n";
-    let (ingest, _, interner) = index(&[("store.go", Lang::Go, source)]);
+    let (ingest, _, interner) = index_files(&[("store.go", Lang::Go, source)]);
     let put = ingest
         .symbols
         .iter()

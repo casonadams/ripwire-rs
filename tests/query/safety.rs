@@ -6,7 +6,7 @@ use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ToXmlString, ingest_in
 
 #[test]
 fn test_quality_baseline_from_facts_clean() {
-    crate::a_safety_context::with_safety_context(
+    crate::support::safety_context::with_safety_context(
         "pure-facts",
         &[("src/lib.rs", "pub fn clean_func() {}\n")],
         |context| {
@@ -20,7 +20,7 @@ fn test_quality_baseline_from_facts_clean() {
 
 #[test]
 fn test_quality_baseline_from_facts_dirty_policy() {
-    crate::a_safety_context::with_safety_context(
+    crate::support::safety_context::with_safety_context(
         "pure-facts",
         &[("src/lib.rs", "pub fn sample() {}\n")],
         |context| {

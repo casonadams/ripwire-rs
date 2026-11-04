@@ -1,4 +1,4 @@
-use crate::index_support::index;
+use crate::support::index::index_files;
 use ripwire_rs::Lang;
 use ripwire_rs::PageRankConfig;
 use ripwire_rs::navigate::execute_pack_task;
@@ -16,7 +16,8 @@ fn session_source() -> String {
 
 fn pack(budget_tokens: usize) -> String {
     let source = session_source();
-    let (ingest, graph, interner) = index(&[("src/session.rs", Lang::Rust, source.as_bytes())]);
+    let (ingest, graph, interner) =
+        index_files(&[("src/session.rs", Lang::Rust, source.as_bytes())]);
     let pr = graph.page_rank(&PageRankConfig::default());
     let sources = [("src/session.rs", source.as_bytes())];
     let ctx = QueryContext {

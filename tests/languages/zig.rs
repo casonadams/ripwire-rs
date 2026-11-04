@@ -1,4 +1,4 @@
-use crate::a_callees::callees_described;
+use crate::support::callees::callees_described;
 use ripwire_rs::{IngestResult, Interner, Lang, LanguageRegistry, SymKind, ingest_in_memory_files};
 
 /// A callee as `file:name`.

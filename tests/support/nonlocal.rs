@@ -1,4 +1,4 @@
-use crate::corpus_support::fixture;
+use crate::support::corpus::fixture;
 use ripwire_rs::Lang;
 use ripwire_rs::metrics::nonlocal::{NonlocalFunction, find_nonlocal_state};
 

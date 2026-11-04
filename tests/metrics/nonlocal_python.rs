@@ -1,5 +1,5 @@
-use crate::b_state::assert_reads_are_not_state;
-use crate::nonlocal_support::{function, state_report as support_state_report};
+use crate::support::nonlocal::{function, state_report as support_state_report};
+use crate::support::state::assert_reads_are_not_state;
 use ripwire_rs::Lang;
 use ripwire_rs::metrics::nonlocal::NonlocalFunction;
 
