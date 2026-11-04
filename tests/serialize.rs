@@ -3,6 +3,7 @@ mod graph_export;
 mod grep;
 mod html;
 mod streaming;
+mod unreadable_root;
 mod workspace;
 mod writer;
 mod xml;

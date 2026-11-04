@@ -3,11 +3,11 @@ use super::ownership::{assign_module_scope_owner, build_file_references};
 use super::registry::LanguageRegistry;
 use crate::crawler::CrawledFile;
 use crate::domain::{
-    CallableBinding, FileInfo, ForeignBinding, IngestResult, Interner, Lang, NodeId, Reference,
-    Symbol,
+    CallableBinding, FileInfo, ForeignBinding, ImportAlias, IngestResult, Interner, Lang, NodeId,
+    Reference, Symbol,
 };
 use rayon::prelude::*;
-use std::fs;
+use std::{fs, io};
 use tree_sitter::{Language, Query};
 
 /// Parse a single file content with a compiled grammar and query.
@@ -51,28 +51,95 @@ pub fn definition_lines(rel_path: &str, source_bytes: &[u8], name: &str) -> Vec<
         .collect()
 }
 
-/// Ingest crawled files in parallel and assemble IngestResult.
+/// What the read stage keeps from one crawled file: its parse, and the import aliases of a manifest.
+struct CrawledRead {
+    parsed: Option<(Lang, FileParseResult)>,
+    aliases: Vec<ImportAlias>,
+}
+
+/// Read one crawled file once. A read error is returned to the caller, never dropped.
+fn read_crawled_file(file: &CrawledFile, registry: &LanguageRegistry) -> io::Result<CrawledRead> {
+    let source_bytes = fs::read(&file.path)?;
+    Ok(CrawledRead {
+        aliases: manifest_import_aliases(file, &source_bytes),
+        parsed: parse_crawled(file, registry, &source_bytes),
+    })
+}
+
+fn parse_crawled(
+    file: &CrawledFile,
+    registry: &LanguageRegistry,
+    source_bytes: &[u8],
+) -> Option<(Lang, FileParseResult)> {
+    if crate::crawler::is_binary_buffer(source_bytes) {
+        return None;
+    }
+    let eff_lang = file
+        .lang
+        .semantics()
+        .refine_dialect(file.lang, &file.rel_path, source_bytes);
+    let (language, query) = registry.get(eff_lang)?;
+    Some((
+        eff_lang,
+        parse_file_content(source_bytes, language, query, eff_lang, &file.rel_path),
+    ))
+}
+
+/// Import aliases of a dependency manifest; empty for other files and for non-UTF-8 content.
+fn manifest_import_aliases(file: &CrawledFile, source_bytes: &[u8]) -> Vec<ImportAlias> {
+    let Some(name) = file.rel_path.rsplit('/').next() else {
+        return Vec::new();
+    };
+    let is_manifest = crate::languages::ALL_LANGS
+        .iter()
+        .any(|l| l.semantics().import_alias_manifests().contains(&name));
+    match std::str::from_utf8(source_bytes) {
+        Ok(content) if is_manifest => crate::languages::import_aliases_in(&file.rel_path, content),
+        _ => Vec::new(),
+    }
+}
+
+/// Distinct rel paths, sorted, whose read failed. Each pair is a crawled file's rel path and its
+/// read outcome; a successful read is never a failure, including a binary file that is then skipped.
+pub fn unreadable_rel_paths<'a, T, E>(
+    reads: impl IntoIterator<Item = (&'a str, Result<T, E>)>,
+) -> Vec<&'a str> {
+    let mut paths: Vec<&str> = reads
+        .into_iter()
+        .filter(|(_, read)| read.is_err())
+        .map(|(path, _)| path)
+        .collect();
+    paths.sort_unstable();
+    paths.dedup();
+    paths
+}
+
+/// Ingest crawled files in parallel and assemble IngestResult. A crawled file that cannot be read is
+/// indexed as an empty file and counted in `IngestResult::unreadable`; it is never silently dropped.
 pub fn ingest_crawled_files(
     files: &[CrawledFile],
     registry: &LanguageRegistry,
     interner: &Interner,
 ) -> IngestResult {
-    let parsed_files: Vec<Option<(Lang, FileParseResult)>> = files
+    let reads: Vec<(&str, io::Result<CrawledRead>)> = files
         .par_iter()
-        .map(|file| {
-            let source_bytes = fs::read(&file.path).ok()?;
-            if crate::crawler::is_binary_buffer(&source_bytes) {
-                return None;
+        .map(|file| (file.rel_path.as_str(), read_crawled_file(file, registry)))
+        .collect();
+    let unreadable = unreadable_rel_paths(
+        reads
+            .iter()
+            .map(|(path, read)| (*path, read.as_ref().map(|_| ()))),
+    )
+    .len();
+    let mut import_aliases = Vec::new();
+    let parsed_files: Vec<Option<(Lang, FileParseResult)>> = reads
+        .into_iter()
+        .map(|(_, read)| match read {
+            Ok(crawled) => {
+                import_aliases.extend(crawled.aliases);
+                crawled.parsed
             }
-            let eff_lang =
-                file.lang
-                    .semantics()
-                    .refine_dialect(file.lang, &file.rel_path, &source_bytes);
-            let (language, query) = registry.get(eff_lang)?;
-            Some((
-                eff_lang,
-                parse_file_content(&source_bytes, language, query, eff_lang, &file.rel_path),
-            ))
+            Err(_) => None,
         })
         .collect();
 
@@ -111,18 +178,8 @@ pub fn ingest_crawled_files(
         append_file(&mut ingest, file_info, index);
     }
     retain_accessor_reads(&mut ingest);
-    ingest.import_aliases = files
-        .iter()
-        .filter_map(|f| {
-            let name = f.rel_path.rsplit('/').next()?;
-            crate::languages::ALL_LANGS
-                .iter()
-                .any(|l| l.semantics().import_alias_manifests().contains(&name))
-                .then(|| fs::read_to_string(&f.path).ok())?
-                .map(|content| crate::languages::import_aliases_in(&f.rel_path, &content))
-        })
-        .flatten()
-        .collect();
+    ingest.import_aliases = import_aliases;
+    ingest.unreadable = unreadable;
     ingest
 }
 

@@ -74,6 +74,7 @@ pub(super) struct CliRootCounts {
     pub(super) est_tokens: usize,
     pub(super) data_sections_cut: usize,
     pub(super) page_size: usize,
+    pub(super) unreadable: usize,
 }
 
 pub(super) fn write_cli_root_open<W: Write>(
@@ -86,6 +87,7 @@ pub(super) fn write_cli_root_open<W: Write>(
         est_tokens,
         data_sections_cut,
         page_size,
+        unreadable,
     } = counts;
     w.write_all(b"<r")?;
     if !options.legend_full {
@@ -98,6 +100,9 @@ pub(super) fn write_cli_root_open<W: Write>(
     w.write_all(b" root=\"")?;
     escape_xml_write(w, &options.root)?;
     w.write_all(b"\"")?;
+    if unreadable > 0 {
+        write!(w, " unreadable=\"{unreadable}\" counts_floor=\"1\"")?;
+    }
     if let Some(rb) = &options.rank_by {
         return write!(w, " rank_by=\"{rb}\" est_tokens=\"{est_tokens}\">");
     }

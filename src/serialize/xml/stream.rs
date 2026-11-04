@@ -232,6 +232,7 @@ pub fn serialize_xml_with_ranks<W: Write>(
                 est_tokens,
                 data_sections_cut,
                 page_size: symbols_shown,
+                unreadable: ctx.ingest.unreadable,
             },
         )?;
     } else {

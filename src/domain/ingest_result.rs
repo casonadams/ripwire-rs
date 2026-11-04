@@ -84,6 +84,10 @@ pub struct IngestResult {
     pub callable_bindings: Vec<CallableBinding>,
     #[serde(default)]
     pub implementations: Vec<Implementation>,
+    /// Crawled files whose read failed (permission, or removed mid-run). They are indexed as empty
+    /// files, so every answer over them is a floor.
+    #[serde(default)]
+    pub unreadable: usize,
 }
 
 impl IngestResult {

@@ -54,6 +54,8 @@ files, and replaces changed paths with worktree rows. Outside a git repository i
 512 names. Larger pools compare the next 24 lexicographic successors and mark
 the affected rule `count_capped="1"`; paginating findings does not expand that pool.
 
+A crawled file whose read fails (permission denied, or removed mid-run) is still indexed, as an empty file, so answers over it shrink without warning. The map root then carries `unreadable="N" counts_floor="1"`, where `N` counts such files and every count is a floor. The attribute is omitted when no file failed to read; a binary file skipped by the crawler is not a failure.
+
 ---
 ## Language-Agnostic Embedded SQL Lineage
 
