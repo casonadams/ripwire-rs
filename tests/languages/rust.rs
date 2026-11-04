@@ -1,4 +1,5 @@
 use super::harness::owner_qualified_callees;
+use crate::index_support::index;
 use ripwire_rs::{Lang, LanguageRegistry, SymKind};
 use std::collections::HashMap;
 
@@ -221,7 +222,7 @@ fn rust_ref<'a>(
 }
 
 #[test]
-fn test_rust_std_path_qualifier_is_std_builtin() {
+fn test_rust_std_path_and_impl_facts() {
     let res = rust_parse("fn drop(_: u8) {} fn invoke() { std::mem::drop(1u8); }");
     let call = res
         .refs
@@ -234,6 +235,27 @@ fn test_rust_std_path_qualifier_is_std_builtin() {
             .semantics()
             .is_std_or_builtin_qualifier("std::mem")
     );
+
+    let res = rust_parse(
+        "struct Worker; trait Runner { fn run(&self); } impl Runner for Worker { fn run(&self) {} }",
+    );
+    let imp = res
+        .implementations
+        .iter()
+        .find(|i| i.subject == "Worker")
+        .expect("impl Worker fact");
+    assert_eq!(imp.trait_path.as_deref(), Some("Runner"));
+    assert!(!imp.generic_subject);
+
+    let res = rust_parse("trait Report {} trait Text {} impl<T> Text for T where T: Report {}");
+    let imp = res
+        .implementations
+        .iter()
+        .find(|i| i.subject == "T")
+        .expect("blanket impl fact");
+    assert_eq!(imp.trait_path.as_deref(), Some("Text"));
+    assert_eq!(imp.subject_bound.as_deref(), Some("Report"));
+    assert!(imp.generic_subject);
 }
 
 #[test]
@@ -347,20 +369,6 @@ fn test_rust_destructured_binding_gets_no_type() {
 }
 
 #[test]
-fn test_rust_impl_fact_records_subject_and_trait() {
-    let res = rust_parse(
-        "struct Worker; trait Runner { fn run(&self); } impl Runner for Worker { fn run(&self) {} }",
-    );
-    let imp = res
-        .implementations
-        .iter()
-        .find(|i| i.subject == "Worker")
-        .expect("impl Worker fact");
-    assert_eq!(imp.trait_path.as_deref(), Some("Runner"));
-    assert!(!imp.generic_subject);
-}
-
-#[test]
 fn test_rust_nested_custom_box_does_not_shadow_prelude_box() {
     let res = rust_parse(
         "mod custom { pub struct Box<T>(pub T); impl<T> Box<T> { pub fn ping(&self) { custom_end(); } } fn custom_end() {} } struct Inner; impl Inner { fn ping(&self) { inner_end(); } } fn inner_end() {} fn invoke(x: Box<Inner>) { x.ping(); }",
@@ -405,19 +413,6 @@ fn test_rust_impl_level_generic_where_bound_is_receiver_type() {
 }
 
 #[test]
-fn test_rust_blanket_impl_fact_records_subject_bound() {
-    let res = rust_parse("trait Report {} trait Text {} impl<T> Text for T where T: Report {}");
-    let imp = res
-        .implementations
-        .iter()
-        .find(|i| i.subject == "T")
-        .expect("blanket impl fact");
-    assert_eq!(imp.trait_path.as_deref(), Some("Text"));
-    assert_eq!(imp.subject_bound.as_deref(), Some("Report"));
-    assert!(imp.generic_subject);
-}
-
-#[test]
 fn test_rust_scoped_call_site_is_not_also_a_read() {
     let res = rust_parse(
         "mod util { pub fn row_bytes(n: u8) -> u8 { n } } fn invoke() -> u8 { crate::util::row_bytes(1) }",
@@ -432,30 +427,21 @@ fn test_rust_scoped_call_site_is_not_also_a_read() {
 }
 
 fn rust_callers_of(source: &[u8], name: &str) -> usize {
-    use ripwire_rs::{
-        Graph, Interner, LanguageRegistry, find_symbols_by_name, ingest_in_memory_files,
-    };
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest =
-        ingest_in_memory_files(&[("src/lib.rs", Lang::Rust, source)], &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
+    use ripwire_rs::find_symbols_by_name;
+    let (ingest, graph, interner) = index(&[("src/lib.rs", Lang::Rust, source)]);
     let ids = find_symbols_by_name(name, &ingest, &interner);
     assert_eq!(ids.len(), 1, "one definition of {name}");
     graph.callers(ids[0]).count()
 }
 
 #[test]
-fn test_rust_call_inside_macro_argument_is_an_edge() {
+fn test_rust_macro_argument_calls_bind_only_to_bare_calls() {
     let src = b"pub fn alpha(x: u8) -> u8 { x }\nfn checks() { assert_eq!(alpha(2), 2); }\n";
     assert_eq!(rust_callers_of(src, "alpha"), 1);
     let nested =
         b"pub fn alpha(x: u8) -> u8 { x }\nfn checks() { assert!(vec![alpha(2)].len() > 0); }\n";
     assert_eq!(rust_callers_of(nested, "alpha"), 1);
-}
 
-#[test]
-fn test_rust_macro_tokens_that_are_not_calls_stay_edge_free() {
     let string_only = b"pub fn alpha(x: u8) -> u8 { x }\nfn checks() { println!(\"alpha(2)\"); }\n";
     assert_eq!(rust_callers_of(string_only, "alpha"), 0);
     let operator = b"pub fn alpha(x: u8) -> u8 { x }\nfn checks() { assert!(alpha + (2) > 0); }\n";
@@ -465,17 +451,11 @@ fn test_rust_macro_tokens_that_are_not_calls_stay_edge_free() {
     let attribute =
         b"pub fn derive(x: u8) -> u8 { x }\n#[cfg_attr(test, derive(Debug))]\nstruct Marker;\n";
     assert_eq!(rust_callers_of(attribute, "derive"), 0);
-}
 
-#[test]
-fn test_rust_camel_case_pattern_in_macro_is_not_a_call() {
     let pattern =
         b"pub struct Mode(pub u8);\nfn checks(k: Kind) -> bool { matches!(k, Kind::Mode(_)) }\n";
     assert_eq!(rust_callers_of(pattern, "Mode"), 0);
-}
 
-#[test]
-fn test_rust_method_and_path_calls_in_macro_are_not_bare_calls() {
     let method =
         b"pub fn alpha(x: u8) -> u8 { x }\nfn checks(v: V) { assert_eq!(v.alpha(2), 2); }\n";
     assert_eq!(rust_callers_of(method, "alpha"), 0);
@@ -486,13 +466,9 @@ fn test_rust_method_and_path_calls_in_macro_are_not_bare_calls() {
     assert_eq!(rust_callers_of(bare, "alpha"), 1);
 }
 
-#[test]
-fn test_rust_local_closure_called_in_macro_is_not_an_external_name() {
-    use ripwire_rs::{Interner, LanguageRegistry, ingest_in_memory_files, serialize::PageRequest};
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let src = b"fn checks() { let callers_of = |x: u8| x; assert_eq!(callers_of(2), 2); }\n";
-    let ingest = ingest_in_memory_files(&[("src/lib.rs", Lang::Rust, src)], &registry, &interner);
+fn external_surface_xml(src: &[u8]) -> String {
+    use ripwire_rs::serialize::PageRequest;
+    let (ingest, _, interner) = index(&[("src/lib.rs", Lang::Rust, src)]);
     let mut out = Vec::new();
     ripwire_rs::commands::external_surface::execute_external_surface_query(
         ".",
@@ -502,27 +478,19 @@ fn test_rust_local_closure_called_in_macro_is_not_an_external_name() {
         &mut out,
     )
     .unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    assert!(!xml.contains("n=\"callers_of\""), "{xml}");
+    String::from_utf8(out).unwrap()
 }
 
 #[test]
-fn test_rust_unresolved_macro_dsl_token_is_not_an_external_name() {
-    use ripwire_rs::{Interner, LanguageRegistry, ingest_in_memory_files, serialize::PageRequest};
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let src = b"command! { run: nav(Mode::Callers) }\nfn other() { vendor_send(1); }\n";
-    let ingest = ingest_in_memory_files(&[("src/lib.rs", Lang::Rust, src)], &registry, &interner);
-    let mut out = Vec::new();
-    ripwire_rs::commands::external_surface::execute_external_surface_query(
-        ".",
-        &ingest,
-        &interner,
-        PageRequest::default(),
-        &mut out,
-    )
-    .unwrap();
-    let xml = String::from_utf8(out).unwrap();
+fn test_rust_macro_closure_and_dsl_names_are_not_external() {
+    let xml = external_surface_xml(
+        b"fn checks() { let callers_of = |x: u8| x; assert_eq!(callers_of(2), 2); }\n",
+    );
+    assert!(!xml.contains("n=\"callers_of\""), "{xml}");
+
+    let xml = external_surface_xml(
+        b"command! { run: nav(Mode::Callers) }\nfn other() { vendor_send(1); }\n",
+    );
     assert!(
         !xml.contains("n=\"nav\""),
         "a DSL token is not a call: {xml}"
@@ -574,26 +542,4 @@ impl Op {\n    fn helper(&self) {}\n    fn run(&self) { helper(); }\n}\nfn helpe
     assert!(callees("from_str").is_empty(), "{:?}", callees("from_str"));
     assert!(callees("parse").is_empty(), "{:?}", callees("parse"));
     assert_eq!(callees("run"), [".helper"]);
-}
-
-/// `crate::crawler::Config::parse(..)`: `parse` is a std member name, so the call must bind through its
-/// type segment (`Config`) to the in-tree inherent method, not be dropped as a std call on the path.
-#[test]
-fn rust_module_qualified_type_call_binds_to_in_tree_owner() {
-    let callees = owner_qualified_callees(
-        &[
-            (
-                "src/crawler.rs",
-                Lang::Rust,
-                b"pub struct Config;\n\nimpl Config {\n    pub fn parse(s: &str) -> Config {\n        let _ = s;\n        Config\n    }\n}\n",
-            ),
-            (
-                "src/lib.rs",
-                Lang::Rust,
-                b"pub mod crawler;\n\npub fn run() -> crawler::Config {\n    crate::crawler::Config::parse(\"y\")\n}\n",
-            ),
-        ],
-        "run",
-    );
-    assert_eq!(callees, vec!["Config.parse".to_string()]);
 }

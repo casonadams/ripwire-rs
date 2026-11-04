@@ -1,4 +1,5 @@
-use ripwire_rs::{Graph, IngestResult, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
+use crate::index_support::index;
+use ripwire_rs::{Graph, IngestResult, Interner, Lang};
 
 /// An in-memory corpus indexed and graphed for one language.
 pub struct Fixture {
@@ -8,14 +9,11 @@ pub struct Fixture {
 }
 
 pub fn fixture(lang: Lang, files: &[(&str, &str)]) -> Fixture {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
     let sources: Vec<(&str, Lang, &[u8])> = files
         .iter()
         .map(|(path, src)| (*path, lang, src.as_bytes()))
         .collect();
-    let ingest = ingest_in_memory_files(&sources, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
+    let (ingest, graph, interner) = index(&sources);
     Fixture {
         interner,
         ingest,

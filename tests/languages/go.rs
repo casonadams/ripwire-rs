@@ -1,4 +1,5 @@
-use ripwire_rs::{Interner, Lang, LanguageRegistry, ingest_in_memory_files};
+use crate::index_support::index;
+use ripwire_rs::Lang;
 
 #[test]
 fn test_go_graph_protocol() {
@@ -8,10 +9,8 @@ fn test_go_graph_protocol() {
 
 #[test]
 fn test_go_method_arity_ignores_receiver_list() {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
     let source = b"package main\ntype Store struct{}\nfunc (s *Store) Put(key string, v int) {}\nfunc run() {\n\ts := &Store{}\n\ts.Put(\"a\", 1)\n}\n";
-    let ingest = ingest_in_memory_files(&[("store.go", Lang::Go, source)], &registry, &interner);
+    let (ingest, _, interner) = index(&[("store.go", Lang::Go, source)]);
     let put = ingest
         .symbols
         .iter()

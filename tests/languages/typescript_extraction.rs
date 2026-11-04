@@ -1,18 +1,14 @@
-use ripwire_rs::{Interner, Lang, LanguageRegistry, SymKind, ingest_in_memory_files};
+use crate::index_support::with_typescript_module;
+use ripwire_rs::SymKind;
 
 fn symbols_of(source: &str) -> Vec<(String, SymKind)> {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let ingest = ingest_in_memory_files(
-        &[("src/mod.ts", Lang::TypeScript, source.as_bytes())],
-        &registry,
-        &interner,
-    );
-    ingest
-        .symbols
-        .iter()
-        .map(|sym| (interner.resolve(&sym.name).to_string(), sym.kind))
-        .collect()
+    with_typescript_module(source, |ingest, interner| {
+        ingest
+            .symbols
+            .iter()
+            .map(|sym| (interner.resolve(&sym.name).to_string(), sym.kind))
+            .collect()
+    })
 }
 
 #[test]
@@ -55,19 +51,14 @@ fn module_let_is_a_variable_definition() {
 }
 
 fn signature_of(source: &str, name: &str) -> String {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let ingest = ingest_in_memory_files(
-        &[("src/mod.ts", Lang::TypeScript, source.as_bytes())],
-        &registry,
-        &interner,
-    );
-    let sym = ingest
-        .symbols
-        .iter()
-        .find(|sym| interner.resolve(&sym.name) == name)
-        .expect("symbol");
-    sym.extract_signature(source.as_bytes(), name)
+    with_typescript_module(source, |ingest, interner| {
+        let sym = ingest
+            .symbols
+            .iter()
+            .find(|sym| interner.resolve(&sym.name) == name)
+            .expect("symbol");
+        sym.extract_signature(source.as_bytes(), name)
+    })
 }
 
 #[test]
@@ -99,21 +90,16 @@ fn object_literal_return_type_ends_at_the_body() {
 }
 
 fn has_body_of(source: &str, name: &str) -> bool {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let ingest = ingest_in_memory_files(
-        &[("src/mod.ts", Lang::TypeScript, source.as_bytes())],
-        &registry,
-        &interner,
-    );
-    let found: Vec<bool> = ingest
-        .symbols
-        .iter()
-        .filter(|sym| interner.resolve(&sym.name) == name)
-        .map(|sym| sym.has_body())
-        .collect();
-    assert_eq!(found.len(), 1, "{name}: {found:?}");
-    found[0]
+    with_typescript_module(source, |ingest, interner| {
+        let found: Vec<bool> = ingest
+            .symbols
+            .iter()
+            .filter(|sym| interner.resolve(&sym.name) == name)
+            .map(|sym| sym.has_body())
+            .collect();
+        assert_eq!(found.len(), 1, "{name}: {found:?}");
+        found[0]
+    })
 }
 
 #[test]

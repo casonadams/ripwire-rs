@@ -141,7 +141,7 @@ fn callers_and_callees_label_each_row_with_its_binding() {
 }
 
 #[test]
-fn ambiguous_call_arms_are_labelled_split() {
+fn ambiguous_call_arms_are_labelled_split_and_same_language_wins() {
     let fixtures: &[(&str, Lang, &[u8])] = &[
         ("a/x.dart", Lang::Dart, b"class X { void run() {} }\n"),
         ("a/y.dart", Lang::Dart, b"class Y { void run() {} }\n"),
@@ -155,23 +155,7 @@ fn ambiguous_call_arms_are_labelled_split() {
     assert_eq!(callees.matches("prov=\"split\"").count(), 2, "{callees}");
     let callers = nav_xml(fixtures, "run", NavMode::Callers).unwrap();
     assert!(callers.contains("of_def=\"1~s 2~s\""), "{callers}");
-}
 
-const PYBIND: &[u8] = b"#include <pybind11/pybind11.h>
-namespace py = pybind11;
-int add_impl(int a, int b) { return a + b; }
-int add(int a, int b) { return a - b; }
-int plain(int a) { return a; }
-struct Pet { void bark() {} };
-PYBIND11_MODULE(native, m) {
-    m.def(\"add\", &add_impl);
-    m.def(\"plain_fn\", plain);
-    py::class_<Pet>(m, \"Pet\").def(py::init<>()).def(\"speak\", &Pet::bark);
-}
-";
-
-#[test]
-fn same_language_definition_wins_over_a_binding_and_no_module_means_no_export() {
     let fixtures: &[(&str, Lang, &[u8])] = &[
         ("bind.cpp", Lang::Cpp, PYBIND),
         (
@@ -192,6 +176,19 @@ fn same_language_definition_wins_over_a_binding_and_no_module_means_no_export() 
     let other = nav_xml(fixtures, "other", NavMode::Callees).unwrap();
     assert!(other.contains("count=\"0\""), "{other}");
 }
+
+const PYBIND: &[u8] = b"#include <pybind11/pybind11.h>
+namespace py = pybind11;
+int add_impl(int a, int b) { return a + b; }
+int add(int a, int b) { return a - b; }
+int plain(int a) { return a; }
+struct Pet { void bark() {} };
+PYBIND11_MODULE(native, m) {
+    m.def(\"add\", &add_impl);
+    m.def(\"plain_fn\", plain);
+    py::class_<Pet>(m, \"Pet\").def(py::init<>()).def(\"speak\", &Pet::bark);
+}
+";
 
 #[test]
 fn callees_preserve_the_definition_group_owning_each_callee() {

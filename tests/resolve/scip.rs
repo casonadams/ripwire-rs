@@ -93,9 +93,7 @@ fn scip_symbol_defined_outside_the_index_is_external() {
 
 #[test]
 fn non_scip_bytes_are_rejected() {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(SOURCES, &registry, &interner);
+    let (ingest, _, interner) = crate::index_support::index(SOURCES);
     assert!(scip_sites(b"\xff\xff\xff\xff", &ingest, &interner).is_err());
 }
 

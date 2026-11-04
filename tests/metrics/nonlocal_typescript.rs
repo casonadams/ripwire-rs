@@ -1,8 +1,8 @@
 use crate::b_state::assert_reads_are_not_state;
 use crate::nonlocal_support::{function, state_report as support_state_report};
+use ripwire_rs::Lang;
 use ripwire_rs::domain::Binding;
 use ripwire_rs::metrics::nonlocal::NonlocalFunction;
-use ripwire_rs::{Interner, Lang, LanguageRegistry, ingest_in_memory_files};
 
 const CONFIG: &str = "src/config.ts";
 
@@ -216,15 +216,9 @@ fn analysis(files: &[(&str, &str)], lang: Lang) -> Vec<NonlocalFunction> {
 
 fn binding_of(files: &[(&str, &str)], name: &str) -> Binding {
     use ripwire_rs::CorpusView;
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let sources: Vec<(&str, Lang, &[u8])> = files
-        .iter()
-        .map(|(path, src)| (*path, Lang::TypeScript, src.as_bytes()))
-        .collect();
-    let ingest = ingest_in_memory_files(&sources, &registry, &interner);
-    let view = (&ingest, &interner);
-    ingest
+    let fx = crate::corpus_support::fixture(Lang::TypeScript, files);
+    let view = (&fx.ingest, &fx.interner);
+    fx.ingest
         .symbols
         .iter()
         .find(|s| view.sym_name(s) == name)

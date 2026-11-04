@@ -70,7 +70,7 @@ fn all_files() -> Fixture {
 }
 
 #[test]
-fn call_inside_nested_iife_binds_to_imported_fluent_handler() {
+fn fluent_handler_bindings_and_property_calls() {
     let fx = all_files();
     let callers = fx.callers("resumeSession");
     assert!(
@@ -79,20 +79,12 @@ fn call_inside_nested_iife_binds_to_imported_fluent_handler() {
             .any(|name| name == "handler" || name == "mount"),
         "nested IIFE call not attributed: {callers:?}"
     );
-}
-
-#[test]
-fn fluent_handler_callees_exclude_same_named_module_variable() {
     let fx = all_files();
     let callees = fx.callees("resumeSession");
     assert!(
         !callees.iter().any(|name| name == "json"),
         "property call res.json() bound to the unrelated `let json`: {callees:?}"
     );
-}
-
-#[test]
-fn property_call_on_unknown_receiver_never_binds_to_a_variable() {
     let fx = all_files();
     let json = fx.callers("json");
     assert!(

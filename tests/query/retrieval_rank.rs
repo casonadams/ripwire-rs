@@ -84,17 +84,6 @@ fn body_coordinating_two_query_concepts_outranks_single_call() {
 }
 
 #[test]
-fn bodyless_interface_stub_ranks_below_concrete_implementation() {
-    let rows = ranked(QUEUE_TS, "enqueue outbox");
-    let implementation = position(&rows, "enqueue", 5).expect("implementation admitted");
-    let stub = position(&rows, "enqueue", 2).expect("declaration admitted");
-    assert!(
-        implementation < stub,
-        "bodyless stub must not outrank the implementation: {rows:?}"
-    );
-}
-
-#[test]
 fn exact_name_lookup_keeps_bodyless_declaration_admitted() {
     let rows = ranked(QUEUE_TS, "enqueue");
     assert!(
@@ -108,7 +97,7 @@ fn exact_name_lookup_keeps_bodyless_declaration_admitted() {
 }
 
 #[test]
-fn presentation_component_with_matching_names_does_not_outrank_coordinator() {
+fn components_and_bodyless_stubs_rank_below_their_implementations() {
     let rows = ranked(SETTLE_TS, "overdue balance pending payments");
     let coordinator = position(&rows, "reconcileOverdueBalance", 4).expect("coordinator admitted");
     if let Some(badge) = position(&rows, "OverdueBalanceBadge", 1) {
@@ -117,6 +106,13 @@ fn presentation_component_with_matching_names_does_not_outrank_coordinator() {
             "a component that only renders the matched names must rank below the coordinator: {rows:?}"
         );
     }
+    let rows = ranked(QUEUE_TS, "enqueue outbox");
+    let implementation = position(&rows, "enqueue", 5).expect("implementation admitted");
+    let stub = position(&rows, "enqueue", 2).expect("declaration admitted");
+    assert!(
+        implementation < stub,
+        "bodyless stub must not outrank the implementation: {rows:?}"
+    );
 }
 
 const FLUENT_TS: &[u8] = b"declare function createServerFn(o: object): any;

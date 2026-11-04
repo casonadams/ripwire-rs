@@ -322,7 +322,7 @@ fn function_typed_interface_property_is_a_member_for_conformance_and_dispatch() 
 }
 
 #[test]
-fn object_type_literal_function_property_is_not_a_member() {
+fn object_type_literal_is_not_a_member_and_rest_params_bind() {
     let fx = fixture(&[
         ("tests/pi/register.ts", REGISTER),
         ("tests/pi/child.ts", CHILD_USER),
@@ -334,10 +334,6 @@ fn object_type_literal_function_property_is_not_a_member() {
         .filter(|sym| fx.interner.resolve(&sym.name) == "emit")
         .collect();
     assert!(members.is_empty(), "{members:?}");
-}
-
-#[test]
-fn calls_with_more_arguments_than_named_parameters_reach_a_rest_parameter_function() {
     let fx = fixture(&[
         (
             "src/lib/utils.ts",

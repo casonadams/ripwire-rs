@@ -12,14 +12,11 @@ fn run<const N: usize>(
     task: &str,
     options: ForTaskOptions<'_>,
 ) -> Value {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
     let inputs: Vec<(&str, Lang, &[u8])> = files
         .iter()
         .map(|(path, source)| (*path, Lang::TypeScript, *source))
         .collect();
-    let ingest = ingest_in_memory_files(&inputs, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
+    let (ingest, graph, interner) = crate::index_support::index(&inputs);
     let ranks = graph.page_rank(&PageRankConfig::default());
     call_for_task_with_options(
         &ingest,

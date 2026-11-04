@@ -1,17 +1,11 @@
+use crate::index_support::with_typescript_module;
 use ripwire_rs::query::edit::{EditOp, splice_file_bytes};
-use ripwire_rs::{Interner, Lang, LanguageRegistry, Symbol, ingest_in_memory_files};
+use ripwire_rs::{Interner, Symbol};
 
 const SOURCE: &str = "/** Doc for make. */\nexport const make = (x: number): number => {\n  return x + 1;\n};\n\n// plain note\nconst helper = (): number => 2;\n\n/**\n * Class doc.\n */\nexport class Box {\n  /** Method doc. */\n  open(): void {\n    helper();\n  }\n  close(): void {}\n}\n\nexport function plain(): void {}\n\n/** Detached doc. */\n\nfunction gapped(): void {}\n";
 
 fn with_symbols<T>(source: &str, f: impl FnOnce(&[Symbol], &Interner) -> T) -> T {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(
-        &[("src/mod.ts", Lang::TypeScript, source.as_bytes())],
-        &registry,
-        &interner,
-    );
-    f(&ingest.symbols, &interner)
+    with_typescript_module(source, |ingest, interner| f(&ingest.symbols, interner))
 }
 
 /// The definition text (doc, export and body included) of every symbol named `name`, in source order.

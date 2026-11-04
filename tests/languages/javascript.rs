@@ -1,9 +1,8 @@
-use ripwire_rs::{Interner, Lang, LanguageRegistry, RefRole, ingest_in_memory_files};
+use crate::index_support::index;
+use ripwire_rs::{Lang, RefRole};
 
 fn indexed_names(files: &[(&str, Lang, &[u8])]) -> Vec<String> {
-    let reg = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(files, &reg, &interner);
+    let (ingest, _, interner) = index(files);
     ingest
         .symbols
         .iter()
@@ -29,17 +28,11 @@ fn test_javascript_member_assigned_function_is_named_by_its_property() {
 
 #[test]
 fn test_javascript_and_jsx_graph_protocol() {
-    let reg = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(
-        &[(
-            "src/View.jsx",
-            Lang::JavaScript,
-            b"module.exports.exportedFn = () => {};\nother.notExport = () => {};\nFoo.prototype.protoFn = function() {};\nexport function View() { return <span><Footer /></span>; }",
-        )],
-        &reg,
-        &interner,
-    );
+    let (ingest, _, interner) = index(&[(
+        "src/View.jsx",
+        Lang::JavaScript,
+        b"module.exports.exportedFn = () => {};\nother.notExport = () => {};\nFoo.prototype.protoFn = function() {};\nexport function View() { return <span><Footer /></span>; }",
+    )]);
     let syms: Vec<&str> = ingest
         .symbols
         .iter()

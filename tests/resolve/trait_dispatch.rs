@@ -1,6 +1,4 @@
-use ripwire_rs::{
-    EdgeProv, Graph, IngestResult, Interner, Lang, LanguageRegistry, NodeId, ingest_in_memory_files,
-};
+use ripwire_rs::{EdgeProv, Graph, IngestResult, Interner, Lang, NodeId};
 
 struct Fixture {
     ingest: IngestResult,
@@ -10,18 +8,11 @@ struct Fixture {
 
 impl Fixture {
     fn new(files: &[(&str, &str)]) -> Self {
-        let registry = LanguageRegistry::new().unwrap();
-        let interner = Interner::new();
-        let files: Vec<_> = files
-            .iter()
-            .map(|&(path, source)| (path, Lang::Rust, source.as_bytes()))
-            .collect();
-        let ingest = ingest_in_memory_files(&files, &registry, &interner);
-        let graph = Graph::build(&ingest, &interner);
+        let fx = crate::corpus_support::fixture(Lang::Rust, files);
         Self {
-            ingest,
-            interner,
-            graph,
+            ingest: fx.ingest,
+            interner: fx.interner,
+            graph: fx.graph,
         }
     }
 

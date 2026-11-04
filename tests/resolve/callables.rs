@@ -36,7 +36,7 @@ fn targets(source: &str, caller: &str) -> Vec<(String, EdgeProv)> {
 }
 
 #[test]
-fn callable_fields_follow_assignments_to_the_receiver_type_only() {
+fn callable_fields_and_macro_projected_paths_follow_the_receiver_type() {
     let source = r#"
 struct Command { handler: fn(u32) }
 struct Other { handler: fn(u32) }
@@ -54,24 +54,6 @@ fn invoke(command: &Command) { (command.handler)(1); }
             ("second".into(), EdgeProv::Split)
         ]
     );
-}
-
-#[test]
-fn storing_a_callback_does_not_call_it() {
-    let source = r#"
-struct Command { handler: fn() }
-fn action() {}
-fn construct_only() -> Command { Command { handler: action } }
-"#;
-    let reached = targets(source, "construct_only");
-    assert!(
-        reached.iter().all(|(name, _)| name != "action"),
-        "{reached:?}"
-    );
-}
-
-#[test]
-fn local_macro_projects_path_arguments_into_callable_fields() {
     let source = r#"
 type Handler = fn();
 struct Command { handler: Handler }
@@ -91,6 +73,20 @@ fn invoke(command: &Command) { (command.handler)(); }
             ("actions::first".into(), EdgeProv::Split),
             ("actions::second".into(), EdgeProv::Split)
         ]
+    );
+}
+
+#[test]
+fn storing_a_callback_does_not_call_it() {
+    let source = r#"
+struct Command { handler: fn() }
+fn action() {}
+fn construct_only() -> Command { Command { handler: action } }
+"#;
+    let reached = targets(source, "construct_only");
+    assert!(
+        reached.iter().all(|(name, _)| name != "action"),
+        "{reached:?}"
     );
 }
 

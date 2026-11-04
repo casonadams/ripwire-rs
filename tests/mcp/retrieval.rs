@@ -306,7 +306,7 @@ fn test_ast_match_fixture() {
 }
 
 #[test]
-fn test_camel_case_and_derivational_stem_scoring() {
+fn camel_case_stem_scoring_and_lego_out_of_line_methods() {
     let interner = Interner::new();
     let mut ingest = IngestResult::new();
     ingest.files.push(FileInfo {
@@ -350,10 +350,6 @@ fn test_camel_case_and_derivational_stem_scoring() {
     );
     let syms = res["symbols"].as_array().unwrap();
     assert_eq!(syms[0]["name"], "discoverAndLoadASTNodes");
-}
-
-#[test]
-fn test_call_lego_includes_out_of_line_methods_for_unique_class() {
     let interner = Interner::new();
     let mut ingest = IngestResult::new();
     ingest.files.push(FileInfo {
@@ -561,7 +557,7 @@ fn ranked_names(files: &[(&str, &str)], task: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_line_comment_above_a_definition_is_evidence_for_the_query() {
+fn query_evidence_from_comments_constants_and_whole_subtokens() {
     let code = "// Counts bank transfers: recurring billing can run off a bank account.\nexport function pickDefault(): number {\n  return 1;\n}\n\nexport function renderRecurringPage(): number {\n  return 2;\n}\n";
     let names = ranked_names(
         &[("src/billing.ts", code)],
@@ -572,16 +568,20 @@ fn a_line_comment_above_a_definition_is_evidence_for_the_query() {
         Some("pickDefault"),
         "{names:?}"
     );
-}
-
-#[test]
-fn a_constants_initializer_text_is_evidence_for_the_query() {
     let code = "export const LIMITS = {\n  maxChangedFiles: 100,\n  maxFindingsPerAgent: 20,\n  reviewBudgetMs: 5000,\n};\n\nexport function describeThing(): number {\n  return 1;\n}\n";
     let names = ranked_names(
         &[("src/config.ts", code)],
         "hard caps on changed files findings review budget",
     );
     assert!(names.iter().any(|n| n == "LIMITS"), "{names:?}");
+    let code = "export function loadAuthor(): number {\n  return 1;\n}\n\nexport function checkAuth(): number {\n  return 2;\n}\n";
+    let names = ranked_names(&[("src/users.ts", code)], "check auth");
+    assert_eq!(
+        names.first().map(String::as_str),
+        Some("checkAuth"),
+        "{names:?}"
+    );
+    assert!(!names.iter().any(|n| n == "loadAuthor"), "{names:?}");
 }
 
 #[test]
@@ -597,18 +597,6 @@ fn a_long_body_does_not_outrank_a_short_one_by_mentioning_more_terms() {
     );
     let pos = |name: &str| names.iter().position(|n| n == name);
     assert!(pos("settleInvoice") < pos("runEverything"), "{names:?}");
-}
-
-#[test]
-fn a_query_word_matches_whole_subtokens_not_substrings_of_a_longer_word() {
-    let code = "export function loadAuthor(): number {\n  return 1;\n}\n\nexport function checkAuth(): number {\n  return 2;\n}\n";
-    let names = ranked_names(&[("src/users.ts", code)], "check auth");
-    assert_eq!(
-        names.first().map(String::as_str),
-        Some("checkAuth"),
-        "{names:?}"
-    );
-    assert!(!names.iter().any(|n| n == "loadAuthor"), "{names:?}");
 }
 
 #[test]

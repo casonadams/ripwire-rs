@@ -3,7 +3,7 @@ use ripwire_rs::mcp::{
     run_mcp_stream_with_state,
 };
 
-use ripwire_rs::{Interner, Lang, LanguageRegistry, Workspace, ingest_in_memory_files};
+use ripwire_rs::{Lang, Workspace};
 use serde_json::{Value, json};
 
 fn dispatch_json_rpc(line: &str, state: &mut Option<Workspace>, root: &str) -> Option<String> {
@@ -13,9 +13,7 @@ fn dispatch_json_rpc(line: &str, state: &mut Option<Workspace>, root: &str) -> O
 use std::io::Cursor;
 
 fn workspace(files: &[(&str, Lang, &[u8])]) -> Option<Workspace> {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(files, &registry, &interner);
+    let (ingest, _, interner) = crate::index_support::index(files);
     Some(Workspace::from_ingest(":memory:", ingest, interner))
 }
 
@@ -111,14 +109,12 @@ fn text_of(response: &Value) -> &str {
 
 #[test]
 fn seed_lookup_matches_name_lookup_and_refuses_unspanned_lines() {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
     let files: &[(&str, Lang, &[u8])] = &[(
         "src/lib.rs",
         Lang::Rust,
         b"pub fn alpha() {\n    beta();\n}\npub fn beta() {}\n",
     )];
-    let ingest = ingest_in_memory_files(files, &registry, &interner);
+    let (ingest, _, interner) = crate::index_support::index(files);
     let by_seed = ripwire_rs::navigate::find_symbols_by_name("@src/lib.rs:4", &ingest, &interner);
     let by_name = ripwire_rs::navigate::find_symbols_by_name("beta", &ingest, &interner);
     assert_eq!(by_seed, by_name);
