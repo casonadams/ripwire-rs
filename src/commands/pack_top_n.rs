@@ -38,7 +38,7 @@ fn execute_pack_top_n_query<W: Write>(
             break;
         }
         let rel_path = ingest.file_path(f, interner);
-        if let Ok(bytes) = crate::domain::read_rel_bytes(root, rel_path) {
+        if let Ok(bytes) = crate::crawler::read_rel_bytes(root, rel_path) {
             let content = String::from_utf8_lossy(&bytes).to_string();
             bodies.push((rel_path, content));
             count += buckets[f as usize].len();

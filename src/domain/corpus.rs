@@ -46,25 +46,6 @@ pub trait CorpusView<'a> {
         })
     }
 
-    /// Read the raw source bytes of the file containing `sym` relative to `root`.
-    fn read_sym_bytes(&self, root: &str, sym: &Symbol) -> std::io::Result<Vec<u8>> {
-        read_rel_bytes(root, self.sym_path(sym))
-    }
-
-    /// Read the UTF-8 source slice of `sym`'s definition relative to `root`.
-    #[must_use]
-    fn read_sym_source(&self, root: &str, sym: &Symbol) -> Option<String> {
-        let bytes = self.read_sym_bytes(root, sym).ok()?;
-        sym.source_text(&bytes).map(std::borrow::Cow::into_owned)
-    }
-
-    /// Read the declaration signature of `sym` relative to `root`.
-    #[must_use]
-    fn read_sym_signature(&self, root: &str, sym: &Symbol) -> Option<String> {
-        let bytes = self.read_sym_bytes(root, sym).ok()?;
-        Some(sym.extract_signature(&bytes, self.sym_name(sym)))
-    }
-
     #[inline]
     #[must_use]
     fn is_test_symbol(&self, sym: &Symbol) -> bool {
@@ -230,23 +211,6 @@ pub trait CorpusView<'a> {
             })
             .collect()
     }
-}
-
-/// Read file bytes at `rel_path` resolved under `root` (with direct `rel_path` fallback).
-pub fn read_rel_bytes<P: AsRef<std::path::Path>>(
-    root: P,
-    rel_path: &str,
-) -> std::io::Result<Vec<u8>> {
-    std::fs::read(root.as_ref().join(rel_path)).or_else(|_| std::fs::read(rel_path))
-}
-
-/// Read UTF-8 file text at `rel_path` resolved under `root` (with direct `rel_path` fallback).
-pub fn read_rel_string<P: AsRef<std::path::Path>>(
-    root: P,
-    rel_path: &str,
-) -> std::io::Result<String> {
-    std::fs::read_to_string(root.as_ref().join(rel_path))
-        .or_else(|_| std::fs::read_to_string(rel_path))
 }
 
 fn split_scope_and_member(query: &str) -> Option<(&str, &str)> {

@@ -418,3 +418,11 @@ pub fn walk_corpus<P: AsRef<Path>>(root: P, options: &CrawlerOptions) -> CorpusW
     append_tracked_paths(root, options, &mut walk.rel_paths);
     walk
 }
+
+pub fn read_rel_bytes<P: AsRef<Path>>(root: P, rel_path: &str) -> std::io::Result<Vec<u8>> {
+    std::fs::read(root.as_ref().join(rel_path))
+}
+
+pub fn read_rel_string<P: AsRef<Path>>(root: P, rel_path: &str) -> std::io::Result<String> {
+    std::fs::read_to_string(root.as_ref().join(rel_path))
+}

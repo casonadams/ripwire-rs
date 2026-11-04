@@ -563,7 +563,7 @@ pub fn run_lint_scan_in_root(
     options: LintOptions,
 ) -> Result<LintScan, String> {
     let root_path = std::path::Path::new(root);
-    let read = |p: &str| crate::domain::read_rel_string(root_path, p).ok();
+    let read = |p: &str| crate::crawler::read_rel_string(root_path, p).ok();
     run_lint_scan(ingest, interner, &read, options)
 }
 

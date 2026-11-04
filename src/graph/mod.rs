@@ -2,7 +2,6 @@ pub mod community;
 pub mod csr;
 pub mod mermaid;
 pub mod value_reach;
-pub mod zoom;
 
 pub use csr::CsrMatrix;
 pub use mermaid::generate_mermaid_diagram;
@@ -19,6 +18,16 @@ pub struct CalleeEdge {
     pub to: NodeId,
     pub weight: f32,
     pub prov: EdgeProv,
+}
+
+/// Resolver gauge counts (`graph_ambiguous=`, `graph_unresolved=`, `graph_unindexed=`).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct GraphGauges {
+    pub ambiguous: usize,
+    pub unresolved: usize,
+    pub external: usize,
+    pub declined: usize,
+    pub unindexed: usize,
 }
 
 /// The resolved repository call graph.
@@ -141,19 +150,14 @@ impl Graph {
     }
 
     #[must_use]
-    pub fn gauges(&self) -> crate::serialize::GraphGauges {
-        crate::serialize::GraphGauges {
+    pub fn gauges(&self) -> GraphGauges {
+        GraphGauges {
             ambiguous: self.total_ambiguous(),
             unresolved: self.total_unresolved(),
             external: self.total_external(),
             declined: self.total_declined(),
             unindexed: self.total_unindexed(),
         }
-    }
-
-    #[must_use]
-    pub fn xml_gauge_attrs(&self) -> String {
-        crate::serialize::GraphGaugeProvider::xml_gauge_attrs(self)
     }
 
     #[must_use]
@@ -244,13 +248,6 @@ impl Graph {
             unindexed: 0,
             prior_weights: Vec::new(),
         }
-    }
-}
-
-impl crate::serialize::GraphGaugeProvider for Graph {
-    #[inline]
-    fn gauges(&self) -> crate::serialize::GraphGauges {
-        self.gauges()
     }
 }
 

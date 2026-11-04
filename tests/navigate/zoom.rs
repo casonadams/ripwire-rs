@@ -1,4 +1,4 @@
-use ripwire_rs::graph::zoom::{build_zoom_tree, resolve_levels_shown, serialize_zoom_xml};
+use ripwire_rs::navigate::zoom::{build_zoom_tree, resolve_levels_shown, serialize_zoom_xml};
 use ripwire_rs::serialize::{GraphGauges, PageRequest};
 
 fn three_level_fixture() -> (Vec<Vec<u32>>, Vec<&'static str>) {

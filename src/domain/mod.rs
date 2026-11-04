@@ -1,6 +1,6 @@
 pub mod corpus;
 
-pub use corpus::{CorpusView, read_rel_bytes, read_rel_string};
+pub use corpus::CorpusView;
 
 use lasso::{Key, Spur, ThreadedRodeo};
 use serde::{Deserialize, Serialize};

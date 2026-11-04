@@ -250,15 +250,7 @@ impl<T: XmlReport + ?Sized> ToXmlString for T {
     }
 }
 
-/// Resolver gauge counts (`graph_ambiguous=`, `graph_unresolved=`, `graph_unindexed=`).
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct GraphGauges {
-    pub ambiguous: usize,
-    pub unresolved: usize,
-    pub external: usize,
-    pub declined: usize,
-    pub unindexed: usize,
-}
+pub use crate::graph::GraphGauges;
 
 impl GraphGauges {
     pub const ZERO_XML_ATTRS: &'static str =
@@ -301,6 +293,20 @@ impl GraphGaugeProvider for GraphGauges {
     #[inline]
     fn gauges(&self) -> GraphGauges {
         *self
+    }
+}
+
+impl GraphGaugeProvider for crate::graph::Graph {
+    #[inline]
+    fn gauges(&self) -> GraphGauges {
+        crate::graph::Graph::gauges(self)
+    }
+}
+
+impl crate::graph::Graph {
+    #[must_use]
+    pub fn xml_gauge_attrs(&self) -> String {
+        GraphGaugeProvider::xml_gauge_attrs(self)
     }
 }
 const BUILTIN_LAYERS: &[(&str, &str)] = &[

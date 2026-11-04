@@ -648,7 +648,7 @@ fn build_masked_node_json(
     let sym = ingest.sym(id)?;
     let name = interner.resolve(&sym.name);
     let path = ingest.sym_file_path(sym, interner);
-    let bytes = crate::domain::read_rel_bytes(std::path::Path::new(root), path).ok();
+    let bytes = crate::crawler::read_rel_bytes(std::path::Path::new(root), path).ok();
     let sig = bytes
         .as_deref()
         .map_or_else(|| name.to_string(), |b| sym.extract_signature(b, name));

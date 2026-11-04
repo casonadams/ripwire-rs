@@ -69,7 +69,7 @@ fn extract_struct_layout_def(
     file_path: &str,
     root: &str,
 ) -> StructLayoutDef {
-    let fields = if let Ok(bytes) = crate::domain::read_rel_bytes(root, file_path) {
+    let fields = if let Ok(bytes) = crate::crawler::read_rel_bytes(root, file_path) {
         let body = sym.source_text(&bytes).unwrap_or_default();
         sym.lang
             .semantics()

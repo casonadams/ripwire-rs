@@ -90,7 +90,7 @@ pub fn collect_script_gates(root: &str, ingest: &IngestResult, interner: &Intern
                 .is_some_and(|(d, _)| d == "test" || d.ends_with("/test"))
         })
         .map(|p| {
-            let bytes = crate::domain::read_rel_bytes(root, p).unwrap_or_default();
+            let bytes = crate::crawler::read_rel_bytes(root, p).unwrap_or_default();
             (p, String::from_utf8_lossy(&bytes).into_owned())
         })
         .collect();

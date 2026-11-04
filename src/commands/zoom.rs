@@ -29,12 +29,12 @@ pub fn render<W: Write>(
     out: &mut crate::serialize::XmlWriter<'_, W>,
 ) -> io::Result<()> {
     let page = ctx.cli.page_request();
-    let opts = crate::graph::zoom::ZoomOptions {
+    let opts = crate::navigate::zoom::ZoomOptions {
         depth: args.zoom.flatten(),
         levels_shown: args.zoom_levels,
         page,
     };
-    crate::graph::zoom::execute_zoom_query(
+    crate::navigate::zoom::execute_zoom_query(
         ctx.ingest,
         ctx.graph,
         ctx.interner,

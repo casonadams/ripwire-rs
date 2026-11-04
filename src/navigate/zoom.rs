@@ -1,5 +1,5 @@
-use super::Graph;
 use crate::domain::{IngestResult, Interner, NodeId};
+use crate::graph::Graph;
 use crate::serialize::{PageRequest, PageWindow, Paged, XmlEscapeExt, row_bytes};
 use std::collections::HashMap;
 use std::io::{self, Write};
@@ -182,10 +182,9 @@ impl crate::serialize::XmlReport for ZoomReport<'_> {
         )
     }
     fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        for m in &self.tree.top[self.window.begin..self.window.end] {
-            write_module(m, out)?;
-        }
-        Ok(())
+        self.tree.top[self.window.begin..self.window.end]
+            .iter()
+            .try_for_each(|m| write_module(m, out))
     }
 }
 
@@ -230,7 +229,7 @@ pub fn execute_zoom_query<W: Write>(
     opts: ZoomOptions,
     out: &mut W,
 ) -> io::Result<()> {
-    let mut hierarchy = super::community::detect_hierarchy(graph);
+    let mut hierarchy = crate::graph::community::detect_hierarchy(graph);
     if let Some(depth) = opts.depth.filter(|&d| d > 0) {
         hierarchy.truncate(depth as usize);
     }

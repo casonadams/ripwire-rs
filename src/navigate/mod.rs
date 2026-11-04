@@ -3,6 +3,7 @@ pub mod inspect;
 pub mod query;
 pub mod verify;
 pub mod xml;
+pub mod zoom;
 
 pub use impact::*;
 pub use inspect::*;

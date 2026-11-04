@@ -41,7 +41,7 @@ pub struct FileSources<'a> {
 
 impl SourceReader for FileSources<'_> {
     fn read(&self, path: &str) -> io::Result<Cow<'_, [u8]>> {
-        crate::domain::read_rel_bytes(self.root, path).map(Cow::Owned)
+        crate::crawler::read_rel_bytes(self.root, path).map(Cow::Owned)
     }
 
     fn corpus(&self) -> crate::crawler::CorpusWalk {

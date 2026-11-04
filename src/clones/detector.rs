@@ -168,7 +168,7 @@ fn load_clone_file_bytes(
     if let Some(map) = sources {
         map.get(file_path).cloned()
     } else if let Some(r) = root {
-        crate::domain::read_rel_bytes(r, file_path).ok()
+        crate::crawler::read_rel_bytes(r, file_path).ok()
     } else {
         std::fs::read(file_path).ok()
     }
