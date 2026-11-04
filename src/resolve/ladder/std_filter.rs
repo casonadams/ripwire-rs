@@ -45,7 +45,7 @@ pub(super) fn is_unpinned_std_member_blocked<L: ResolutionLookup + ?Sized>(
             is_method_std_member_blocked(lookup, r, sym, caller_scope)
         }
         crate::domain::SymKind::Function => {
-            sym.file_id != r.file_id && !lookup.file_imports_file(r.file_id, sym.file_id)
+            sym.file_id != r.file_id && !lookup.file_imports_name(r.file_id, sym.file_id, sym.name)
         }
         _ => false,
     }

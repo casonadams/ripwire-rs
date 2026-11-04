@@ -28,6 +28,19 @@ pub trait ResolutionLookup {
     fn file_imports_file(&self, _file_id: u32, _target: u32) -> bool {
         false
     }
+    /// True when `file_id` reaches the definition of `name` in `target` through its imports: a file-level
+    /// import of `target`, or a named import or glob followed through the re-exports of the facades it names.
+    fn file_imports_name(&self, file_id: u32, target: u32, _name: Spur) -> bool {
+        self.file_imports_file(file_id, target)
+    }
+    /// True when module file `module` exposes the definition of `name` that lives in file `target`.
+    fn reexports_to(&self, _module: u32, _target: u32, _name: Spur) -> bool {
+        false
+    }
+    /// True when `file_id` imports `name` from a path outside the indexed crate.
+    fn imported_from_outside(&self, _file_id: u32, _name: Spur) -> bool {
+        false
+    }
     fn qualifier_module_file(&self, _file_id: u32, _qualifier: Spur) -> Option<u32> {
         None
     }
@@ -42,11 +55,14 @@ pub trait ResolutionLookup {
         let trait_idx = self.trait_index()?;
         let text = interner.try_resolve(&recv)?;
         let qualifier_file = |file: u32, q: Spur| self.qualifier_module_file(file, q);
+        let reaches =
+            |module: u32, target: u32, name: Spur| self.reexports_to(module, target, name);
         let env = crate::resolve::TraitEnv {
             symbols: self.symbols(),
             file_dirs: self.file_dirs(),
             interner,
             qualifier_file: &qualifier_file,
+            reaches: &reaches,
         };
         trait_idx.resolve_receiver_owner(text, r.file_id, r.start_byte, &env)
     }
@@ -603,7 +619,12 @@ pub trait ResolutionLookup {
             named
         };
         let Some((cands, narrowing)) = self.filter_ref_candidates(all_cands, r) else {
-            return classify_rejected_candidates(r, self.interner());
+            return match classify_rejected_candidates(r, self.interner()) {
+                RefOutcome::Unresolved if self.imported_from_outside(r.file_id, r.callee_name) => {
+                    RefOutcome::External
+                }
+                outcome => outcome,
+            };
         };
         if narrowing == Narrowing::Owner {
             let targets = cands
@@ -664,7 +685,7 @@ pub trait ResolutionLookup {
             .copied()
             .filter(|&id| {
                 let sym = &symbols[id as usize];
-                sym.scope.is_none() && self.file_imports_file(caller_file, sym.file_id)
+                sym.scope.is_none() && self.file_imports_name(caller_file, sym.file_id, sym.name)
             })
             .collect();
         (!imported.is_empty() && imported.len() < cands.len()).then_some(imported)

@@ -70,11 +70,13 @@ impl TraitIndex {
                 .qualify(quals, site, self.crate_roots[file_id as usize], env)
                 .or_else(|| self.qualified_file(quals, file_id, env))?;
             return only(admitted.filter(|&id| {
-                self.scopes.at(
-                    symbols[id as usize].file_id,
-                    symbols[id as usize].sig_start_byte,
-                    symbols,
-                ) == scope
+                let sym = &symbols[id as usize];
+                let defined_at = self.scopes.at(sym.file_id, sym.sig_start_byte, symbols);
+                // A file-root path (`crate::m::Name`) also names what that file re-exports under `Name`.
+                defined_at == scope
+                    || (scope.module.is_none()
+                        && sym.file_id != scope.file_id
+                        && (env.reaches)(scope.file_id, sym.file_id, leaf))
             }));
         }
         let admitted: Vec<NodeId> = admitted.collect();
@@ -125,7 +127,7 @@ impl TraitIndex {
             let from_import = admitted
                 .iter()
                 .copied()
-                .filter(|&id| symbols[id as usize].file_id == imported);
+                .filter(|&id| (env.reaches)(imported, symbols[id as usize].file_id, name));
             if let Match::One(id) = only_or_ambiguous(from_import) {
                 return Some(id);
             }

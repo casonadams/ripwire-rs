@@ -10,7 +10,7 @@ max = 670
 
 [[ceiling]]
 gauge = "graph_unresolved"
-max = 1170
+max = 935
 
 # SCIP oracle (rust-analyzer), measured on this repository: precision=0.9848, recall=0.9714.
 # Floors sit just under the measurement; raise one in the commit that improves it.

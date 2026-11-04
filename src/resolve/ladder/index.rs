@@ -175,3 +175,134 @@ pub fn index_file_imports(
     }
     sets
 }
+
+/// Per file, what its re-exporting `use` declarations bind: each bound name with the module file its path
+/// names, and each glob with the module file it names. Built only for languages whose imports re-export
+/// (`import_reexports`), so a path through a facade reaches the file that defines the name.
+#[derive(Debug, Default)]
+pub struct ReexportTable {
+    named: Vec<Vec<(Spur, u32)>>,
+    globs: Vec<Vec<u32>>,
+    /// Per file, the names its imports bind from paths outside the index (`use serde_json::json;`).
+    outside: Vec<Vec<Spur>>,
+}
+
+impl ReexportTable {
+    /// True when `file` imports `name` from a path outside the indexed crate, so a call to it is external.
+    #[must_use]
+    pub fn imports_outside(&self, file: u32, name: Spur) -> bool {
+        self.outside
+            .get(file as usize)
+            .is_some_and(|names| names.contains(&name))
+    }
+    /// True when `caller` reaches the definition of `name` in `target` through its imports: a named import
+    /// of `name` or a glob, followed through the re-exports of each module it names.
+    #[must_use]
+    pub fn binds(&self, caller: u32, target: u32, name: Spur) -> bool {
+        let mut visited = std::collections::HashSet::new();
+        let named = self.named.get(caller as usize).into_iter().flatten();
+        named
+            .filter(|(bound, _)| *bound == name)
+            .any(|&(_, module)| self.reaches(module, target, name, &mut visited))
+            || self
+                .globs
+                .get(caller as usize)
+                .into_iter()
+                .flatten()
+                .any(|&module| self.reaches(module, target, name, &mut visited))
+    }
+
+    fn reaches(
+        &self,
+        module: u32,
+        target: u32,
+        name: Spur,
+        visited: &mut std::collections::HashSet<u32>,
+    ) -> bool {
+        if module == target {
+            return true;
+        }
+        if !visited.insert(module) {
+            return false;
+        }
+        let named = self.named.get(module as usize).into_iter().flatten();
+        named
+            .filter(|(bound, _)| *bound == name)
+            .any(|&(_, next)| self.reaches(next, target, name, visited))
+            || self
+                .globs
+                .get(module as usize)
+                .into_iter()
+                .flatten()
+                .any(|&next| self.reaches(next, target, name, visited))
+    }
+
+    /// True when module `module` exposes the definition of `name` that lives in file `target`, through its
+    /// own definition or the re-exports it names, transitively.
+    #[must_use]
+    pub fn reexports_to(&self, module: u32, target: u32, name: Spur) -> bool {
+        self.reaches(module, target, name, &mut std::collections::HashSet::new())
+    }
+}
+
+/// The re-export table of every file: each `use` binding and glob of a re-exporting language, resolved
+/// with that language's own import rules.
+#[must_use]
+pub fn index_reexports(ingest: &crate::domain::IngestResult, interner: &Interner) -> ReexportTable {
+    let file_index: HashMap<&str, u32> = ingest
+        .files
+        .iter()
+        .map(|f| (interner.resolve(&f.path), f.id))
+        .collect();
+    let len = ingest.files.len();
+    let mut table = ReexportTable {
+        named: vec![Vec::new(); len],
+        globs: vec![Vec::new(); len],
+        outside: vec![Vec::new(); len],
+    };
+    for r in ingest
+        .references
+        .iter()
+        .filter(|r| r.role == RefRole::Import && r.lang.semantics().import_reexports())
+    {
+        let Some(importer) = ingest.files.get(r.file_id as usize) else {
+            continue;
+        };
+        let importer_path = interner.resolve(&importer.path);
+        let resolve = |target: &str| {
+            crate::languages::resolve_import(
+                r.lang,
+                importer_path,
+                target,
+                &file_index,
+                &ingest.import_aliases,
+            )
+        };
+        let raw = interner.resolve(&r.callee_name);
+        let file = r.file_id as usize;
+        if let Some(module) = raw.strip_suffix("::*") {
+            if let Some(target) = resolve(module) {
+                table.globs[file].push(target);
+            }
+            continue;
+        }
+        for (path, bound) in r.lang.semantics().import_module_bindings(raw) {
+            let Some(name) = interner.get(&bound) else {
+                continue;
+            };
+            match resolve(&path) {
+                Some(target) => table.named[file].push((name, target)),
+                None if is_outside_path(&path) => table.outside[file].push(name),
+                None => {}
+            }
+        }
+    }
+    table
+}
+
+/// A Rust path that begins with neither an anchor (`crate`, `self`, `super`) nor a module of the index: it
+/// names an external crate or the standard library.
+fn is_outside_path(path: &str) -> bool {
+    let head = path.split("::").next().unwrap_or_default();
+    !head.is_empty() && !matches!(head, "crate" | "self" | "super")
+}

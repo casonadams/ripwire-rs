@@ -109,6 +109,7 @@ pub struct ResolutionIndex {
     file_scopes: Vec<HashSet<Spur>>,
     module_qualifiers: Vec<HashMap<Spur, u32>>,
     file_imports: Vec<HashSet<u32>>,
+    reexports: ReexportTable,
     foreign: ForeignIndex,
     scip: ScipIndex,
     traits: TraitIndex,
@@ -126,11 +127,15 @@ impl ResolutionIndex {
                 .get(file as usize)
                 .and_then(|m| m.get(&q).copied())
         };
+        let reexports = index_reexports(ingest, interner);
+        let reaches =
+            |module: u32, target: u32, name: Spur| reexports.reexports_to(module, target, name);
         let env = TraitEnv {
             symbols: &ingest.symbols,
             file_dirs: &file_dirs,
             interner,
             qualifier_file: &qualifier_file,
+            reaches: &reaches,
         };
         let traits = TraitIndex::build(&ingest.implementations, &ingest.files, &env);
         let mut index = Self {
@@ -140,6 +145,7 @@ impl ResolutionIndex {
             file_scopes: index_file_scope_mentions(ingest.files.len(), &ingest.references),
             module_qualifiers,
             file_imports: index_file_imports(ingest, interner),
+            reexports,
             scip: ingest
                 .scip_sites
                 .iter()
@@ -171,6 +177,7 @@ impl ResolutionIndex {
             file_scopes: Some(&self.file_scopes),
             module_qualifiers: Some(&self.module_qualifiers),
             file_imports: Some(&self.file_imports),
+            reexports: Some(&self.reexports),
             foreign: Some(&self.foreign),
             scip: Some(&self.scip),
             trait_index: Some(&self.traits),

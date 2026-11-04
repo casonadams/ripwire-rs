@@ -113,7 +113,14 @@ pub(super) fn resolve_rust_use_target(
     let segs: Vec<&str> = clean.split("::").filter(|s| !s.is_empty()).collect();
     if let Some((base_dir, rest)) = resolve_rust_base_and_rest(importer_path, clean) {
         let rest_segs: Vec<&str> = rest.split("::").filter(|s| !s.is_empty()).collect();
-        return probe_rust_segs_in_base(base_dir, &rest_segs, file_index);
+        if let Some(id) = probe_rust_segs_in_base(base_dir, &rest_segs, file_index) {
+            return Some(id);
+        }
+        // `super::item` and `super::*` name the parent module itself when the item is not a file of its own.
+        if clean == "super" || clean.starts_with("super::") {
+            return probe_with_suffixes(base_dir, file_index, &[".rs", "/mod.rs"]);
+        }
+        return None;
     }
     let self_dir = Path::new(importer_path)
         .parent()

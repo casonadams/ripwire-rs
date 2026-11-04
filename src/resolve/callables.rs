@@ -170,11 +170,13 @@ fn receiver_owner(
 ) -> Option<NodeId> {
     let interner = lookup.interner()?;
     let qualifier_file = |file: u32, q: Spur| lookup.qualifier_module_file(file, q);
+    let reaches = |module: u32, target: u32, name: Spur| lookup.reexports_to(module, target, name);
     let env = TraitEnv {
         symbols: lookup.symbols(),
         file_dirs: lookup.file_dirs(),
         interner,
         qualifier_file: &qualifier_file,
+        reaches: &reaches,
     };
     let owner = lookup.trait_index()?.resolve_receiver_owner(
         interner.resolve(&receiver),

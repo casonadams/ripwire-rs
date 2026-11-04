@@ -13,6 +13,8 @@ pub struct TraitEnv<'a> {
     pub file_dirs: &'a [u32],
     pub interner: &'a Interner,
     pub qualifier_file: &'a dyn Fn(u32, Spur) -> Option<u32>,
+    /// True when module file `module` exposes the definition of a name that lives in file `target`.
+    pub reaches: &'a dyn Fn(u32, u32, Spur) -> bool,
 }
 
 /// One impl block. `trait_id` is set only when the trait is an indexed local trait; `subject`

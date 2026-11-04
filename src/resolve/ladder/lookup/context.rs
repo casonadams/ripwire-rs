@@ -12,6 +12,7 @@ pub struct ResolutionContext<'a> {
     pub file_scopes: Option<&'a [std::collections::HashSet<Spur>]>,
     pub module_qualifiers: Option<&'a [HashMap<Spur, u32>]>,
     pub file_imports: Option<&'a [std::collections::HashSet<u32>]>,
+    pub reexports: Option<&'a crate::resolve::ReexportTable>,
     pub foreign: Option<&'a HashMap<(Spur, crate::domain::Lang), Vec<NodeId>>>,
     pub scip: Option<&'a HashMap<(u32, u32, Spur), crate::domain::ScipTarget>>,
     pub trait_index: Option<&'a crate::resolve::TraitIndex>,
@@ -78,7 +79,27 @@ impl ResolutionLookup for ResolutionContext<'_> {
     }
 
     #[inline]
+    fn file_imports_name(&self, file_id: u32, target: u32, name: Spur) -> bool {
+        self.file_imports_file(file_id, target)
+            || self
+                .reexports
+                .is_some_and(|table| table.binds(file_id, target, name))
+    }
+
+    #[inline]
     fn trait_index(&self) -> Option<&crate::resolve::TraitIndex> {
         self.trait_index
+    }
+
+    #[inline]
+    fn reexports_to(&self, module: u32, target: u32, name: Spur) -> bool {
+        self.reexports
+            .is_some_and(|table| table.reexports_to(module, target, name))
+    }
+
+    #[inline]
+    fn imported_from_outside(&self, file_id: u32, name: Spur) -> bool {
+        self.reexports
+            .is_some_and(|table| table.imports_outside(file_id, name))
     }
 }

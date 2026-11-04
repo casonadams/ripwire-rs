@@ -640,6 +640,11 @@ pub trait LanguageSemantics: Sync {
             .map(|(_, bound)| vec![(raw_target.to_string(), bound.to_string())])
             .unwrap_or_default()
     }
+    /// True where an import declaration re-exports the names it binds, so a path through a facade module
+    /// reaches the file that defines the name (Rust `pub use`, `use super::*`).
+    fn import_reexports(&self) -> bool {
+        false
+    }
     /// False where `name(...)` always calls a function even when a parameter shares the name (Ruby).
     fn parameters_shadow_calls(&self) -> bool {
         true

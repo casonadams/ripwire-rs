@@ -258,6 +258,9 @@ impl LanguageSemantics for RustLanguage {
     fn import_module_bindings(&self, raw_target: &str) -> Vec<(String, String)> {
         use_tree_bindings(strip_import_quotes(raw_target))
     }
+    fn import_reexports(&self) -> bool {
+        true
+    }
     fn module_declarations_are_anchors(&self) -> bool {
         true
     }
