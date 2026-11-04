@@ -1,4 +1,7 @@
-use super::harness::{GraphProtocolCase, owner_qualified_callees, sym, verify_protocol_case};
+use super::harness::{
+    GraphProtocolCase, assert_call_result_binds_factory_return, owner_qualified_callees, sym,
+    verify_protocol_case,
+};
 use ripwire_rs::{Lang, SymKind};
 use std::collections::HashMap;
 
@@ -94,21 +97,13 @@ fn dart_typed_receiver_without_the_method_keeps_name_resolution() {
 
 #[test]
 fn dart_call_result_receiver_uses_the_factory_return_type() {
-    let source = "class DiskStore {\n  int open() => 1;\n}\n\
+    assert_call_result_binds_factory_return(
+        Lang::Dart,
+        "lib/service.dart",
+        "class DiskStore {\n  int open() => 1;\n}\n\
 class MemoryStore {\n  int open() => 2;\n}\n\
 DiskStore makeStore() => DiskStore();\n\
-void run() {\n  makeStore().open();\n}\n";
-    let callees = owner_qualified_callees(
-        &[("lib/service.dart", Lang::Dart, source.as_bytes())],
-        "run",
-    );
-    assert!(
-        callees.contains(&"DiskStore.open".to_string()),
-        "{callees:?}"
-    );
-    assert!(
-        !callees.contains(&"MemoryStore.open".to_string()),
-        "{callees:?}"
+void run() {\n  makeStore().open();\n}\n",
     );
 }
 

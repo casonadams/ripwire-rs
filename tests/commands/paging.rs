@@ -5,7 +5,7 @@
 use ripwire_rs::commands::context::{ExecutionContext, OutputDialect};
 use ripwire_rs::commands::{
     self, Command, SharedOption, ast_match, biggest_first, communities, context_ratio, graph_query,
-    pattern, tree,
+    tree,
 };
 use ripwire_rs::metrics::lint::{LintOptions, run_lint_scan, serialize_lint_xml};
 use ripwire_rs::query::commands::{QueryContext, dispatch};
@@ -72,14 +72,6 @@ const ALLOWLIST: &[(&str, &str)] = &[
         "walks git history under root (resolve_cutoff_timestamp, execute_with_git_state_fmt)",
     ),
     (
-        "naming-calibration",
-        "render passes root to serialize_naming_calibration_xml; root-based input not traced",
-    ),
-    (
-        "naming-locals",
-        "include_locals scope passes root to the naming scan; root-based input not traced",
-    ),
-    (
         "navigate",
         "CLI navigate runs through run_nav and loads the repo from disk; no MCP tool of its own",
     ),
@@ -88,16 +80,8 @@ const ALLOWLIST: &[(&str, &str)] = &[
         "fixture has no non-local mutable state, so there is no second row to window",
     ),
     (
-        "regex",
-        "CLI path walks the corpus from root on disk (common::grep::execute, walk_corpus)",
-    ),
-    (
         "seams",
         "render is private (fn render in seams.rs); no public entry point",
-    ),
-    (
-        "skipped",
-        "render is private; census comes from scan_skipped_census(root) on disk",
     ),
     (
         "stray-content",
@@ -120,16 +104,8 @@ const ALLOWLIST: &[(&str, &str)] = &[
         "in-memory fixture has no file-to-file imports, so the ranked file list has no second row to window",
     ),
     (
-        "ensemble",
-        "in-memory fixture fires no evidence family for a second ranked symbol (total=0); needs a richer fixture",
-    ),
-    (
         "quality-panel",
         "in-memory fixture fires no quality family row (total=0); needs a richer fixture",
-    ),
-    (
-        "zoom",
-        "in-memory fixture forms a single Leiden module (total=1); a window needs at least two modules",
     ),
 ];
 
@@ -215,11 +191,6 @@ const CASES: &[Case] = &[
         command: "match",
         tool: None,
         render: |w, _| ast_match_xml(w),
-    },
-    Case {
-        command: "pattern",
-        tool: None,
-        render: |w, _| pattern_xml(w),
     },
     Case {
         command: "graph-query",
@@ -386,13 +357,6 @@ fn ast_match_xml(world: &World) -> String {
         &mut out,
     )
     .unwrap();
-    text(out)
-}
-
-fn pattern_xml(world: &World) -> String {
-    let query = world.query();
-    let mut out = Vec::new();
-    pattern::execute(&query, "target", None, one(), &mut out).unwrap();
     text(out)
 }
 

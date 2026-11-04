@@ -1,4 +1,4 @@
-//! `--field-affinity [STRUCT]`: cache-conscious field affinity analysis.
+//! `--field-affinity [STRUCT]`: cache-conscious field affinity; a named STRUCT adds its computed field offsets.
 use super::plugin::report_command;
 use crate::commands::context::ExecutionContext;
 use crate::commands::context::Paginated;
@@ -10,7 +10,7 @@ report_command! {
     args: FieldAffinityArgs,
     static: FIELD_AFFINITY,
     run: report(render),
-    /// Cache-conscious field affinity analysis
+    /// Cache-conscious field affinity; with STRUCT, its computed field offsets and padding
     #[arg(long = "field-affinity", num_args = 0..=1, default_missing_value = "", value_name = "STRUCT")]
     field_affinity: Option<Option<String>>,
 }

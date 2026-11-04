@@ -177,10 +177,9 @@
   ripwire-rs . --lint-catalog
   ```
 
-- **Modularity & Layering Rules**: Partition the call graph into Leiden communities, inspect hierarchical clusters, or enforce architectural boundaries.
+- **Modularity & Layering Rules**: Partition the call graph into Leiden communities, or enforce architectural boundaries.
   ```bash
   ripwire-rs . --communities
-  ripwire-rs . --zoom
   ripwire-rs . --arch=rules.txt
   ripwire-rs . --mermaid
   ```

@@ -50,7 +50,7 @@ pub static WHEREIS: Plugin<WhereisArgs> = Plugin {
                 s.root,
                 a.req_str("symbol")?,
                 a.bool_or("with_history", false),
-            );
+            )?;
             for field in ["listing", "full_text"] {
                 if let Some(selector) = a.get(field) {
                     value[field] = selector.clone();
@@ -77,7 +77,8 @@ fn run(run: &Run<'_>, args: &WhereisArgs) -> io::Result<()> {
             &sources,
             ctx.ingest,
             ctx.interner,
-        );
+        )
+        .map_err(io::Error::other)?;
         if let Some(listing) = args.whereis_listing.as_deref() {
             val["listing"] = listing.into();
         }

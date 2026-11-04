@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 const COCHANGE_EVAL_TABLE: &str = "\
-ripwire-rs --eval  (co-change recovery, averaged over historical commits)
+ripwire-rs --eval=cochange  (co-change recovery, averaged over historical commits)
   ranker     recall@5  recall@10  recall@20
   ripwire-rs    18.5%      24.0%      32.5%
   BM25          19.2%      23.0%      29.7%
@@ -13,7 +13,7 @@ ripwire-rs --eval  (co-change recovery, averaged over historical commits)
   random         3.6%       7.3%      14.6%\n";
 
 const RETRIEVAL_EVAL_TABLE: &str = "\
-ripwire-rs --eval-retrieval  (known-item, doc-commented symbols)
+ripwire-rs --eval=retrieval  (known-item, doc-commented symbols)
   ranker      query-mode     MRR  recall@1  recall@5 recall@10
   subtoken    name         0.794     68.1%     91.2%     95.6%
   subtoken    doc-phrase   0.968     93.8%    100.0%    100.0%
@@ -134,7 +134,7 @@ pub fn run_retrieval_eval_for_repo<W: Write>(
     );
     writeln!(
         out,
-        "ripwire-rs --eval-retrieval  (known-item, {population} symbols; sample={})",
+        "ripwire-rs --eval=retrieval  (known-item, {population} symbols; sample={})",
         sample.len()
     )?;
     writeln!(

@@ -18,7 +18,7 @@ ensure-grammars:
 	fi
 
 .PHONY: ci
-ci: fmt-check clippy complexity registry crap ## Deterministic checks CI runs: format, clippy, complexity, registry, CRAP/tests (no upstream binary, no git history, no machine state)
+ci: fmt-check clippy complexity registry script-tests crap ## Deterministic checks CI runs: format, clippy, complexity, registry, script unittests, CRAP/tests (no upstream binary, no git history, no machine state)
 
 .PHONY: all
 all: fmt ci quality size resolution docs-check parity ## Run every check: format, the deterministic CI set, quality regressions against git HEAD, default answer sizes, call-resolution ceilings, generated reference freshness, and upstream parity
@@ -88,6 +88,10 @@ complexity: ## Gate on cccc cognitive complexity <= 15 with GitHub error annotat
 .PHONY: registry
 registry: ## Check every language and command plugin directory is registered
 	@python3 ./scripts/check-registry.py .
+
+.PHONY: script-tests
+script-tests: ## Run the unittest checks for scripts/ (parity rule logic, no network)
+	@python3 -m unittest scripts/test_validate_parity.py
 
 .PHONY: quality
 quality: ## Measure quality regressions against git HEAD with ripwire-rs

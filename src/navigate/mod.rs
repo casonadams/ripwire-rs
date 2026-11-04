@@ -3,7 +3,6 @@ pub mod inspect;
 pub mod query;
 pub mod verify;
 pub mod xml;
-pub mod zoom;
 
 pub use impact::*;
 pub use inspect::*;
@@ -278,7 +277,7 @@ pub fn get_symbol_nav_info(
     let path = interner[file.path].to_string();
     let rank = ranks.get(id as usize).copied().unwrap_or(0.0);
 
-    let tested = crate::gate::affected::is_test_path(&path);
+    let tested = crate::domain::test_path::is_test_path(&path);
     Some(SymbolNavInfo {
         id,
         name,
@@ -437,7 +436,7 @@ fn select_impact_seeds(
         .copied()
         .filter(|&id| {
             ingest.sym(id).is_none_or(|s| {
-                !crate::gate::affected::is_test_path(ingest.sym_file_path(s, interner))
+                !crate::domain::test_path::is_test_path(ingest.sym_file_path(s, interner))
             })
         })
         .collect();
@@ -519,7 +518,7 @@ pub fn transitive_impact_multi(
             let mut node = create_impact_node(id, depth, ingest, ranks, interner)?;
             node.by_name = !proven.contains(&id);
             node.tested = tested_mask.get(id as usize).copied().unwrap_or(false)
-                || crate::gate::affected::is_test_path(&node.path);
+                || crate::domain::test_path::is_test_path(&node.path);
             Some(node)
         })
         .collect();
@@ -541,7 +540,7 @@ pub fn radius_split<'a>(nodes: impl IntoIterator<Item = &'a ImpactNode>) -> (usi
     let (mut tested, mut total) = (0, 0);
     for n in nodes {
         total += 1;
-        tested += usize::from(n.tested || crate::gate::affected::is_test_path(&n.path));
+        tested += usize::from(n.tested || crate::domain::test_path::is_test_path(&n.path));
     }
     (tested, total - tested)
 }

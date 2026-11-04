@@ -86,11 +86,6 @@ pub const LEGEND_DICT_ENTRIES: &[(&str, &str, &str)] = &[
     ),
     (
         "schema",
-        "ripwire-rs.outline/v1",
-        "Control-flow skeleton outlines with inner blocks elided",
-    ),
-    (
-        "schema",
         "ripwire-rs.tree/v1",
         "File-by-file directory orientation with top symbols per file",
     ),
@@ -243,11 +238,6 @@ pub const LEGEND_DICT_ENTRIES: &[(&str, &str, &str)] = &[
         "schema",
         "ripwire-rs.context-ratio/v1",
         "Local-reasoning lens measuring cross-file callee context ratio",
-    ),
-    (
-        "schema",
-        "ripwire-rs.ensemble/v1",
-        "Multi-family quality evidence ensemble ranking",
     ),
     (
         "schema",

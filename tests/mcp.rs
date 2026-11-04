@@ -1,3 +1,6 @@
+#[path = "support/uses.rs"]
+mod uses_support;
+
 mod mcp {
     mod doc_tools;
     mod edit;

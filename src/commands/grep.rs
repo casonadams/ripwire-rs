@@ -20,7 +20,6 @@ fn run(run: &Run<'_>, args: &GrepArgs) -> std::io::Result<()> {
     run.report(|ctx, out| {
         execute(
             ctx,
-            "grep",
             pat,
             run.page(),
             run.cli.modifiers.in_scope.as_deref(),

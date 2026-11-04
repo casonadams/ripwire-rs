@@ -36,8 +36,9 @@ fn test_serialize_nonlocal_state_rows_and_cells() {
 
 #[test]
 fn nonlocal_state_report_honors_limit_and_offset() {
+    use ripwire_rs::graph::GraphGauges;
     use ripwire_rs::metrics::nonlocal::NonlocalStateReport;
-    use ripwire_rs::serialize::{GraphGauges, PageRequest, XmlReport};
+    use ripwire_rs::serialize::{PageRequest, XmlReport};
     let func = |name: &str| NonlocalFunction {
         sym: 1,
         sym_name: name.to_string(),

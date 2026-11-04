@@ -1,3 +1,6 @@
+#[path = "support/index.rs"]
+mod index_support;
+
 mod cli {
     mod architecture_behavior;
     mod args;

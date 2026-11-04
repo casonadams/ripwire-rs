@@ -1,8 +1,9 @@
+use ripwire_rs::graph::GraphGauges;
 use ripwire_rs::navigate::{
     ImpactReport, NavDir, find_symbols_by_name, navigate_1hop, transitive_impact,
 };
 use ripwire_rs::query::navigation::NavMode;
-use ripwire_rs::serialize::{GraphGauges, PageRequest, XmlReport};
+use ripwire_rs::serialize::{PageRequest, XmlReport};
 use ripwire_rs::{
     FileInfo, Graph, IngestResult, Interner, Lang, RefRole, Reference, SymKind, Symbol,
 };

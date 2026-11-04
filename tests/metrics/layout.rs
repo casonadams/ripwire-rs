@@ -1,8 +1,9 @@
 use ripwire_rs::ToXmlString;
 use ripwire_rs::languages::c::layout::parse_struct_fields;
-use ripwire_rs::metrics::{
-    FieldLayout, StructLayoutDef, StructLayoutReport, serialize_field_affinity_xml,
+use ripwire_rs::metrics::layout::{
+    FieldAffinityReport, FieldLayout, StructLayoutDef, StructLayoutReport,
 };
+use ripwire_rs::serialize::PageRequest;
 
 #[test]
 fn test_layout_parsing() {
@@ -14,8 +15,7 @@ fn test_layout_parsing() {
     assert_eq!(fields[2].offset, 12);
 }
 
-#[test]
-fn test_serialize_layout_and_affinity() {
+fn foo_layout(sym: &str) -> StructLayoutReport {
     let def = StructLayoutDef {
         path: "src/test.rs".into(),
         line: 10,
@@ -37,27 +37,26 @@ fn test_serialize_layout_and_affinity() {
             },
         ],
     };
-    let rep = StructLayoutReport {
-        sym: "Foo".into(),
-        found: true,
+    StructLayoutReport {
+        sym: sym.into(),
         defs: vec![def],
-    };
-    assert!(
-        rep.to_xml_string()
-            .contains("schema=\"ripwire-rs.layout/v1\"")
-    );
+    }
+}
 
-    let mut buf2 = Vec::new();
-    serialize_field_affinity_xml(
-        &rep,
-        ".",
-        ripwire_rs::serialize::PageRequest::default(),
-        &mut buf2,
-    )
-    .unwrap();
-    assert!(
-        String::from_utf8(buf2)
-            .unwrap()
-            .contains("schema=\"ripwire-rs.field-affinity/v1\"")
-    );
+#[test]
+fn test_field_affinity_lists_offsets_only_for_a_named_struct() {
+    let named = FieldAffinityReport {
+        layout: foo_layout("Foo"),
+        page: PageRequest::default(),
+    }
+    .to_xml_string();
+    assert!(named.contains("schema=\"ripwire-rs.field-affinity/v1\""));
+    assert!(named.contains("<f n=\"b\" ty=\"u32\" sz=\"4\" al=\"4\" off=\"8\"/>"));
+
+    let summary = FieldAffinityReport {
+        layout: foo_layout(""),
+        page: PageRequest::default(),
+    }
+    .to_xml_string();
+    assert!(!summary.contains("<f n="));
 }

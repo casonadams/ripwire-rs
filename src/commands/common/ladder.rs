@@ -1,12 +1,12 @@
-//! Body query behind `--expand` and `--outline`.
+//! Body query behind `--expand`: full bodies, or control-flow skeletons when `outline` is set.
 use crate::domain::{IngestResult, Interner};
 use std::io::{self, Write};
 use std::path::Path;
 
-pub fn execute_expand_or_outline_compressed<W: Write>(
+pub fn execute_expand<W: Write>(
     root: &str,
     syms_spec: &str,
-    is_outline: bool,
+    outline: bool,
     compress: bool,
     ingest: &IngestResult,
     interner: &Interner,
@@ -21,7 +21,7 @@ pub fn execute_expand_or_outline_compressed<W: Write>(
         path_hint: None,
         start_line: None,
         end_line: None,
-        outline: is_outline,
+        outline,
         compress,
     };
     crate::query::detail::execute_body_query(&request, ingest, interner, &sources, out)

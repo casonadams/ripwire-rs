@@ -60,7 +60,6 @@ impl StructLayoutDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructLayoutReport {
     pub sym: String,
-    pub found: bool,
     pub defs: Vec<StructLayoutDef>,
 }
 
@@ -91,7 +90,7 @@ fn extract_struct_layout_def(
     }
 }
 
-pub fn compute_layout_report(
+fn compute_layout_report(
     sym_name: &str,
     ingest: &IngestResult,
     interner: &Interner,
@@ -107,56 +106,9 @@ pub fn compute_layout_report(
         })
         .map(|sym| extract_struct_layout_def(sym, view.sym_path(sym), root))
         .collect();
-    let found = !defs.is_empty();
     StructLayoutReport {
         sym: sym_name.to_string(),
-        found,
         defs,
-    }
-}
-
-impl crate::serialize::XmlReport for StructLayoutReport {
-    crate::xml_report_meta!("layout", "ripwire-rs.layout/v1", root: true);
-    fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        use crate::serialize::XmlEscapeExt;
-        let found = usize::from(self.found);
-        let mirror = if self.defs.len() <= 1 {
-            "single"
-        } else {
-            "mismatch"
-        };
-        write!(
-            out,
-            " sym=\"{}\" found=\"{found}\" defs=\"{}\" mirror=\"{mirror}\" asserts=\"0\" conflicts=\"0\"",
-            self.sym.xml_escaped(),
-            self.defs.len()
-        )
-    }
-    fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        use crate::serialize::XmlEscapeExt;
-        for d in &self.defs {
-            writeln!(
-                out,
-                "  <def p=\"{}\" l=\"{}\" agg=\"{}\" modeled=\"1\" fields=\"{}\">",
-                d.path.xml_escaped(),
-                d.line,
-                d.agg_kind,
-                d.fields.len()
-            )?;
-            for f in &d.fields {
-                writeln!(
-                    out,
-                    "    <f n=\"{}\" ty=\"{}\" sz=\"{}\" al=\"{}\" off=\"{}\"/>",
-                    f.name.xml_escaped(),
-                    f.ty.xml_escaped(),
-                    f.size,
-                    f.align,
-                    f.offset
-                )?;
-            }
-            writeln!(out, "  </def>")?;
-        }
-        Ok(())
     }
 }
 
@@ -184,11 +136,9 @@ pub fn compute_field_affinity_report(
         })
         .map(|s| extract_struct_layout_def(s, view.sym_path(s), root))
         .collect();
-    let found = !defs.is_empty();
     FieldAffinityReport {
         layout: StructLayoutReport {
             sym: String::new(),
-            found,
             defs,
         },
         page,
@@ -241,6 +191,8 @@ impl FieldAffinityReport {
     }
 }
 
+/// One aggregate's block. A named STRUCT also lists each field's type, size, alignment and computed offset,
+/// the byte layout the pairwise distances are measured on.
 fn write_field_affinity_block<W: Write + ?Sized>(
     sym: &str,
     d: &StructLayoutDef,
@@ -261,6 +213,19 @@ fn write_field_affinity_block<W: Write + ?Sized>(
         d.line,
         d.agg_kind
     )?;
+    if !sym.is_empty() {
+        for f in &d.fields {
+            writeln!(
+                out,
+                "    <f n=\"{}\" ty=\"{}\" sz=\"{}\" al=\"{}\" off=\"{}\"/>",
+                f.name.xml_escaped(),
+                f.ty.xml_escaped(),
+                f.size,
+                f.align,
+                f.offset
+            )?;
+        }
+    }
     for i in 0..d.fields.len() {
         for j in (i + 1)..d.fields.len() {
             let fa = &d.fields[i];
@@ -276,18 +241,4 @@ fn write_field_affinity_block<W: Write + ?Sized>(
         }
     }
     writeln!(out, "  </s>")
-}
-
-pub fn serialize_field_affinity_xml<W: Write>(
-    rep: &StructLayoutReport,
-    root: &str,
-    page: PageRequest,
-    out: &mut W,
-) -> io::Result<()> {
-    use crate::serialize::XmlReport;
-    FieldAffinityReport {
-        layout: rep.clone(),
-        page,
-    }
-    .write_xml_report(root, out)
 }

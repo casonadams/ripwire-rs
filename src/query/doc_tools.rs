@@ -663,11 +663,16 @@ pub fn doc_drift_with_sources_and_history(
         &scm_query_paths(std::path::Path::new(root)),
     );
     if with_history {
-        let head_sha = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
-        if let Some(items) = result["drift"].as_array_mut() {
-            for item in items {
-                enrich_drift_item_history(root, item, &head_sha);
+        match crate::git::history::compute_git_at_stamp(root) {
+            Ok(stamp) => {
+                let head_sha = stamp.unwrap_or_default();
+                if let Some(items) = result["drift"].as_array_mut() {
+                    for item in items {
+                        enrich_drift_item_history(root, item, &head_sha);
+                    }
+                }
             }
+            Err(reason) => result["history"] = json!({ "unavailable": reason }),
         }
     }
     result

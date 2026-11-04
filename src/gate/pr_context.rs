@@ -59,7 +59,7 @@ pub struct PrContextReport {
     pub at_stamp: String,
     pub files_count: usize,
     pub files: Vec<PrFileContext>,
-    pub gauges: crate::serialize::GraphGauges,
+    pub gauges: crate::graph::GraphGauges,
     pub page: crate::serialize::PageRequest,
 }
 
@@ -387,7 +387,7 @@ impl crate::serialize::XmlReport for PrContextReport {
     fn page_window(&self) -> Option<crate::serialize::PageWindow> {
         Some(self.files_paged().window)
     }
-    fn graph_gauges(&self) -> Option<crate::serialize::GraphGauges> {
+    fn graph_gauges(&self) -> Option<crate::graph::GraphGauges> {
         Some(self.gauges)
     }
     fn write_extra_attrs<W: Write>(&self, w: &mut W) -> io::Result<()> {

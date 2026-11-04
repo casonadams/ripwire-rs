@@ -12,10 +12,13 @@ use std::io::{self, StdoutLock};
 pub fn load_gate_state(cli: &Cli, root: &str, is_delta: bool) -> io::Result<crate::Workspace> {
     let (ingest, graph, pr, interner) = load_repo_analysis_for_cli(cli, root, is_delta)?;
     let mut state = crate::Workspace::from_analysis(root, ingest, graph, pr, interner);
-    state.at = crate::git::history::compute_git_at_stamp(root);
-    if is_delta && !get_working_tree_changed_files(root).is_empty() {
+    state.at = crate::git::history::compute_git_at_stamp(root).map_err(io::Error::other)?;
+    if is_delta && !get_working_tree_changed_files(root)?.is_empty() {
         let cutoff = crate::git::history::resolve_cutoff_timestamp(None, 1);
-        state.commits = crate::git::history::walk_repository_history_scoped(root, cutoff).ok();
+        state.commits = Some(
+            crate::git::history::walk_repository_history_scoped(root, cutoff)
+                .map_err(io::Error::other)?,
+        );
     }
     Ok(state)
 }

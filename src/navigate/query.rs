@@ -435,7 +435,7 @@ pub struct GraphQueryReport<'a> {
     pub ingest: &'a IngestResult,
     pub interner: &'a Interner,
     pub pr_iters: u32,
-    pub gauges: crate::serialize::GraphGauges,
+    pub gauges: crate::graph::GraphGauges,
     pub page: PageRequest,
 }
 
@@ -475,7 +475,7 @@ impl crate::serialize::XmlReport for GraphQueryReport<'_> {
     fn pr_iters(&self) -> Option<u32> {
         Some(self.pr_iters)
     }
-    fn graph_gauges(&self) -> Option<crate::serialize::GraphGauges> {
+    fn graph_gauges(&self) -> Option<crate::graph::GraphGauges> {
         Some(self.gauges)
     }
     fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {

@@ -43,11 +43,12 @@ pub static SITU: Plugin<SituArgs> = Plugin {
         )],
         &[],
         |s, a| {
-            let commits = resolve_state_commits(s, 18);
+            let commits = resolve_state_commits(s, 18)?;
             let files = if a.get("files").is_some() {
                 a.str_vec("files")
             } else {
                 super::common::changes::resolve_changed_or_spec_files(s.root, None)
+                    .map_err(|e| e.to_string())?
             };
             let report = crate::query::safety::SituationalReport {
                 root: s.root,

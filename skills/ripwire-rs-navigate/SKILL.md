@@ -19,7 +19,7 @@ You trace code structure with ripwire and never present an unverified edge as fa
 - **Body and callee signatures** - `--expand=SYM` or `--expand=path:name`.
 - **Several definitions share a name** - `--defs=A,B` returns a `sel=` that pins one. Any selector also takes `@FILE:LINE`; `--at=FILE:LINE` gives the enclosing chain.
 - **How does A reach B** - `--path=A,B` (directed). For N>2 symbols, or a pair `--path` calls unreachable, use `--connect=A,B,C` (undirected; finds shared callers).
-- **Literal or pattern** - `--grep=STR` or `--regex=PAT`, with `--grep-context=N`. Config and string hits need `--grep-in=any`. Narrow with `--and=B` / `--not=C`.
+- **Literal** - `--grep=STR`, with `--grep-context=N`. Config and string hits need `--grep-in=any`. Narrow with `--and=B` / `--not=C`.
 - **Verify a claim** - `--verify='calls(A,B)'` (also `uses`, `unused`, `contains`, `defines`, `reaches`). `not-established` means the index cannot prove it, not that it is false.
 - **Variable in one function** - `--slice=SYM:VAR`; add `--slice-flow=back|fwd` for transitive flow.
 

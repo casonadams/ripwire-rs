@@ -21,22 +21,22 @@ pub mod slice;
 pub mod workspace;
 pub use cli::{Cli, parse_from, run_cli, run_cli_args};
 pub use clones::{
-    CloneGroup, CloneIdiom, CloneType, DEFAULT_MIN_CLONE_TOKENS, execute_clones_command,
-    find_clones, find_clones_in_root, find_clones_touching, render_clones_xml,
+    CloneGroup, CloneIdiom, CloneSource, CloneType, DEFAULT_MIN_CLONE_TOKENS,
+    execute_clones_command, find_clones, find_clones_touching, render_clones_xml,
 };
 pub use crawler::{
     CrawledFile, CrawlerOptions, DEFAULT_MAX_FILE_SIZE, DENYLIST_DIRS, crawl_directory,
 };
 pub use domain::{
     CorpusView, FileInfo, IngestResult, Interner, Lang, MODULE_SCOPE_NAME, NO_NODE, NodeId,
-    RefRole, Reference, SymKind, Symbol,
+    RefRole, Reference, SymKind, Symbol, test_path::is_test_path,
 };
 pub use gate::{
     AffectedReport, AffectedTest, CallerCheckResult, ContractStatus, DEFAULT_BASELINE_FILE,
     EditCheckReport, IncompatibleCallSite, QualityDeltaReport, QualityRegression, QualitySnapshot,
     SignatureContract, check_symbol_contract, compare_contracts, compute_quality_delta,
     compute_snapshot, evaluate_quality_delta, find_affected_tests, find_affected_tests_for_symbols,
-    is_test_path, load_head_symbol_contract, read_baseline_file, write_baseline_file,
+    load_head_symbol_contract, read_baseline_file, write_baseline_file,
 };
 pub use git::cochange::{
     CoPair, CoPartner, CochangeOptions, StaticCouplingMap, check_pair_dependency_capability,
@@ -72,10 +72,10 @@ pub use serialize::{
     serialize_exemplar_xml, serialize_exercises_xml, serialize_expand_xml,
     serialize_external_surface_xml, serialize_flags_xml, serialize_for_xml,
     serialize_from_trace_xml, serialize_grep_xml, serialize_lego_xml, serialize_mentions_xml,
-    serialize_owners_xml, serialize_pack_top_n_xml, serialize_path_between_xml,
-    serialize_recall_text, serialize_safe_delete_xml, serialize_stray_content_xml,
-    serialize_test_gate_xml, serialize_whereis_xml, serialize_xml, serialize_xml_to_string,
-    serialize_xml_with_ranks, write_call_graph_html,
+    serialize_owners_xml, serialize_path_between_xml, serialize_recall_text,
+    serialize_safe_delete_xml, serialize_stray_content_xml, serialize_test_gate_xml,
+    serialize_whereis_xml, serialize_xml, serialize_xml_to_string, serialize_xml_with_ranks,
+    write_call_graph_html,
 };
 pub use skills::{SkillInstallReport, default_skills_dir, install_skills, resolve_skills_dir};
 pub use slice::{

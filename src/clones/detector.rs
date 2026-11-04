@@ -160,17 +160,17 @@ pub(crate) fn symbol_body_tokens(
     })
 }
 
-fn load_clone_file_bytes(
-    file_path: &str,
-    sources: Option<&HashMap<String, Vec<u8>>>,
-    root: Option<&std::path::Path>,
-) -> Option<Vec<u8>> {
-    if let Some(map) = sources {
-        map.get(file_path).cloned()
-    } else if let Some(r) = root {
-        crate::crawler::read_rel_bytes(r, file_path).ok()
-    } else {
-        std::fs::read(file_path).ok()
+/// Where clone detection reads file bytes: an in-memory map keyed by indexed path, or a repository root.
+#[derive(Clone, Copy)]
+pub enum CloneSource<'a> {
+    Sources(&'a HashMap<String, Vec<u8>>),
+    Root(&'a std::path::Path),
+}
+
+fn load_clone_file_bytes(file_path: &str, source: CloneSource) -> Option<Vec<u8>> {
+    match source {
+        CloneSource::Sources(map) => map.get(file_path).cloned(),
+        CloneSource::Root(root) => crate::crawler::read_rel_bytes(root, file_path).ok(),
     }
 }
 
@@ -178,8 +178,7 @@ fn extract_candidate_bodies(
     ingest: &IngestResult,
     interner: &Interner,
     min_tokens: usize,
-    sources: Option<&HashMap<String, Vec<u8>>>,
-    root: Option<&std::path::Path>,
+    source: CloneSource,
 ) -> Vec<BodyTokens> {
     let mut symbols_by_file: Vec<Vec<&crate::domain::Symbol>> =
         vec![Vec::new(); ingest.files.len()];
@@ -198,7 +197,7 @@ fn extract_candidate_bodies(
         .filter(|(_, syms)| !syms.is_empty())
         .filter_map(|(fid, syms)| {
             let fi = ingest.files.get(fid)?;
-            let bytes = load_clone_file_bytes(interner.resolve(&fi.path), sources, root)?;
+            let bytes = load_clone_file_bytes(interner.resolve(&fi.path), source)?;
             Some(extract_file_candidates(&bytes, &syms, min_tokens))
         })
         .flatten()
@@ -405,11 +404,10 @@ pub fn find_clones_touching(
     ingest: &IngestResult,
     interner: &Interner,
     min_tokens: usize,
-    sources: Option<&HashMap<String, Vec<u8>>>,
-    root: Option<&std::path::Path>,
+    source: CloneSource,
     focus_files: &HashSet<u32>,
 ) -> Vec<CloneGroup> {
-    let mut candidates = extract_candidate_bodies(ingest, interner, min_tokens, sources, root);
+    let mut candidates = extract_candidate_bodies(ingest, interner, min_tokens, source);
     candidates.sort_unstable_by_key(|c| c.id);
     let in_focus = |id: NodeId| {
         ingest
@@ -434,27 +432,15 @@ fn find_type3_pairs(candidates: &[BodyTokens]) -> Vec<CloneGroup> {
     evaluate_pairs(candidates, pairs)
 }
 
-/// Detect all Type-1, Type-2, and Type-3 clones across the codebase.
+/// Detect all Type-1, Type-2, and Type-3 clones across the codebase, reading file bytes from `source`.
 #[must_use]
 pub fn find_clones(
     ingest: &IngestResult,
     interner: &Interner,
     min_tokens: usize,
-    sources: Option<&HashMap<String, Vec<u8>>>,
+    source: CloneSource,
 ) -> Vec<CloneGroup> {
-    find_clones_in_root(ingest, interner, min_tokens, sources, None)
-}
-
-/// Detect all Type-1, Type-2, and Type-3 clones across the codebase in target root.
-#[must_use]
-pub fn find_clones_in_root(
-    ingest: &IngestResult,
-    interner: &Interner,
-    min_tokens: usize,
-    sources: Option<&HashMap<String, Vec<u8>>>,
-    root: Option<&std::path::Path>,
-) -> Vec<CloneGroup> {
-    let mut candidates = extract_candidate_bodies(ingest, interner, min_tokens, sources, root);
+    let mut candidates = extract_candidate_bodies(ingest, interner, min_tokens, source);
     candidates.sort_unstable_by_key(|c| c.id);
     let mut exact_groups = group_exact_clones(&candidates);
     let gapped_groups = find_type3_pairs(&candidates);

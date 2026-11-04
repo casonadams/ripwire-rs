@@ -6,7 +6,7 @@ Every verb inherits the call graph, so the resolver's gauges are the quality cei
 * The gauges on the root of any navigation answer: `graph_ambiguous` (calls bound to one of several
   same-named definitions) and `graph_unresolved` (calls that bound to nothing). They count what the
   resolver gave up on.
-* A SCIP index from rust-analyzer, the compiler's own answer, scored with `--eval-scip`: `precision` (a
+* A SCIP index from rust-analyzer, the compiler's own answer, scored with `--eval=scip --scip=INDEX`: `precision` (a
   binding we made names SCIP's target) and `recall` (SCIP's targets we reached). They say whether the
   bindings we made are right. Skipped, loudly, when rust-analyzer is not installed.
 
@@ -49,7 +49,7 @@ def scip_scores(binary, repo):
         if built.returncode != 0 or not index.exists():
             print(built.stderr[-400:], file=sys.stderr)
             return None
-        out = run([binary, repo, "--eval-scip", str(index), "--eval-samples=0"]).stdout
+        out = run([binary, repo, "--scip", str(index), "--eval=scip", "--samples=0"]).stdout
     found = re.search(r'<scip-eval [^>]*precision="([\d.]+)" recall="([\d.]+)"', out)
     return {"precision": float(found[1]), "recall": float(found[2])} if found else None
 

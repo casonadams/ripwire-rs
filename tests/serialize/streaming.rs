@@ -6,9 +6,9 @@ use ripwire_rs::{
     serialize_exemplar_xml, serialize_exercises_xml, serialize_expand_xml,
     serialize_external_surface_xml, serialize_flags_xml, serialize_for_xml,
     serialize_from_trace_xml, serialize_grep_xml, serialize_lego_xml, serialize_mentions_xml,
-    serialize_owners_xml, serialize_pack_top_n_xml, serialize_path_between_xml,
-    serialize_recall_text, serialize_safe_delete_xml, serialize_stray_content_xml,
-    serialize_test_gate_xml, serialize_whereis_xml, serialize_xml_to_string,
+    serialize_owners_xml, serialize_path_between_xml, serialize_recall_text,
+    serialize_safe_delete_xml, serialize_stray_content_xml, serialize_test_gate_xml,
+    serialize_whereis_xml, serialize_xml_to_string,
 };
 use serde_json::json;
 
@@ -365,10 +365,6 @@ fn test_query_xml_detail_ladder() {
         "{xml}"
     );
     assert!(xml.contains(" next=\"--tree --offset=2\""), "{xml}");
-    buf.clear();
-
-    serialize_pack_top_n_xml(".", &[("src/main.rs", "fn run() {}")], &mut buf).unwrap();
-    assert!(String::from_utf8_lossy(&buf).contains("schema=\"ripwire-rs.pack-top-n/v1\""));
 }
 
 #[test]
@@ -399,7 +395,7 @@ fn test_query_xml_safety_family() {
         radius_tested: 0,
         radius_untested: 3,
         page: ripwire_rs::serialize::PageRequest::default(),
-        gauge_attrs: ripwire_rs::serialize::GraphGauges::ZERO_XML_ATTRS,
+        gauge_attrs: ripwire_rs::graph::GraphGauges::ZERO_XML_ATTRS,
     };
     serialize_safe_delete_xml(&report, &mut buf).unwrap();
     assert!(String::from_utf8_lossy(&buf).contains("schema=\"ripwire-rs.safe-delete/v1\""));
@@ -491,9 +487,8 @@ fn test_query_xml_architecture_family() {
 
 #[test]
 fn dead_code_list_follows_output_budget() {
-    use ripwire_rs::serialize::{
-        GraphGauges, PageRequest, arch_xml::serialize_dead_code_paged_xml,
-    };
+    use ripwire_rs::graph::GraphGauges;
+    use ripwire_rs::serialize::{PageRequest, arch_xml::serialize_dead_code_paged_xml};
     let items: Vec<(&str, &'static str, &str, u32)> =
         (0..5).map(|i| ("unused", "fn", "src/lib.rs", i)).collect();
     let render = |page: PageRequest| {
@@ -683,14 +678,6 @@ fn test_page_window_and_xml_report_trait() {
         ripwire_rs::serialize::PageRequest::default(),
     );
     assert!(cr.to_xml_string().contains("ripwire-rs.context-ratio/v1"));
-    let ens = ripwire_rs::metrics::compute_ensemble(
-        &ingest,
-        &graph,
-        &interner,
-        Err("in-memory ingest: no git history".to_string()),
-        ripwire_rs::serialize::PageRequest::default(),
-    );
-    assert!(ens.to_xml_string().contains("ripwire-rs.ensemble/v1"));
     let cc = ripwire_rs::metrics::compute_comment_coherence(
         &ingest,
         &interner,

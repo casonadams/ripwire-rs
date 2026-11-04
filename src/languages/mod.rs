@@ -402,12 +402,12 @@ pub trait LanguageSemantics: Sync {
         Vec::new()
     }
 
-    /// Parser of this language's aggregate bodies into sized, offset fields for `--layout`; `None` where unmodelled.
+    /// Parser of this language's aggregate bodies into sized, offset fields for `--field-affinity=STRUCT`; `None` where unmodelled.
     fn layout_model(&self) -> Option<fn(&str) -> Vec<crate::metrics::FieldLayout>> {
         None
     }
 
-    /// True if `--layout` byte-layout modeling is supported.
+    /// True if `--field-affinity=STRUCT` byte-layout modeling is supported.
     fn supports_c_layout(&self) -> bool {
         self.layout_model().is_some()
     }

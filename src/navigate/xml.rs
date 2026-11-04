@@ -95,7 +95,7 @@ impl NavItemsReport<'_> {
 
     fn write_item<W: Write>(&self, out: &mut W, it: &SymbolNavInfo) -> io::Result<()> {
         let binding_attrs = self.binding_attrs(it);
-        let tested_attr = if it.tested || crate::gate::affected::is_test_path(&it.path) {
+        let tested_attr = if it.tested || crate::domain::test_path::is_test_path(&it.path) {
             " tested=\"1\""
         } else {
             ""
@@ -141,7 +141,7 @@ impl NavItemsReport<'_> {
         let hop_tested = self
             .items
             .iter()
-            .filter(|it| it.tested || crate::gate::affected::is_test_path(&it.path))
+            .filter(|it| it.tested || crate::domain::test_path::is_test_path(&it.path))
             .count();
         let hop_untested = count.saturating_sub(hop_tested);
         let of = self.of.xml_escaped();
@@ -350,7 +350,7 @@ fn write_reach_row<W: Write>(out: &mut W, n: &ImpactNode, show_depth: bool) -> i
     } else {
         String::new()
     };
-    let tested_attr = if n.tested || crate::gate::affected::is_test_path(&n.path) {
+    let tested_attr = if n.tested || crate::domain::test_path::is_test_path(&n.path) {
         " tested=\"1\""
     } else {
         ""
@@ -543,7 +543,7 @@ impl<'a> UsesReport<'a> {
             sym_name,
             defs: super::find_symbols_by_name(sym_name, ingest, interner).len(),
             sites,
-            gauge_attrs: crate::serialize::GraphGauges::ZERO_XML_ATTRS,
+            gauge_attrs: crate::graph::GraphGauges::ZERO_XML_ATTRS,
             page: crate::serialize::PageRequest::default(),
         }
     }

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 fn sample_report() -> DoctorReport {
     DoctorReport {
-        at: Some("abc123def+dirty".to_string()),
+        at: Ok(Some("abc123def+dirty".to_string())),
         built_from: "0.1.0".to_string(),
         checks: vec![
             DoctorCheck::new("grammars", true)
@@ -28,21 +28,31 @@ fn test_doctor_report_with_legend_is_well_formed_xml() {
     assert_eq!(doc.root_element().tag_name().name(), "doctor");
 }
 
-#[test]
-fn test_doctor_report_omits_at_outside_git() {
-    let report = DoctorReport {
-        at: None,
+fn report_outside_git(checks: Vec<DoctorCheck>) -> DoctorReport {
+    DoctorReport {
+        at: Ok(None),
         built_from: "x".to_string(),
-        checks: vec![DoctorCheck::new("binary-path", true)],
-    };
+        checks,
+    }
+}
+
+fn render_doctor(report: &DoctorReport) -> String {
     let mut out = Vec::new();
     report.write_xml(&mut out).unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    assert!(xml.contains(
-        "<doctor schema=\"ripwire-rs.doctor/v1\" checks=\"1\" passed=\"1\" built_from=\"x\">"
-    ));
-    assert!(!xml.contains(" at=\""));
-    assert!(!xml.contains("n=\"layout\""));
+    String::from_utf8(out).unwrap()
+}
+
+#[test]
+fn test_doctor_report_omits_at_outside_git() {
+    let xml = render_doctor(&report_outside_git(vec![DoctorCheck::new(
+        "binary-path",
+        true,
+    )]));
+    let header =
+        "<doctor schema=\"ripwire-rs.doctor/v1\" checks=\"1\" passed=\"1\" built_from=\"x\">";
+    assert!(xml.contains(header), "{xml}");
+    assert!(!xml.contains(" at=\""), "{xml}");
+    assert!(!xml.contains("n=\"layout\""), "{xml}");
 }
 
 #[test]
@@ -79,11 +89,7 @@ fn test_index_source_follows_no_cache_then_cache_flag() {
 
 #[test]
 fn test_doctor_empty_report_passes_vacuously() {
-    let report = DoctorReport {
-        at: None,
-        built_from: "x".to_string(),
-        checks: Vec::new(),
-    };
+    let report = report_outside_git(Vec::new());
     let mut out = Vec::new();
     report.write_xml(&mut out).unwrap();
     let xml = String::from_utf8(out).unwrap();

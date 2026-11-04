@@ -40,6 +40,7 @@ pub fn execute_hotspots_with<W: Write>(
         .collect();
     let report = crate::metrics::compute_hotspots(state.ingest, state.interner, &counts)
         .with_root(state.root)
+        .map_err(io::Error::other)?
         .with_page(page);
     report.write_xml(out)
 }
@@ -235,15 +236,16 @@ pub fn execute_edit_check_with<W: Write>(
         .resolve(&state.ingest.files[sym.file_id as usize].path);
     let head_contract =
         crate::gate::contract::load_head_symbol_contract(state.root, rel_path, sym_name, sym.lang)
-            .ok()
-            .flatten();
+            .map_err(io::Error::other)?;
 
+    let at_stamp =
+        crate::git::history::compute_git_at_stamp(state.root).map_err(io::Error::other)?;
     write_edit_check_from_facts(
         &EditCheckRequest {
             sym_name,
             head_contract: head_contract.as_ref(),
             page,
-            at_stamp: crate::git::history::compute_git_at_stamp(state.root).as_deref(),
+            at_stamp: at_stamp.as_deref(),
         },
         state,
         out,
@@ -327,7 +329,10 @@ pub fn affected_from_sources(
 pub fn dirty_pin_absorbed_gating(
     state: &crate::query::commands::QueryContext<'_>,
 ) -> io::Result<Option<(usize, String)>> {
-    if crate::git::repo::working_tree_changes(state.root).is_empty() {
+    if crate::git::repo::working_tree_changes(state.root)
+        .map_err(io::Error::other)?
+        .is_empty()
+    {
         return Ok(None);
     }
     let rep = crate::gate::quality_delta::evaluate_quality_delta_with_basis(

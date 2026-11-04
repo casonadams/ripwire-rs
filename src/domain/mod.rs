@@ -1,4 +1,5 @@
 pub mod corpus;
+pub mod test_path;
 
 pub use corpus::CorpusView;
 

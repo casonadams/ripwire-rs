@@ -191,24 +191,6 @@ pub static PANEL_FAMILIES: &[&dyn QualityEvidenceFamily] = &[
     &STATE_FAMILY,
 ];
 
-pub static ENSEMBLE_FAMILIES: &[&dyn QualityEvidenceFamily] = &[
-    &QualityFamilySpec {
-        name: "structural",
-        c_only: false,
-        predicate: |sym, _| is_structural_base(sym),
-        measure: structural_measure,
-    },
-    &QualityFamilySpec {
-        name: "colocation",
-        c_only: false,
-        predicate: |sym, ctx| ctx.graph.out_degree(sym.id) >= 8,
-        measure: colocation_measure,
-    },
-    &HISTORICAL_FAMILY,
-    &LEXICAL_FAMILY,
-    &CONFUSION_FAMILY,
-];
-
 #[must_use]
 pub fn evaluate_quality_families(
     sym: &Symbol,

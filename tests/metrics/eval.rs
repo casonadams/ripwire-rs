@@ -8,7 +8,7 @@ fn test_eval_output() {
     assert!(
         String::from_utf8(buf)
             .unwrap()
-            .contains("ripwire-rs --eval")
+            .contains("ripwire-rs --eval=cochange")
     );
 
     let mut buf2 = Vec::new();
@@ -16,7 +16,7 @@ fn test_eval_output() {
     assert!(
         String::from_utf8(buf2)
             .unwrap()
-            .contains("ripwire-rs --eval-retrieval")
+            .contains("ripwire-rs --eval=retrieval")
     );
 
     let interner = Interner::new();

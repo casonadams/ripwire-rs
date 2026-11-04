@@ -49,7 +49,7 @@ pub trait CorpusView<'a> {
     #[inline]
     #[must_use]
     fn is_test_symbol(&self, sym: &Symbol) -> bool {
-        crate::gate::affected::is_test_or_bench_path(self.sym_path(sym))
+        crate::domain::test_path::is_test_or_bench_path(self.sym_path(sym))
             || self.sym_name(sym).starts_with("test_")
             || self
                 .sym_scope(sym)

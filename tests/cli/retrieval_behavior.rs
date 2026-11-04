@@ -1,12 +1,11 @@
+use crate::index_support::index;
 use ripwire_rs::commands::{
-    ast_match, at, connect, exemplar, for_task, from_trace, graph_query, lego, pack_signatures,
-    pack_task, path_between, pattern, refetch, verify,
+    ast_match, at, connect, exemplar, for_task, from_trace, graph_query, lego, pack_task,
+    path_between, refetch, verify,
 };
 use ripwire_rs::query::commands::QueryContext;
 use ripwire_rs::serialize::PageRequest;
-use ripwire_rs::{
-    Graph, IngestResult, Interner, Lang, LanguageRegistry, PageRankConfig, PageRankResult,
-};
+use ripwire_rs::{Graph, IngestResult, Interner, Lang, PageRankConfig, PageRankResult};
 use std::io;
 
 const FLOW_RS: &[u8] =
@@ -16,18 +15,10 @@ const OTHER_RS: &[u8] = b"fn other() {}\n";
 static FIXTURE_SOURCES: &[(&str, &[u8])] = &[("src/flow.rs", FLOW_RS), ("other/flow.rs", OTHER_RS)];
 
 fn fixture() -> (IngestResult, Graph, Interner) {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ripwire_rs::ingest_in_memory_files(
-        &[
-            ("src/flow.rs", Lang::Rust, FLOW_RS),
-            ("other/flow.rs", Lang::Rust, OTHER_RS),
-        ],
-        &registry,
-        &interner,
-    );
-    let graph = Graph::build(&ingest, &interner);
-    (ingest, graph, interner)
+    index(&[
+        ("src/flow.rs", Lang::Rust, FLOW_RS),
+        ("other/flow.rs", Lang::Rust, OTHER_RS),
+    ])
 }
 
 fn context<'a>(
@@ -60,16 +51,12 @@ where
 }
 
 #[test]
-fn pattern_and_ast_match_shrink_output_under_page_limit() {
+fn ast_match_shrinks_output_under_page_limit() {
     let limited = PageRequest {
         limit: Some(1),
         offset: None,
         budget: None,
     };
-    let one = run_with(|q, out| pattern::execute(q, "bridge", None, limited, out)).unwrap();
-    assert!(one.contains("shown=\"1\""), "{one}");
-    assert!(one.contains("total=\"2\""), "{one}");
-    assert!(one.contains("has_more=\"1\""), "{one}");
 
     let expr = "(function_item name: (identifier) @name)";
     let one = run_with(|q, out| ast_match::execute(q, expr, limited, out)).unwrap();
@@ -171,18 +158,6 @@ fn task_section_errors_are_rejected_before_any_output_even_with_signatures_only(
 }
 
 #[test]
-fn signature_pack_preserves_indexed_definitions_and_resolved_callees() {
-    let xml = run_with(pack_signatures::execute).unwrap();
-    for name in ["entry", "bridge", "leaf", "isolated", "other"] {
-        assert!(xml.contains(&format!("<s t=\"fn\" n=\"{name}\"")), "{xml}");
-    }
-    assert!(xml.contains("<c n=\"bridge\""), "{xml}");
-    assert!(xml.contains("<c n=\"leaf\""), "{xml}");
-    assert!(xml.contains("p=\"src/flow.rs\""), "{xml}");
-    assert!(xml.contains("p=\"other/flow.rs\""), "{xml}");
-}
-
-#[test]
 fn quoted_search_literals_preserve_payload_and_do_not_capture_possessives() {
     use ripwire_rs::query::task_route::extract_quoted_task_literal;
     for (task, expected) in [
@@ -198,13 +173,7 @@ fn quoted_search_literals_preserve_payload_and_do_not_capture_possessives() {
 }
 
 #[test]
-fn advanced_retrieval_and_pattern_search_execute_over_context_sources() {
-    let pat_xml =
-        run_with(|q, out| pattern::execute(q, "bridge", None, PageRequest::default(), out))
-            .unwrap();
-    assert!(pat_xml.contains("bridge"), "{pat_xml}");
-    assert!(pat_xml.contains("src/flow.rs"), "{pat_xml}");
-
+fn advanced_retrieval_and_ast_search_execute_over_context_sources() {
     let ast_xml = run_with(|q, out| {
         ast_match::execute(
             q,
@@ -274,13 +243,12 @@ fn each_plugin_is_selected_only_by_its_primary_flag() {
     use ripwire_rs::commands::{
         ast_match::AST_MATCH, at::AT, connect::CONNECT, exemplar::EXEMPLAR, for_task::FOR_TASK,
         from_trace::FROM_TRACE, graph_query::GRAPH_QUERY, grep::GREP, help_task::HELP_TASK,
-        lego::LEGO, pack_signatures::PACK_SIGNATURES, pack_task::PACK_TASK,
-        path_between::PATH_BETWEEN, pattern::PATTERN, recall::RECALL, regex::REGEX, verify::VERIFY,
+        lego::LEGO, pack_task::PACK_TASK, path_between::PATH_BETWEEN, recall::RECALL,
+        verify::VERIFY,
     };
     let any = |flag: &str| {
         selects(&FOR_TASK, flag)
             || selects(&GREP, flag)
-            || selects(&REGEX, flag)
             || selects(&CONNECT, flag)
             || selects(&PATH_BETWEEN, flag)
             || selects(&EXEMPLAR, flag)
@@ -292,9 +260,7 @@ fn each_plugin_is_selected_only_by_its_primary_flag() {
             || selects(&PACK_TASK, flag)
             || selects(&GRAPH_QUERY, flag)
             || selects(&AST_MATCH, flag)
-            || selects(&PATTERN, flag)
             || selects(&HELP_TASK, flag)
-            || selects(&PACK_SIGNATURES, flag)
     };
     for flag in [
         "--for=a",
@@ -310,10 +276,7 @@ fn each_plugin_is_selected_only_by_its_primary_flag() {
         "--pack-task=a",
         "--graph-query=a",
         "--match=a",
-        "--pattern=a",
-        "--regex=a",
         "--help-task=a",
-        "--pack-signatures",
     ] {
         assert!(any(flag), "{flag}");
     }

@@ -1,4 +1,4 @@
-//! Pins the quality baseline sidecar, shared by `--pin-census` and `--baseline`.
+//! Pins the quality baseline sidecar for `--baseline`.
 
 use crate::query::safety::SafetyContext;
 use std::io::{self, Write};
@@ -11,7 +11,9 @@ pub fn pin_quality_baseline<W: Write>(ctx: &SafetyContext<'_>, out: &mut W) -> i
         graph,
         interner,
     } = *ctx;
-    let head_sha = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+    let head_sha = crate::git::history::compute_git_at_stamp(root)
+        .map_err(io::Error::other)?
+        .unwrap_or_default();
     let short_sha = &head_sha[..9.min(head_sha.len())];
     let snap = crate::gate::baseline::compute_snapshot(ingest, graph, interner, short_sha);
     let baseline_path = Path::new(root).join(crate::gate::baseline::DEFAULT_BASELINE_FILE);

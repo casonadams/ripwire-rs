@@ -228,3 +228,14 @@ pub fn verify_protocol_case(case: &GraphProtocolCase<'_>) {
         );
     }
 }
+
+/// A call on a factory's result binds only to the class the factory's declared return type names.
+pub fn assert_call_result_binds_factory_return(lang: Lang, path: &str, source: &str) {
+    let callees = owner_qualified_callees(&[(path, lang, source.as_bytes())], "run");
+    let opens: Vec<&str> = callees
+        .iter()
+        .map(String::as_str)
+        .filter(|callee| callee.ends_with(".open"))
+        .collect();
+    assert_eq!(opens, ["DiskStore.open"], "{callees:?}");
+}

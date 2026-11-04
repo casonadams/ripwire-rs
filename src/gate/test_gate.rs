@@ -1,5 +1,6 @@
+use crate::domain::test_path::is_test_path;
 use crate::domain::{CorpusView, IngestResult, Interner, NodeId, SymKind};
-use crate::gate::affected::{AffectedReport, AffectedTest, is_test_path};
+use crate::gate::affected::{AffectedReport, AffectedTest};
 
 /// What a change obliges before merge: tests to run and impacted symbols no test reaches.
 #[derive(Debug, Clone, PartialEq, Eq)]

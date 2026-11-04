@@ -56,7 +56,7 @@ fn execute_slice_for_cli(
     let sources = crate::query::FileSources {
         root: Path::new(root),
     };
-    let at = crate::git::history::compute_git_at_stamp(root);
+    let at = crate::git::history::compute_git_at_stamp(root).map_err(io::Error::other)?;
     let report = crate::slice::query_slice(
         crate::slice::SliceRequest {
             root,

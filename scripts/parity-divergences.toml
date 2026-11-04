@@ -204,14 +204,6 @@ why = "The default panel is budgeted to a fraction of upstream's bytes. Each ran
 evidence = "measured: ours about 9 KB, upstream about 14 KB at the default preset. Root extras state_lens, hcut, hbasis, hfiles, hcrossed, hstatus are disclosure only; upstream root attributes are all present."
 
 [[divergence]]
-id = "ensemble-default-window"
-command = "--ensemble"
-case = ""
-kind = "smaller"
-why = "The default ensemble is budget-windowed like every paged default list, so it shows fewer symbols than upstream's fixed 40-symbol window only when a row does not fit the budget, in about two thirds of upstream's bytes. Its root also discloses ours-only enabled and enabled_n (the families that ran) and hcut, hbasis, hfiles and hstatus (the historical cut and whether the family was ranked, measured-empty or unavailable); upstream's required root attributes are all present."
-evidence = "measured: ours about 8.9 KB, upstream about 14.0 KB; root extras enabled, enabled_n allowed by test_validate_parity.py RootAttributeRule."
-
-[[divergence]]
 id = "test-gate-untested-default-window"
 command = "--test-gate"
 case = "src/gate/affected.rs,src/serialize/arch_xml.rs"
@@ -300,14 +292,6 @@ case = ""
 kind = "richer"
 why = "A commit touching more than 100 changed paths (MERGE_BOMB_MAX_FILES, renames counted as two) is a mechanical sweep, not a change to each file, so it adds no churn; upstream counts it, so it ranks eight more files whose only change is the module-split commit. Ours shows more rows in the default window because its window is budget-derived."
 evidence = "measured: ours ranked=277 files=536 unranked_no_churn=16; upstream ranked=285 unranked_no_churn=0; the eight extra upstream rows each have churn=1 from commit 2771653."
-
-[[divergence]]
-id = "zoom-leiden-granularity"
-command = "--zoom"
-case = ""
-kind = "richer"
-why = "Our Leiden pass over our own call graph yields a different partition from upstream's Louvain (96 against 46 top modules over 7520 against 7075 symbols), because the algorithms and the two graphs' resolved edges differ; totals and module membership therefore cannot match. The default window is budget-derived and shows more modules than upstream's fixed 40."
-evidence = "measured: ours levels=5 top_modules=96 symbols=7520; upstream levels=5 top_modules=46 symbols=7075; both print the top 2 levels by default."
 
 [[divergence]]
 id = "comment-coherence-auto-cache-path"

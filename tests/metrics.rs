@@ -1,3 +1,6 @@
+#[path = "support/nonlocal.rs"]
+mod nonlocal_support;
+
 mod metrics {
     mod analysis_lenses;
     mod complexity;

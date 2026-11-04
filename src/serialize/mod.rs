@@ -8,6 +8,7 @@ pub mod query_xml;
 pub mod workspace_xml;
 pub mod writer;
 pub mod xml;
+use crate::graph::GraphGauges;
 pub use defs_xml::serialize_defs_xml;
 pub use writer::{MinifyingWriter, XmlWriter, strip_xml_comments};
 
@@ -19,9 +20,9 @@ pub use query_xml::{
     serialize_doc_drift_xml, serialize_exemplar_xml, serialize_exercises_xml, serialize_expand_xml,
     serialize_external_surface_xml, serialize_flags_xml, serialize_for_xml,
     serialize_from_trace_xml, serialize_grep_xml, serialize_legend_dict_xml, serialize_lego_xml,
-    serialize_mentions_xml, serialize_owners_xml, serialize_pack_top_n_xml,
-    serialize_path_between_xml, serialize_recall_text, serialize_safe_delete_xml,
-    serialize_stray_content_xml, serialize_test_gate_xml, serialize_whereis_xml,
+    serialize_mentions_xml, serialize_owners_xml, serialize_path_between_xml,
+    serialize_recall_text, serialize_safe_delete_xml, serialize_stray_content_xml,
+    serialize_test_gate_xml, serialize_whereis_xml,
 };
 
 pub use html::{ColorBy, generate_call_graph_html, write_call_graph_html};
@@ -284,8 +285,6 @@ impl<T: XmlReport + ?Sized> ToXmlString for T {
     }
 }
 
-pub use crate::graph::GraphGauges;
-
 impl GraphGauges {
     pub const ZERO_XML_ATTRS: &'static str =
         "graph_ambiguous=\"0\" graph_unresolved=\"0\" graph_unindexed=\"0\" counts_floor=\"1\"";
@@ -380,13 +379,13 @@ impl PathLayerExt for str {
                 }
             }
         }
-        crate::gate::affected::is_test_path(self).then_some("test")
+        crate::domain::test_path::is_test_path(self).then_some("test")
     }
 
     fn is_inventory_code_file(&self, lang: crate::domain::Lang) -> bool {
         !lang.semantics().is_prose_document()
             && !lang.semantics().is_data_format()
-            && !crate::gate::affected::is_test_or_bench_path(self)
+            && !crate::domain::test_path::is_test_or_bench_path(self)
     }
 
     fn write_layer_attr<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<()> {
@@ -427,10 +426,21 @@ pub trait GitStampExt {
 
 impl GitStampExt for str {
     fn git_at_xml_attr(&self) -> String {
-        match crate::git::history::compute_git_at_stamp(self) {
-            Some(stamp) if !stamp.is_empty() => format!(" at=\"{stamp}\""),
-            _ => String::new(),
-        }
+        git_at_attr(crate::git::history::compute_git_at_stamp(self))
+    }
+}
+
+/// The `at=` attribute for a git stamp: the stamp, nothing outside a git work tree, or a labelled
+/// `at_unavailable` reason when the working tree cannot be read.
+#[must_use]
+pub fn git_at_attr(stamp: Result<Option<String>, String>) -> String {
+    match stamp {
+        Ok(Some(stamp)) if !stamp.is_empty() => format!(" at=\"{stamp}\""),
+        Ok(_) => String::new(),
+        Err(reason) => format!(
+            " at_unavailable=\"{}\"",
+            crate::serialize::XmlEscaped(&reason)
+        ),
     }
 }
 

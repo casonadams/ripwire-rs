@@ -11,21 +11,21 @@ spec = importlib.util.spec_from_file_location(
 vp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vp)
 
-UPSTREAM = '<ensemble schema="ripwire.ensemble/v1" families="4" window="12mo"/>'
-OURS_EXTRA = '<ensemble schema="ripwire-rs.ensemble/v1" families="4" window="12mo" enabled="a,b"/>'
-OURS_MISSING = '<ensemble schema="ripwire-rs.ensemble/v1" families="4"/>'
+UPSTREAM = '<panel schema="ripwire.panel/v1" families="4" window="12mo"/>'
+OURS_EXTRA = '<panel schema="ripwire-rs.panel/v1" families="4" window="12mo" enabled="a,b"/>'
+OURS_MISSING = '<panel schema="ripwire-rs.panel/v1" families="4"/>'
 
 
 class RootAttributeRule(unittest.TestCase):
     def test_richer_entries_may_carry_ours_only_root_attributes(self):
-        self.assertIsNone(vp.check_xml_parity("--ensemble", OURS_EXTRA, UPSTREAM, allow_extra_root=True))
+        self.assertIsNone(vp.check_xml_parity("--quality-panel", OURS_EXTRA, UPSTREAM, allow_extra_root=True))
 
     def test_richer_entries_still_reject_a_missing_upstream_attribute(self):
-        reason = vp.check_xml_parity("--ensemble", OURS_MISSING, UPSTREAM, allow_extra_root=True)
+        reason = vp.check_xml_parity("--quality-panel", OURS_MISSING, UPSTREAM, allow_extra_root=True)
         self.assertIn("missing upstream attrs", reason)
 
     def test_other_entries_reject_extra_root_attributes(self):
-        reason = vp.check_xml_parity("--ensemble", OURS_EXTRA, UPSTREAM)
+        reason = vp.check_xml_parity("--quality-panel", OURS_EXTRA, UPSTREAM)
         self.assertIn("extra=['enabled']", reason)
 
 

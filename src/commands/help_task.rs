@@ -4,13 +4,14 @@ use crate::query::commands::QueryContext;
 use std::io::{self, Write};
 
 pub fn execute<W: Write>(query: &QueryContext<'_>, task: &str, out: &mut W) -> io::Result<()> {
+    let in_repo = gix::open(query.root).is_ok();
     crate::query::task_route::write_help_task_with_facts(
         task,
         query.root,
         query.ingest,
         query.interner,
-        gix::open(query.root).is_ok(),
-        !crate::commands::common::changes::get_working_tree_changed_files(query.root).is_empty(),
+        in_repo,
+        in_repo && !crate::commands::common::changes::get_working_tree_changed_files(query.root)?.is_empty(),
         out,
     )
 }

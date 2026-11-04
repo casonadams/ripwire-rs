@@ -212,192 +212,6 @@ impl crate::serialize::XmlReport for ContextRatioReport {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnsembleRow {
-    pub path: String,
-    pub line: u32,
-    pub name: String,
-    pub fam: usize,
-    pub of: usize,
-    pub fired: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct EnsembleReport {
-    pub eligible: usize,
-    pub ranked: usize,
-    pub no_family: usize,
-    pub cfiles: usize,
-    pub cscope: usize,
-    pub hranked: usize,
-    pub enabled: Vec<&'static str>,
-    pub unavailable: Vec<(&'static str, String)>,
-    pub history: Result<crate::metrics::quality_panel::PanelHistory, String>,
-    pub rows: Vec<EnsembleRow>,
-    pub page: PageRequest,
-}
-
-pub fn compute_ensemble(
-    ingest: &IngestResult,
-    graph: &Graph,
-    interner: &Interner,
-    history: Result<crate::metrics::quality_panel::PanelHistory, String>,
-    page: PageRequest,
-) -> EnsembleReport {
-    use crate::metrics::quality_panel::{
-        ENSEMBLE_FAMILIES, QualityFamilyContext, enabled_families, evaluate_quality_families,
-        unavailable_families,
-    };
-    let cfiles = ingest
-        .files
-        .iter()
-        .filter(|f| f.lang.semantics().supports_c_layout())
-        .count();
-    let unavailable = unavailable_families(cfiles, &history);
-    let enabled = enabled_families(ENSEMBLE_FAMILIES, &unavailable);
-    let enabled_names: Vec<&'static str> = enabled.iter().map(|f| f.name()).collect();
-    let ctx = QualityFamilyContext {
-        graph,
-        interner,
-        state_syms: None,
-        history: history.as_ref().ok(),
-    };
-    let mut cscope = 0usize;
-    let mut hranked = 0usize;
-    let mut rows = Vec::new();
-    let mut eligible = 0usize;
-    let mut no_family = 0usize;
-
-    for sym in &ingest.symbols {
-        if sym.kind != SymKind::Function && sym.kind != SymKind::Method {
-            continue;
-        }
-        eligible += 1;
-        cscope += usize::from(sym.lang.semantics().supports_c_layout());
-        let fired = evaluate_quality_families(sym, &ctx, &enabled);
-        hranked += usize::from(fired.contains(&"historical"));
-        if fired.is_empty() {
-            no_family += 1;
-        } else {
-            let file_path = ingest
-                .files
-                .get(sym.file_id as usize)
-                .map(|f| interner.resolve(&f.path))
-                .unwrap_or("");
-            let name = interner.resolve(&sym.name);
-            rows.push(EnsembleRow {
-                path: file_path.to_string(),
-                line: sym.line,
-                name: name.to_string(),
-                fam: fired.len(),
-                of: enabled.iter().filter(|f| f.applies(sym)).count(),
-                fired: fired.join(","),
-            });
-        }
-    }
-
-    rows.sort_by(|a, b| b.fam.cmp(&a.fam).then_with(|| a.path.cmp(&b.path)));
-    let ranked = rows.len();
-
-    EnsembleReport {
-        eligible,
-        ranked,
-        no_family,
-        cfiles,
-        cscope,
-        hranked,
-        enabled: enabled_names,
-        unavailable,
-        history,
-        rows,
-        page,
-    }
-}
-
-impl EnsembleReport {
-    fn window(&self) -> PageWindow {
-        self.page.window_fit(self.rows.len(), |i| {
-            let r = &self.rows[i];
-            row_bytes(|w| write_ensemble_sym_row(r, w))
-                + row_bytes(|w| write_ensemble_file_row(r, w))
-        })
-    }
-}
-
-fn write_ensemble_sym_row<W: Write + ?Sized>(r: &EnsembleRow, w: &mut W) -> io::Result<()> {
-    writeln!(
-        w,
-        "  <s p=\"{}:{}\" n=\"{}\" fam=\"{}\" of=\"{}\" fired=\"{}\"/>",
-        r.path.xml_escaped(),
-        r.line,
-        r.name.xml_escaped(),
-        r.fam,
-        r.of,
-        r.fired
-    )
-}
-
-fn write_ensemble_file_row<W: Write + ?Sized>(r: &EnsembleRow, w: &mut W) -> io::Result<()> {
-    writeln!(
-        w,
-        "  <f p=\"{}\" top=\"{}\" top_l=\"{}\" top_fam=\"{}\" union_fam=\"{}\" union=\"{}\" syms=\"1\"/>",
-        r.path.xml_escaped(),
-        r.name.xml_escaped(),
-        r.line,
-        r.fam,
-        r.fam,
-        r.fired
-    )
-}
-
-impl crate::serialize::XmlReport for EnsembleReport {
-    crate::xml_report_meta!(
-        "ensemble",
-        "ripwire-rs.ensemble/v1",
-        root: true,
-        comment: "ripwire-rs ensemble schema=ripwire-rs.ensemble/v1: four orthogonal evidence families joined."
-    );
-    fn write_extra_attrs<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        use crate::metrics::quality_panel::{ENSEMBLE_FAMILIES, family_attrs, history_root_attrs};
-        let pw = self.window();
-        let f_shown = pw.shown;
-        let history_attrs = history_root_attrs(&self.history, self.hranked);
-        let family = family_attrs(ENSEMBLE_FAMILIES.len(), &self.enabled, &self.unavailable);
-        write!(
-            w,
-            "{} eligible=\"{}\" ranked=\"{}\" no_family=\"{}\" bar_ccx=\"15\" bar_loc=\"60\" bar_nest=\"4\" bar_params=\"5\" rcut=\"40\" rmeasured=\"{}\" hranked=\"{}\"{history_attrs} cfiles=\"{}\" cscope=\"{}\" lscope=\"{}\" shown_syms=\"{}\" syms_capped=\"{}\" shown_files=\"{f_shown}\" files_capped=\"{}\" total=\"{}\" has_more=\"{}\" next_offset=\"{}\" offset=\"{}\" limit=\"{}\"",
-            family,
-            self.eligible,
-            self.ranked,
-            self.no_family,
-            self.eligible,
-            self.hranked,
-            self.cfiles,
-            self.cscope,
-            self.eligible,
-            pw.shown,
-            usize::from(pw.capped),
-            usize::from(pw.capped),
-            pw.total,
-            usize::from(pw.has_more),
-            pw.next_offset,
-            pw.offset,
-            pw.limit
-        )
-    }
-    fn write_body<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        let pw = self.window();
-        let page_rows = &self.rows[pw.begin..pw.end];
-        for r in page_rows {
-            write_ensemble_sym_row(r, w)?;
-        }
-        for r in page_rows {
-            write_ensemble_file_row(r, w)?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct CommentCoherenceRow {
     pub path: String,
     pub line: u32,
@@ -664,12 +478,6 @@ pub fn classify_identifier_casing(name: &str) -> &'static str {
     }
 }
 
-/// Root and scope for the naming-consistency serializer.
-pub struct NamingScope<'a> {
-    pub root: &'a str,
-    pub include_locals: bool,
-}
-
 fn write_vote_row<W: Write + ?Sized>(
     w: &mut W,
     kind: &str,
@@ -682,44 +490,26 @@ fn write_vote_row<W: Write + ?Sized>(
     )
 }
 
-fn write_style_row<W: Write + ?Sized>(w: &mut W, name: &str, count: usize) -> io::Result<()> {
-    writeln!(w, "  <style name=\"{name}\" count=\"{count}\"/>")
-}
-
 pub fn serialize_naming_consistency_xml<W: Write>(
-    scope: NamingScope<'_>,
+    root: &str,
     ingest: &IngestResult,
     interner: &Interner,
     page: PageRequest,
     out: &mut W,
 ) -> io::Result<()> {
-    let NamingScope {
-        root,
-        include_locals,
-    } = scope;
     let mut counts: std::collections::BTreeMap<(&'static str, &'static str), usize> =
         std::collections::BTreeMap::new();
     for sym in &ingest.symbols {
-        if sym.kind == SymKind::ModuleScope || (!include_locals && sym.kind == SymKind::Var) {
+        if sym.kind == SymKind::ModuleScope {
             continue;
         }
         let name = interner.resolve(&sym.name);
         let style = classify_identifier_casing(name);
         *counts.entry((sym.kind.tag(), style)).or_insert(0) += 1;
     }
-    let schema = if include_locals {
-        "ripwire-rs.naming-locals/v1"
-    } else {
-        "ripwire-rs.naming-consistency/v1"
-    };
-    let tag = if include_locals {
-        "naming-locals"
-    } else {
-        "naming-consistency"
-    };
     writeln!(
         out,
-        "<{tag} schema=\"{schema}\" root=\"{}\" symbols=\"{}\">",
+        "<naming-consistency schema=\"ripwire-rs.naming-consistency/v1\" root=\"{}\" symbols=\"{}\">",
         root.xml_escaped(),
         ingest.symbol_count()
     )?;
@@ -731,37 +521,7 @@ pub fn serialize_naming_consistency_xml<W: Write>(
     for ((kind, style), count) in &votes[pw.begin..pw.end] {
         write_vote_row(out, kind, style, *count)?;
     }
-    writeln!(out, "</{tag}>")
-}
-
-pub fn serialize_naming_calibration_xml<W: Write>(
-    root: &str,
-    ingest: &IngestResult,
-    interner: &Interner,
-    page: PageRequest,
-    out: &mut W,
-) -> io::Result<()> {
-    writeln!(
-        out,
-        "<naming-calibration schema=\"ripwire-rs.naming-calibration/v1\" root=\"{}\" symbols=\"{}\">",
-        root.xml_escaped(),
-        ingest.symbol_count()
-    )?;
-    let mut style_totals: std::collections::BTreeMap<&'static str, usize> =
-        std::collections::BTreeMap::new();
-    for sym in &ingest.symbols {
-        let style = classify_identifier_casing(interner.resolve(&sym.name));
-        *style_totals.entry(style).or_insert(0) += 1;
-    }
-    let styles: Vec<_> = style_totals.into_iter().collect();
-    let pw = page.window_fit(styles.len(), |i| {
-        let (style, count) = styles[i];
-        row_bytes(|w| write_style_row(w, style, count))
-    });
-    for (style, count) in &styles[pw.begin..pw.end] {
-        write_style_row(out, style, *count)?;
-    }
-    writeln!(out, "</naming-calibration>")
+    writeln!(out, "</naming-consistency>")
 }
 
 fn extract_module_intents(members: &[(&'static str, &str, &str, u32)]) -> String {

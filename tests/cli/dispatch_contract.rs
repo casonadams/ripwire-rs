@@ -1,13 +1,13 @@
 use ripwire_rs::commands::context::ExecutionContext;
 use ripwire_rs::commands::{
-    around, biggest_first, communities, context_ratio, external_surface, layout,
-    naming_calibration, naming_consistency, quality_panel, report, symbol_metrics, tree,
+    around, biggest_first, communities, context_ratio, external_surface, naming_consistency,
+    quality_panel, report, symbol_metrics, tree,
 };
 use ripwire_rs::commands::{
     around::AroundArgs, biggest_first::BiggestFirstArgs, communities::CommunitiesArgs,
-    context_ratio::ContextRatioArgs, external_surface::ExternalSurfaceArgs, layout::LayoutArgs,
-    naming_calibration::NamingCalibrationArgs, naming_consistency::NamingConsistencyArgs,
-    quality_panel::QualityPanelArgs, symbol_metrics::SymbolMetricsArgs,
+    context_ratio::ContextRatioArgs, external_surface::ExternalSurfaceArgs,
+    naming_consistency::NamingConsistencyArgs, quality_panel::QualityPanelArgs,
+    symbol_metrics::SymbolMetricsArgs,
 };
 use ripwire_rs::serialize::XmlWriter;
 use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, PageRankConfig, ingest_in_memory_files};
@@ -179,37 +179,6 @@ fn naming_votes_count_only_the_selected_language_definitions() {
 }
 
 #[test]
-fn c_layout_rejects_a_rust_function_before_source_loading() {
-    let error = render(&["--layout", "entry"], |ctx, out| {
-        layout::render(ctx, &ctx.cli.plugins.decode::<LayoutArgs>().unwrap(), out)
-    })
-    .unwrap_err();
-    assert!(
-        error.to_string().contains("no C-family aggregate body"),
-        "{error}"
-    );
-}
-
-#[test]
-fn naming_calibration_counts_the_observed_definition_style() {
-    let output = render(&["--naming-calibration"], |ctx, out| {
-        naming_calibration::render(
-            ctx,
-            &ctx.cli.plugins.decode::<NamingCalibrationArgs>().unwrap(),
-            out,
-        )
-    })
-    .unwrap();
-    let document = roxmltree::Document::parse(&output).unwrap();
-    let styles: Vec<_> = document
-        .descendants()
-        .filter(|node| node.has_tag_name("style"))
-        .map(|node| (node.attribute("name"), node.attribute("count")))
-        .collect();
-    assert_eq!(styles, [(Some("lower"), Some("3"))]);
-}
-
-#[test]
 fn executive_report_ranks_the_reached_helper_ahead_of_uncalled_entries() {
     let output = render(&["--report"], report::render).unwrap();
     let rows: Vec<_> = output
@@ -291,211 +260,163 @@ fn selected<A: clap::FromArgMatches + 'static>(
         .is_some_and(|args| (plugin.selected)(&args))
 }
 
+fn assert_group(group: &dyn Fn(&ripwire_rs::Cli) -> bool, on: &[&str], off: &[&str]) {
+    let active = |flag: &str| group(&ripwire_rs::parse_from(["rw", flag]).unwrap());
+    for flag in on {
+        assert!(active(flag), "{flag}");
+    }
+    for flag in off {
+        assert!(!active(flag), "{flag}");
+    }
+}
+
+/// A selector that is true when the command line selects any of the listed plugins.
+macro_rules! selects {
+    ($($plugin:path),+ $(,)?) => {
+        |cli: &ripwire_rs::Cli| [$(selected(cli, &$plugin)),+].into_iter().any(|on| on)
+    };
+}
+
 #[test]
-fn detail_group_is_active_only_for_its_primary_flags() {
+fn primary_flags_select_only_their_group() {
+    use ripwire_rs::commands as c;
     use ripwire_rs::commands::{
-        biggest_first, expand, legend_dict, lint, lint_catalog, naming_calibration,
-        naming_consistency, naming_locals, nonlocal_state, outline, pack_top_n, report, tree,
+        arch, around, biggest_first, comment_coherence, communities, context_ratio, dead_code,
+        deps, expand, external_surface, field_affinity, legend_dict, lint, lint_catalog, mermaid,
+        naming_consistency, nonlocal_state, quality_panel, report, symbol_metrics, tree,
     };
-    let active = |flag: &str| {
-        let cli = ripwire_rs::parse_from(["rw", flag]).unwrap();
-        selected(&cli, &expand::EXPAND)
-            || selected(&cli, &outline::OUTLINE)
-            || selected(&cli, &pack_top_n::PACK_TOP_N)
-            || selected(&cli, &tree::TREE)
-            || selected(&cli, &biggest_first::BIGGEST_FIRST)
-            || selected(&cli, &nonlocal_state::NONLOCAL_STATE)
-            || selected(&cli, &lint::LINT)
-            || selected(&cli, &lint_catalog::LINT_CATALOG)
-            || selected(&cli, &naming_locals::NAMING_LOCALS)
-            || selected(&cli, &naming_consistency::NAMING_CONSISTENCY)
-            || selected(&cli, &naming_calibration::NAMING_CALIBRATION)
-            || selected(&cli, &report::REPORT)
-            || selected(&cli, &legend_dict::LEGEND_DICT)
-    };
-    for flag in [
-        "--expand=a",
-        "--outline=a",
-        "--pack-top-n=1",
-        "--tree",
-        "--biggest-first",
-        "--nonlocal-state",
-        "--lint",
-        "--lint-catalog",
-        "--naming-locals",
-        "--naming-consistency",
-        "--naming-calibration",
-        "--report",
-        "--legend-dict",
-    ] {
-        assert!(active(flag), "{flag}");
-    }
-    for flag in [
-        "--lint-select=a",
-        "--lint-ignore=a",
-        "--lint-max-per-rule=1",
-    ] {
-        assert!(!active(flag), "{flag}");
-    }
-}
-
-#[test]
-fn workspace_group_is_active_only_for_its_primary_flags() {
-    let active = |flag: &str| {
-        let cli = ripwire_rs::parse_from(["rw", flag]).unwrap();
-        let p = &cli.plugins;
-        use ripwire_rs::commands as c;
-        [
-            (c::owners::OWNERS.selected)(&p.decode().unwrap()),
-            (c::stray_content::STRAY_CONTENT.selected)(&p.decode().unwrap()),
-            (c::replace_symbol_body::REPLACE_SYMBOL_BODY.selected)(&p.decode().unwrap()),
-            (c::insert_before_symbol::INSERT_BEFORE_SYMBOL.selected)(&p.decode().unwrap()),
-            (c::insert_after_symbol::INSERT_AFTER_SYMBOL.selected)(&p.decode().unwrap()),
-            (c::whereis::WHEREIS.selected)(&p.decode().unwrap()),
-            (c::doc_drift::DOC_DRIFT.selected)(&p.decode().unwrap()),
-            (c::flags_report::FLAGS.selected)(&p.decode().unwrap()),
-            (c::mentions::MENTIONS.selected)(&p.decode().unwrap()),
-            (c::doctor::DOCTOR.selected)(&p.decode().unwrap()),
-            (c::handoff::HANDOFF.selected)(&p.decode().unwrap()),
-            (c::notes::NOTES.selected)(&p.decode().unwrap()),
-            (c::note_add::NOTE_ADD.selected)(&p.decode().unwrap()),
-            (c::flip::FLIP.selected)(&p.decode().unwrap()),
-            (c::plan_lint::PLAN_LINT.selected)(&p.decode().unwrap()),
-            (c::skipped::SKIPPED.selected)(&p.decode().unwrap()),
-        ]
-        .into_iter()
-        .any(|on| on)
-    };
-    for flag in [
-        "--whereis=a",
-        "--mentions=a",
-        "--note-add=a",
-        "--flip=a",
-        "--plan-lint=a",
-        "--owners",
-        "--doc-drift",
-        "--flags",
-        "--stray-content",
-        "--doctor",
-        "--handoff",
-        "--notes",
-        "--skipped",
-        "--replace-symbol-body=a:b",
-        "--insert-before-symbol=a:b",
-        "--insert-after-symbol=a:b",
-    ] {
-        assert!(active(flag), "{flag}");
-    }
-    for flag in [
-        "--whereis-full-text",
-        "--whereis-listing=defs",
-        "--gateability",
-        "--abi",
-    ] {
-        assert!(!active(flag), "{flag}");
-    }
-}
-
-#[test]
-fn safety_group_is_active_only_for_its_primary_flags() {
-    let active = |flag: &str| {
-        let cli = ripwire_rs::parse_from(["rw", flag]).unwrap();
-        let p = &cli.plugins;
-        use ripwire_rs::commands as c;
-        [
-            (c::test_gate::TEST_GATE.selected)(&p.decode().unwrap()),
-            (c::situ::SITU.selected)(&p.decode().unwrap()),
-            (c::safe_delete::SAFE_DELETE.selected)(&p.decode().unwrap()),
-            (c::exercises::EXERCISES.selected)(&p.decode().unwrap()),
-            (c::pr_context::PR_CONTEXT.selected)(&p.decode().unwrap()),
-            (c::merge_scout::MERGE_SCOUT.selected)(&p.decode().unwrap()),
-            (c::dmm::DMM.selected)(&p.decode().unwrap()),
-            (c::plan_lanes::PLAN_LANES.selected)(&p.decode().unwrap()),
-            (c::scan_skills::SCAN_SKILLS.selected)(&p.decode().unwrap()),
-            (c::edit_plan::EDIT_PLAN.selected)(&p.decode().unwrap()),
-            (c::partition::PARTITION.selected)(&p.decode().unwrap()),
-            (c::seams::SEAMS.selected)(&p.decode().unwrap()),
-            (c::pin_census::PIN_CENSUS.selected)(&p.decode().unwrap()),
-            (c::baseline::BASELINE.selected)(&p.decode().unwrap()),
-        ]
-        .into_iter()
-        .any(|on| on)
-    };
-    for flag in [
-        "--test-gate=a",
-        "--situ=a",
-        "--safe-delete=a",
-        "--exercises=a",
-        "--pr-context=a",
-        "--merge-scout=a",
-        "--dmm=a",
-        "--plan-lanes",
-        "--scan-skills=a",
-        "--edit-plan=a",
-        "--edit-payload=a",
-        "--partition",
-        "--seams",
-        "--pin-census",
-        "--baseline",
-        "--baseline-update",
-    ] {
-        assert!(active(flag), "{flag}");
-    }
-    for flag in ["--owners", "--doc-drift", "--flags", "--lint-select=a"] {
-        assert!(!active(flag), "{flag}");
-    }
-}
-
-#[test]
-fn architecture_group_is_active_only_for_its_primary_flags() {
-    use ripwire_rs::commands::{
-        arch, around, comment_coherence, communities, context_ratio, dead_code, deps, ensemble,
-        external_surface, field_affinity, layout, mermaid, quality_panel, symbol_metrics, zoom,
-    };
-    let active = |flag: &str| {
-        let cli = ripwire_rs::parse_from(["rw", flag]).unwrap();
-        selected(&cli, &dead_code::DEAD_CODE)
-            || selected(&cli, &communities::COMMUNITIES)
-            || selected(&cli, &deps::DEPS)
-            || selected(&cli, &around::AROUND)
-            || selected(&cli, &external_surface::EXTERNAL_SURFACE)
-            || selected(&cli, &arch::ARCH)
-            || selected(&cli, &mermaid::MERMAID)
-            || selected(&cli, &zoom::ZOOM)
-            || selected(&cli, &symbol_metrics::SYMBOL_METRICS)
-            || selected(&cli, &quality_panel::QUALITY_PANEL)
-            || selected(&cli, &layout::LAYOUT)
-            || selected(&cli, &field_affinity::FIELD_AFFINITY)
-            || selected(&cli, &context_ratio::CONTEXT_RATIO)
-            || selected(&cli, &ensemble::ENSEMBLE)
-            || selected(&cli, &comment_coherence::COMMENT_COHERENCE)
-    };
-    for flag in [
-        "--dead-code",
-        "--communities",
-        "--community=1",
-        "--deps",
-        "--around=a",
-        "--external-surface",
-        "--arch=a",
-        "--mermaid",
-        "--zoom=2",
-        "--metrics",
-        "--quality-panel",
-        "--layout=a",
-        "--field-affinity",
-        "--context-ratio",
-        "--ensemble",
-        "--comment-coherence",
-    ] {
-        assert!(active(flag), "{flag}");
-    }
-    for flag in [
-        "--sarif",
-        "--zoom-levels=1",
-        "--around-depth=2",
-        "--include-builtins",
-    ] {
-        assert!(!active(flag), "{flag}");
-    }
+    let detail = selects!(
+        expand::EXPAND,
+        tree::TREE,
+        biggest_first::BIGGEST_FIRST,
+        nonlocal_state::NONLOCAL_STATE,
+        lint::LINT,
+        lint_catalog::LINT_CATALOG,
+        naming_consistency::NAMING_CONSISTENCY,
+        report::REPORT,
+        legend_dict::LEGEND_DICT,
+    );
+    assert_group(
+        &detail,
+        &[
+            "--expand=a",
+            "--tree",
+            "--biggest-first",
+            "--nonlocal-state",
+            "--lint",
+            "--lint-catalog",
+            "--naming-consistency",
+            "--report",
+            "--legend-dict",
+        ],
+        &[
+            "--lint-select=a",
+            "--lint-ignore=a",
+            "--lint-max-per-rule=1",
+        ],
+    );
+    let workspace = selects!(
+        c::owners::OWNERS,
+        c::stray_content::STRAY_CONTENT,
+        c::replace_symbol_body::REPLACE_SYMBOL_BODY,
+        c::insert_before_symbol::INSERT_BEFORE_SYMBOL,
+        c::insert_after_symbol::INSERT_AFTER_SYMBOL,
+        c::whereis::WHEREIS,
+        c::doc_drift::DOC_DRIFT,
+        c::flags_report::FLAGS,
+        c::mentions::MENTIONS,
+        c::doctor::DOCTOR,
+        c::handoff::HANDOFF,
+        c::notes::NOTES,
+        c::note_add::NOTE_ADD,
+        c::flip::FLIP,
+    );
+    assert_group(
+        &workspace,
+        &[
+            "--whereis=a",
+            "--mentions=a",
+            "--note-add=a",
+            "--flip=a",
+            "--owners",
+            "--doc-drift",
+            "--flags",
+            "--stray-content",
+            "--doctor",
+            "--handoff",
+            "--notes",
+            "--replace-symbol-body=a:b",
+            "--insert-before-symbol=a:b",
+            "--insert-after-symbol=a:b",
+        ],
+        &["--whereis-full-text", "--whereis-listing=defs"],
+    );
+    let safety = selects!(
+        c::test_gate::TEST_GATE,
+        c::situ::SITU,
+        c::safe_delete::SAFE_DELETE,
+        c::exercises::EXERCISES,
+        c::pr_context::PR_CONTEXT,
+        c::merge_scout::MERGE_SCOUT,
+        c::dmm::DMM,
+        c::plan_lanes::PLAN_LANES,
+        c::scan_skills::SCAN_SKILLS,
+        c::edit_payload::EDIT_PAYLOAD,
+        c::partition::PARTITION,
+        c::seams::SEAMS,
+        c::baseline::BASELINE,
+    );
+    assert_group(
+        &safety,
+        &[
+            "--test-gate=a",
+            "--situ=a",
+            "--safe-delete=a",
+            "--exercises=a",
+            "--pr-context=a",
+            "--merge-scout=a",
+            "--dmm=a",
+            "--plan-lanes",
+            "--scan-skills=a",
+            "--edit-payload=a",
+            "--partition",
+            "--seams",
+            "--baseline",
+            "--baseline-update",
+        ],
+        &["--owners", "--doc-drift", "--flags", "--lint-select=a"],
+    );
+    let architecture = selects!(
+        dead_code::DEAD_CODE,
+        communities::COMMUNITIES,
+        deps::DEPS,
+        around::AROUND,
+        external_surface::EXTERNAL_SURFACE,
+        arch::ARCH,
+        mermaid::MERMAID,
+        symbol_metrics::SYMBOL_METRICS,
+        quality_panel::QUALITY_PANEL,
+        field_affinity::FIELD_AFFINITY,
+        context_ratio::CONTEXT_RATIO,
+        comment_coherence::COMMENT_COHERENCE,
+    );
+    assert_group(
+        &architecture,
+        &[
+            "--dead-code",
+            "--communities",
+            "--community=1",
+            "--deps",
+            "--around=a",
+            "--external-surface",
+            "--arch=a",
+            "--mermaid",
+            "--metrics",
+            "--quality-panel",
+            "--field-affinity",
+            "--context-ratio",
+            "--comment-coherence",
+        ],
+        &["--sarif", "--around-depth=2", "--include-builtins"],
+    );
 }

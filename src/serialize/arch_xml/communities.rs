@@ -21,7 +21,7 @@ pub struct CommunitySummary<'a> {
     pub connected_singletons: usize,
     pub symbols: usize,
     pub pr_iters: u32,
-    pub gauges: crate::serialize::GraphGauges,
+    pub gauges: crate::graph::GraphGauges,
     pub bridges: Vec<(u32, u32, &'a str, &'a str, usize)>,
 }
 
@@ -108,7 +108,7 @@ impl crate::serialize::XmlReport for CommunitiesReport<'_> {
     fn pr_iters(&self) -> Option<u32> {
         Some(self.summary.pr_iters.max(1))
     }
-    fn graph_gauges(&self) -> Option<crate::serialize::GraphGauges> {
+    fn graph_gauges(&self) -> Option<crate::graph::GraphGauges> {
         Some(self.summary.gauges)
     }
     fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {

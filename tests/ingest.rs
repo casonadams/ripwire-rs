@@ -1,3 +1,6 @@
+#[path = "support/uses.rs"]
+mod uses_support;
+
 mod ingest {
     mod astro;
     mod identifiers;

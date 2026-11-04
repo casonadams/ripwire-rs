@@ -23,7 +23,7 @@ more correct, or more honest.
   outcome; a smaller labelled answer is better than a larger unlabelled one.
 - **Correctness of resolution is the ceiling.** Every verb inherits the call graph. Improve resolution
   recall and precision before adding verbs. Measure with `scripts/retrieval-eval.py` and
-  `--eval-retrieval` (baseline in `docs/BASELINE.md`), not by output volume.
+  `--eval=retrieval` (baseline in `docs/BASELINE.md`), not by output volume.
 - **A small agent-facing surface.** Each new flag, skill or doc page costs every agent that reads it.
   Prefer extending an existing verb. Do not add a verb without removing or folding another, and keep the
   always-loaded skill text short.
@@ -38,7 +38,7 @@ more correct, or more honest.
   the dependency footprint (`default-features = false`), then measure quality and latency against the code it
   replaces; adopt it when it is no worse on either.
 - **Compilers are the oracle for resolution.** `make resolution` scores the call graph against a
-  rust-analyzer SCIP index (`--eval-scip`): precision and recall floors live in
+  rust-analyzer SCIP index (`--eval=scip --scip=INDEX`): precision and recall floors live in
   `scripts/resolution-ceilings.toml`. For another language, index a real corpus (`scip-typescript`,
   `scip-python`, `scip-clang`) and score it before and after a change; a fixture alone does not show whether a
   gap matters on real code. A resolver change that adds wrong edges is rejected even if recall rises.

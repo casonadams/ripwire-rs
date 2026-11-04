@@ -95,9 +95,6 @@ fn task_scope_precedes_budget_and_details_use_supplied_bytes() {
     let error =
         execute_body_query(&request, &ingest, &interner, &missing, &mut Vec::new()).unwrap_err();
     assert!(error.to_string().contains("cannot read file"));
-    let pattern = call_pattern_search(&fixtures, &ingest, &interner, "marker = 2", Some("beta"));
-    assert_eq!(pattern["count"], 1);
-    assert_eq!(pattern["hits"][0]["path"], "beta.rs");
 }
 
 #[test]

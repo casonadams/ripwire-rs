@@ -1,4 +1,4 @@
-//! `--naming-consistency`: naming convention consistency check.
+//! `--naming-consistency`: naming convention consistency check over symbols and locals.
 use super::SharedOption;
 use super::plugin::report_command;
 use crate::commands::context::{ExecutionContext, Paginated};
@@ -11,7 +11,7 @@ report_command! {
     static: NAMING_CONSISTENCY,
     options: [SharedOption::Paged],
     run: report(render),
-    /// Naming convention consistency check
+    /// Naming convention consistency check over symbols and locals
     #[arg(long = "naming-consistency")]
     naming_consistency: bool,
 }
@@ -22,7 +22,7 @@ pub fn render<W: Write>(
     out: &mut XmlWriter<'_, W>,
 ) -> io::Result<()> {
     crate::metrics::serialize_naming_consistency_xml(
-        crate::metrics::NamingScope { root: ctx.root, include_locals: false },
+        ctx.root,
         ctx.ingest,
         ctx.interner,
         ctx.cli.page_request(),

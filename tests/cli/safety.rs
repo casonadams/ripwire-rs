@@ -1,3 +1,5 @@
+use crate::index_support::index;
+use ripwire_rs::Lang;
 use ripwire_rs::commands::common::changes::resolve_changed_or_spec_files;
 use ripwire_rs::commands::common::gate::validate_gate_modifiers;
 use ripwire_rs::commands::common::safety_queries::*;
@@ -5,24 +7,17 @@ use ripwire_rs::git::history::CommitInfo;
 use ripwire_rs::query::safety::SafetyContext;
 use ripwire_rs::serialize::{PageRequest, XmlReport};
 use ripwire_rs::skills::{SkillScanFinding, SkillScanReport};
-use ripwire_rs::{Graph, IngestResult, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
-
-fn sample_corpus(files: &[(&str, Lang, &[u8])]) -> (IngestResult, Graph, Interner) {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(files, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    (ingest, graph, interner)
-}
 
 #[test]
-fn test_resolve_changed_or_spec_files_pure_facts() {
-    let files =
-        resolve_changed_or_spec_files("any-root", Some("src/alpha.rs, src/beta.rs, src/gamma.rs "));
+fn test_resolve_changed_or_spec_files_splits_trims_and_drops_blanks() {
+    let spec = "src/alpha.rs, src/beta.rs, src/gamma.rs ";
+    let files = resolve_changed_or_spec_files("any-root", Some(spec)).unwrap();
     assert_eq!(files, vec!["src/alpha.rs", "src/beta.rs", "src/gamma.rs"]);
-
-    let empty = resolve_changed_or_spec_files("any-root", Some(""));
-    assert!(empty.is_empty());
+    assert!(
+        resolve_changed_or_spec_files("any-root", Some(""))
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -67,8 +62,7 @@ fn test_render_skill_scan_report_verdicts_and_xml() {
 
 #[test]
 fn test_execute_edit_plan_from_facts_behavior() {
-    let (ingest, graph, interner) =
-        sample_corpus(&[("src/lib.rs", Lang::Rust, b"pub fn original() {}\n")]);
+    let (ingest, graph, interner) = index(&[("src/lib.rs", Lang::Rust, b"pub fn original() {}\n")]);
     let ctx = SafetyContext {
         root: "root",
         ingest: &ingest,
@@ -86,8 +80,7 @@ fn test_execute_edit_plan_from_facts_behavior() {
 
 #[test]
 fn test_execute_pr_context_from_facts() {
-    let (ingest, graph, interner) =
-        sample_corpus(&[("src/lib.rs", Lang::Rust, b"pub fn worker() {}\n")]);
+    let (ingest, graph, interner) = index(&[("src/lib.rs", Lang::Rust, b"pub fn worker() {}\n")]);
     let ctx = SafetyContext {
         root: "root",
         ingest: &ingest,
@@ -121,7 +114,7 @@ fn test_execute_pr_context_from_facts() {
 
 #[test]
 fn test_execute_test_gate_and_situ_from_facts() {
-    let (ingest, graph, interner) = sample_corpus(&[
+    let (ingest, graph, interner) = index(&[
         ("src/lib.rs", Lang::Rust, b"pub fn target() {}\n"),
         (
             "tests/test_lib.rs",
@@ -186,7 +179,7 @@ fn test_validate_gate_modifiers_policy() {
 
 #[test]
 fn seams_report_preserves_the_uncovered_edge() {
-    let (ingest, graph, interner) = sample_corpus(&[
+    let (ingest, graph, interner) = index(&[
         ("api/entry.rs", Lang::Rust, b"pub fn entry() { store(); }\n"),
         ("data/store.rs", Lang::Rust, b"pub fn store() {}\n"),
     ]);
@@ -222,7 +215,7 @@ fn seams_report_preserves_the_uncovered_edge() {
 }
 
 fn safe_delete_xml(files: &[(&str, Lang, &[u8])], sym: &str) -> String {
-    let (ingest, graph, interner) = sample_corpus(files);
+    let (ingest, graph, interner) = index(files);
     let facts = SafetyContext {
         root: ":memory:",
         ingest: &ingest,

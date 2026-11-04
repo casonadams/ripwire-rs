@@ -73,7 +73,7 @@ impl PanelHistory {
         let since = resolve_cutoff_timestamp(None, DEFAULT_CHURN_MONTHS).unwrap_or(0);
         let commits =
             walk_repository_history_scoped(root, Some(since)).map_err(|e| e.to_string())?;
-        let at = compute_git_at_stamp(root).ok_or("HEAD has no commit stamp")?;
+        let at = compute_git_at_stamp(root)?.ok_or("HEAD has no commit stamp")?;
         Ok(Self::from_commits(ingest, interner, &commits, at, since))
     }
 }

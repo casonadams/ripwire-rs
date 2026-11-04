@@ -46,8 +46,8 @@ jobs:
       - name: Install cccc
         run: cargo binstall --no-confirm --locked --force cccc-cli@1.7.0
 
-      - name: Format, clippy, complexity and registry gates
-        run: make fmt-check clippy complexity registry
+      - name: Format, clippy, complexity, registry and script gates
+        run: make fmt-check clippy complexity registry script-tests
 
   coverage-crap:
     name: Coverage & CRAP Metric

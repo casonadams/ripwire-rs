@@ -201,7 +201,7 @@ pub fn single_file_candidate(
 ) -> Option<CrawledFile> {
     let name = path.file_name()?.to_str()?;
     let typed = path.to_string_lossy().replace('\\', "/");
-    if options.ignore_tests && crate::gate::affected::is_test_path(&typed) {
+    if options.ignore_tests && crate::domain::test_path::is_test_path(&typed) {
         return None;
     }
     let mut file = evaluate_candidate(name, byte_size, false, options)?;
@@ -274,7 +274,7 @@ pub fn evaluate_candidate(
 ) -> Option<CrawledFile> {
     let path = Path::new(rel_path);
     if is_path_denylisted(path, &options.custom_excludes)
-        || (options.ignore_tests && crate::gate::affected::is_test_path(rel_path))
+        || (options.ignore_tests && crate::domain::test_path::is_test_path(rel_path))
     {
         return None;
     }
@@ -295,87 +295,6 @@ pub fn evaluate_candidate(
         lang,
         byte_size,
     })
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct SkippedCensus {
-    pub oversize: Vec<(String, u64, String)>,
-    pub unsupported: Vec<(String, u64, String)>,
-    pub excluded: Vec<(String, u64, String)>,
-    pub unindexed_exts: Vec<(String, usize)>,
-}
-
-pub fn classify_skipped_item(
-    rel_path: &str,
-    is_dir: bool,
-    size: u64,
-    options: &CrawlerOptions,
-    census: &mut SkippedCensus,
-    ext_counts: &mut std::collections::HashMap<String, usize>,
-) {
-    if is_dir {
-        return;
-    }
-    let norm_path = rel_path.replace('\\', "/");
-    let ext = Path::new(&norm_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if is_path_denylisted(&norm_path, &options.custom_excludes) {
-        census.excluded.push((norm_path, size, ext));
-        return;
-    }
-    let lang = resolve_path_lang(Path::new(&norm_path));
-    if lang == Lang::Unknown {
-        if !ext.is_empty() {
-            *ext_counts.entry(ext.clone()).or_default() += 1;
-        }
-        census.unsupported.push((norm_path, size, ext));
-    } else if size > lang.semantics().max_file_size(options.max_file_size) {
-        census.oversize.push((norm_path, size, ext));
-    }
-}
-
-fn classify_skipped_entry(
-    entry: &ignore::DirEntry,
-    root: &Path,
-    options: &CrawlerOptions,
-    census: &mut SkippedCensus,
-    ext_counts: &mut std::collections::HashMap<String, usize>,
-) {
-    let path = entry.path();
-    let size = entry.metadata().map_or(0, |m| m.len());
-    let rel_path = if path == root {
-        path.file_name().unwrap_or_default()
-    } else {
-        path.strip_prefix(root).unwrap_or(path).as_os_str()
-    };
-    classify_skipped_item(
-        &rel_path.to_string_lossy(),
-        path.is_dir(),
-        size,
-        options,
-        census,
-        ext_counts,
-    );
-}
-
-#[must_use]
-pub fn scan_skipped_census<P: AsRef<Path>>(root: P, options: &CrawlerOptions) -> SkippedCensus {
-    let root = root.as_ref();
-    let mut census = SkippedCensus::default();
-    let mut ext_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    for entry in build_walker(root, options).flatten() {
-        classify_skipped_entry(&entry, root, options, &mut census, &mut ext_counts);
-    }
-    census.oversize.sort_by(|a, b| a.0.cmp(&b.0));
-    census.unsupported.sort_by(|a, b| a.0.cmp(&b.0));
-    census.excluded.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut exts: Vec<(String, usize)> = ext_counts.into_iter().collect();
-    exts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    census.unindexed_exts = exts;
-    census
 }
 
 #[derive(Debug, Default, Clone)]
@@ -425,4 +344,13 @@ pub fn read_rel_bytes<P: AsRef<Path>>(root: P, rel_path: &str) -> std::io::Resul
 
 pub fn read_rel_string<P: AsRef<Path>>(root: P, rel_path: &str) -> std::io::Result<String> {
     std::fs::read_to_string(root.as_ref().join(rel_path))
+}
+
+/// The value of a read that may find nothing: `absent()` when the file does not exist, `Err` for any
+/// other failure.
+pub fn or_absent<T>(read: std::io::Result<T>, absent: impl FnOnce() -> T) -> std::io::Result<T> {
+    match read {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(absent()),
+        other => other,
+    }
 }

@@ -309,43 +309,49 @@ fn walk_node(
     Ok(Some(WalkNode {
         timestamp,
         is_merge: commit.parent_ids().nth(1).is_some(),
-        followed_parents: followed_parents(repo, &commit, prefix),
+        followed_parents: followed_parents(repo, &commit, prefix)?,
     }))
 }
 
-fn tree_at_prefix(commit: &gix::Commit<'_>, prefix: &str) -> Option<gix::ObjectId> {
-    let tree = commit.tree().ok()?;
+/// The tree id `commit` holds at `prefix`; `Ok(None)` when the prefix is absent from that commit.
+fn tree_at_prefix(
+    commit: &gix::Commit<'_>,
+    prefix: &str,
+) -> Result<Option<gix::ObjectId>, GitHistoryError> {
+    let tree = commit.tree().map_err(walk_err)?;
     if prefix.is_empty() {
-        return Some(tree.id);
+        return Ok(Some(tree.id));
     }
     let entry = tree
         .lookup_entry_by_path(prefix.trim_end_matches('/'))
-        .ok()??;
-    Some(entry.object_id())
+        .map_err(walk_err)?;
+    Ok(entry.map(|entry| entry.object_id()))
 }
 
 /// Parents to follow from `commit`: a merge identical under `prefix` to one parent follows only that
-/// parent, as git's default history simplification does for a `-- <prefix>` pathspec.
+/// parent, as git's default history simplification does for a `-- <prefix>` pathspec. A parent
+/// absent from the object store (a shallow boundary) cannot be compared and is not followed as a
+/// match; any other read failure is an error.
 fn followed_parents(
     repo: &gix::Repository,
     commit: &gix::Commit<'_>,
     prefix: &str,
-) -> Vec<gix::ObjectId> {
+) -> Result<Vec<gix::ObjectId>, GitHistoryError> {
     let parents: Vec<gix::ObjectId> = commit.parent_ids().map(gix::Id::detach).collect();
     if parents.len() < 2 {
-        return parents;
+        return Ok(parents);
     }
-    let own = tree_at_prefix(commit, prefix);
-    parents
-        .iter()
-        .copied()
-        .find(|&p| {
-            repo.find_commit(p)
-                .ok()
-                .and_then(|pc| tree_at_prefix(&pc, prefix))
-                == own
-        })
-        .map_or(parents, |p| vec![p])
+    let own = tree_at_prefix(commit, prefix)?;
+    for &parent in &parents {
+        let Some(object) = repo.try_find_object(parent).map_err(walk_err)? else {
+            continue;
+        };
+        let parent_commit = object.try_into_commit().map_err(walk_err)?;
+        if tree_at_prefix(&parent_commit, prefix)? == own {
+            return Ok(vec![parent]);
+        }
+    }
+    Ok(parents)
 }
 
 /// A commit waiting to be visited: newest first, larger id first on equal times.
@@ -527,15 +533,17 @@ pub fn resolve_head_sha<P: AsRef<Path>>(root: P) -> Option<String> {
     Some(head.id().to_string())
 }
 
-/// Compute the canonical git stamp `sha[+dirty]` for a repository root.
-#[must_use]
-pub fn compute_git_at_stamp(root: &str) -> Option<String> {
-    let full_id = resolve_head_sha(root)?;
+/// Compute the canonical git stamp `sha[+dirty]` for a repository root. `Ok(None)` when there is no
+/// HEAD commit; `Err` when the working tree cannot be read, so its dirtiness is unknown.
+pub fn compute_git_at_stamp(root: &str) -> Result<Option<String>, String> {
+    let Some(full_id) = resolve_head_sha(root) else {
+        return Ok(None);
+    };
     let short_sha = &full_id[..9.min(full_id.len())];
-    let dirty = super::repo::is_dirty(root);
-    Some(if dirty {
+    let dirty = super::repo::is_dirty(root)?;
+    Ok(Some(if dirty {
         format!("{short_sha}+dirty")
     } else {
         short_sha.to_string()
-    })
+    }))
 }

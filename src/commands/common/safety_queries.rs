@@ -79,8 +79,10 @@ pub fn execute_test_gate_query_paged<W: Write>(
     interner: &Interner,
     out: &mut W,
 ) -> io::Result<bool> {
-    let files = resolve_changed_or_spec_files(root, files_spec);
-    let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+    let files = resolve_changed_or_spec_files(root, files_spec)?;
+    let at_stamp = crate::git::history::compute_git_at_stamp(root)
+        .map_err(io::Error::other)?
+        .unwrap_or_default();
     let ctx = SafetyContext {
         root,
         ingest,
@@ -124,9 +126,10 @@ pub fn execute_situ_query<W: Write>(
     page: crate::serialize::PageRequest,
     out: &mut W,
 ) -> io::Result<()> {
-    let files = resolve_changed_or_spec_files(ctx.root, files_spec);
-    let commits = crate::git::history::walk_repository_history(ctx.root).ok();
-    execute_situ_from_facts(ctx, &files, commits.as_deref(), page, out)
+    let files = resolve_changed_or_spec_files(ctx.root, files_spec)?;
+    let commits =
+        crate::git::history::walk_repository_history(ctx.root).map_err(io::Error::other)?;
+    execute_situ_from_facts(ctx, &files, Some(commits.as_slice()), page, out)
 }
 
 pub fn execute_safe_delete_query<W: Write>(
@@ -174,7 +177,7 @@ pub fn execute_safe_delete_query<W: Write>(
             tested_mask.get(id as usize).copied().unwrap_or(false)
                 || ingest
                     .sym(id)
-                    .is_some_and(|s| crate::gate::affected::is_test_path(view.sym_path(s)))
+                    .is_some_and(|s| crate::domain::test_path::is_test_path(view.sym_path(s)))
         })
         .count();
     let ranks = vec![0.0; ingest.symbols.len()];
@@ -224,7 +227,7 @@ pub fn execute_exercises_query<W: Write>(
                 continue;
             };
             let tp = ingest.sym_file_path(target, interner);
-            if !crate::gate::affected::is_test_path(tp) {
+            if !crate::domain::test_path::is_test_path(tp) {
                 reached.push((tp, &interner[target.name]));
             }
         }
@@ -299,12 +302,14 @@ pub fn execute_pr_context_dispatch<W: Write>(
                 .map_err(|e| io::Error::other(format!("--pr-context: {e}")))?;
             (changes.paths, changes.base)
         }
-        None => (get_working_tree_changed_files(root), "HEAD".to_string()),
+        None => (get_working_tree_changed_files(root)?, "HEAD".to_string()),
     };
     let changed_lines = crate::git::repo::changed_lines_since(root, &base, &changed)
         .map_err(|e| io::Error::other(format!("--pr-context: {e}")))?;
-    let commits = crate::git::history::walk_repository_history(root).unwrap_or_default();
-    let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+    let commits = crate::git::history::walk_repository_history(root).map_err(io::Error::other)?;
+    let at_stamp = crate::git::history::compute_git_at_stamp(root)
+        .map_err(io::Error::other)?
+        .unwrap_or_default();
     let req = crate::gate::pr_context::PrContextRequest {
         changed_files: &changed,
         changed_lines: Some(&changed_lines),
@@ -432,7 +437,9 @@ pub fn execute_dmm_query<W: Write>(
     interner: &Interner,
     out: &mut W,
 ) -> io::Result<i32> {
-    let head_sha = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+    let head_sha = crate::git::history::compute_git_at_stamp(root)
+        .map_err(io::Error::other)?
+        .unwrap_or_default();
     let short_sha = &head_sha[..9.min(head_sha.len())];
     let working_snap = crate::gate::baseline::compute_snapshot(ingest, graph, interner, short_sha);
     let (base, changed) = match rev_opt.filter(|r| !r.is_empty()) {
@@ -441,7 +448,7 @@ pub fn execute_dmm_query<W: Write>(
                 .map_err(|e| io::Error::other(format!("--dmm: {e}")))?;
             (changes.base, changes.paths)
         }
-        None => (short_sha.to_string(), get_working_tree_changed_files(root)),
+        None => (short_sha.to_string(), get_working_tree_changed_files(root)?),
     };
     let baseline_snap = crate::gate::quality_delta::load_revision_baseline_incremental(
         root,

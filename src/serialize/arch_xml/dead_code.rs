@@ -8,7 +8,7 @@ pub struct DeadCodeReport<'a> {
     pub items: &'a [DeadRow<'a>],
     /// Functions whose every indexed caller is test code: listed as `<to>` rows, not counted in `count=`.
     pub test_only: &'a [DeadRow<'a>],
-    pub gauges: crate::serialize::GraphGauges,
+    pub gauges: crate::graph::GraphGauges,
     pub page: crate::serialize::PageRequest,
 }
 
@@ -71,7 +71,7 @@ impl crate::serialize::XmlReport for DeadCodeReport<'_> {
     fn page_window(&self) -> Option<crate::serialize::PageWindow> {
         Some(self.paged().window)
     }
-    fn graph_gauges(&self) -> Option<crate::serialize::GraphGauges> {
+    fn graph_gauges(&self) -> Option<crate::graph::GraphGauges> {
         Some(self.gauges)
     }
     fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {
@@ -97,7 +97,7 @@ pub fn serialize_dead_code_xml<W: Write>(
     serialize_dead_code_paged_xml(
         root,
         items,
-        crate::serialize::GraphGauges::default(),
+        crate::graph::GraphGauges::default(),
         crate::serialize::PageRequest::default(),
         out,
     )
@@ -106,7 +106,7 @@ pub fn serialize_dead_code_xml<W: Write>(
 pub fn serialize_dead_code_paged_xml<W: Write>(
     root: &str,
     items: &[DeadRow<'_>],
-    gauges: crate::serialize::GraphGauges,
+    gauges: crate::graph::GraphGauges,
     page: crate::serialize::PageRequest,
     out: &mut W,
 ) -> io::Result<()> {

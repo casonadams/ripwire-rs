@@ -1,4 +1,5 @@
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, NodeId, Symbol, ingest_in_memory_files};
+use crate::corpus_support::{Fixture, fixture as corpus_fixture};
+use ripwire_rs::{Lang, NodeId, Symbol};
 
 const TASKS: &str = "export interface Task {\n  id: string;\n}\n\
 export interface TaskEnqueuer {\n  enqueue(payload: Task): Promise<string>;\n  close(): void;\n}\n\
@@ -50,26 +51,8 @@ export class ScopedClient {\n  async commitIssueKeys(scope: string): Promise<str
 const KEY_SEARCH: &str = "import type { TicketLookup } from \"../service/ticket\";\n\
 export async function keySearch(lookup: TicketLookup): Promise<string[]> {\n  return lookup.commitIssueKeys();\n}\n";
 
-struct Fixture {
-    interner: Interner,
-    ingest: ripwire_rs::IngestResult,
-    graph: Graph,
-}
-
 fn fixture(files: &[(&str, &str)]) -> Fixture {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let sources: Vec<(&str, Lang, &[u8])> = files
-        .iter()
-        .map(|(path, src)| (*path, Lang::TypeScript, src.as_bytes()))
-        .collect();
-    let ingest = ingest_in_memory_files(&sources, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    Fixture {
-        interner,
-        ingest,
-        graph,
-    }
+    corpus_fixture(Lang::TypeScript, files)
 }
 
 impl Fixture {

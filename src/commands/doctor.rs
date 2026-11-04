@@ -56,7 +56,7 @@ impl DoctorCheck {
 /// Doctor envelope: the git stamp, the build identity, and the ordered check rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoctorReport {
-    pub at: Option<String>,
+    pub at: Result<Option<String>, String>,
     pub built_from: String,
     pub checks: Vec<DoctorCheck>,
 }
@@ -69,10 +69,7 @@ impl DoctorReport {
 
     pub fn write_xml<W: Write>(&self, out: &mut W) -> io::Result<()> {
         out.write_all(DOCTOR_LEGEND.as_bytes())?;
-        let at_attr = self
-            .at
-            .as_deref()
-            .map_or_else(String::new, |at| format!(" at=\"{}\"", at.xml_escaped()));
+        let at_attr = crate::serialize::git_at_attr(self.at.clone());
         write!(
             out,
             "<doctor schema=\"ripwire-rs.doctor/v1\" checks=\"{}\" passed=\"{}\"{at_attr} built_from=\"{}\">",

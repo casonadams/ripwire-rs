@@ -159,20 +159,20 @@ fn scan_repo_whereis(
     sources: &(impl SourceReader + ?Sized),
     symbol_name: &str,
     index_defs: &HashMap<&str, HashSet<u32>>,
-) -> WhereisScan {
+) -> Result<WhereisScan, String> {
     let scope = crate::git::repo::workdir_prefix(repo, root).unwrap_or_default();
     let head = repo.head_id().ok().map(gix::Id::detach);
-    let branches: Vec<String> = crate::git::repo::local_branches(repo)
+    let branches: Vec<String> = crate::git::repo::local_branches(repo)?
         .into_iter()
         .filter(|b| repo.rev_parse_single(b.as_str()).ok().map(gix::Id::detach) != head)
         .collect();
     let revs: Vec<&str> = std::iter::once("HEAD")
         .chain(branches.iter().map(String::as_str))
         .collect();
-    let grep = crate::git::repo::grep_word_revs(repo, &revs, &scope, symbol_name);
+    let grep = crate::git::repo::grep_word_revs(repo, &revs, &scope, symbol_name)?;
     let mut per_rev = grep.per_rev.into_iter();
     let head_hits = per_rev.next().unwrap_or_default();
-    let changed: Vec<String> = crate::git::repo::dirty_paths(root)
+    let changed: Vec<String> = crate::git::repo::dirty_paths(root)?
         .into_iter()
         .filter_map(|p| p.strip_prefix(scope.as_str()).map(str::to_string))
         .collect();
@@ -203,12 +203,12 @@ fn scan_repo_whereis(
     let on_head = Some(!rows.is_empty());
     let per_branch: Vec<Vec<crate::git::repo::LineHit>> = per_rev.collect();
     rows.extend(branch_rows(repo, &branches, &per_branch, symbol_name));
-    WhereisScan {
+    Ok(WhereisScan {
         rows,
         on_head,
         refs_scanned: branches.len(),
         blobs: grep.blobs,
-    }
+    })
 }
 
 fn branch_rows(
@@ -460,8 +460,8 @@ pub fn whereis_with_sources_and_history(
     sources: &(impl SourceReader + ?Sized),
     ingest: &IngestResult,
     interner: &Interner,
-) -> Value {
-    let at_stamp = crate::git::history::compute_git_at_stamp(req.root).unwrap_or_default();
+) -> Result<Value, String> {
+    let at_stamp = crate::git::history::compute_git_at_stamp(req.root)?.unwrap_or_default();
     let repo = crate::git::repo::discover(req.root);
     let head_date = repo
         .as_ref()
@@ -470,7 +470,7 @@ pub fn whereis_with_sources_and_history(
         .unwrap_or_default();
     let index_defs = index_def_lines(ingest, interner, req.symbol_name);
     let scan = match &repo {
-        Some(repo) => scan_repo_whereis(repo, req.root, sources, req.symbol_name, &index_defs),
+        Some(repo) => scan_repo_whereis(repo, req.root, sources, req.symbol_name, &index_defs)?,
         None => scan_files_whereis(
             ingest,
             interner,
@@ -485,7 +485,13 @@ pub fn whereis_with_sources_and_history(
     } else {
         None
     };
-    whereis_report(req.symbol_name, scan, history_info, &head_date, &at_stamp)
+    Ok(whereis_report(
+        req.symbol_name,
+        scan,
+        history_info,
+        &head_date,
+        &at_stamp,
+    ))
 }
 
 /// Execute `whereis` tool: identify where a symbol lives (definitions and references).
@@ -495,7 +501,7 @@ pub fn call_whereis(
     root: &str,
     symbol_name: &str,
     with_history: bool,
-) -> Value {
+) -> Result<Value, String> {
     whereis_with_sources_and_history(
         WhereisRequest {
             root,
@@ -540,10 +546,12 @@ fn branch_stray_report(
     branch: &str,
     head_blobs: &BTreeMap<String, gix::ObjectId>,
     blobs: &mut HashSet<gix::ObjectId>,
-) -> Option<Value> {
-    let base = crate::git::repo::merge_base_id(repo, branch)?;
-    let base_blobs = crate::git::repo::path_blobs(repo, &base.to_hex().to_string());
-    let tip_blobs = crate::git::repo::path_blobs(repo, branch);
+) -> Result<Option<Value>, String> {
+    let Some(base) = crate::git::repo::merge_base_id(repo, branch) else {
+        return Ok(None);
+    };
+    let base_blobs = crate::git::repo::path_blobs(repo, &base.to_hex().to_string())?;
+    let tip_blobs = crate::git::repo::path_blobs(repo, branch)?;
     let mut files = Vec::new();
     for (path, &tip_oid) in &tip_blobs {
         let base_oid = base_blobs.get(path).copied();
@@ -589,7 +597,7 @@ fn branch_stray_report(
             })
         })
         .collect();
-    Some(json!({
+    Ok(Some(json!({
         "name": branch,
         "tip": tip,
         "date": date,
@@ -598,7 +606,7 @@ fn branch_stray_report(
         "stray": stray,
         "superseded": superseded,
         "files": file_rows,
-    }))
+    })))
 }
 
 /// Counts of branch verdicts across one `--stray-content` sweep.
@@ -671,24 +679,26 @@ pub fn stray_content_value(
 }
 
 /// Per-ref stray reports and the distinct blob count, gathered from the repository.
-fn gather_stray_reports(repo: &gix::Repository, head_ref: &str) -> (Vec<Option<Value>>, usize) {
-    let head_blobs = crate::git::repo::path_blobs(repo, "HEAD");
+fn gather_stray_reports(
+    repo: &gix::Repository,
+    head_ref: &str,
+) -> Result<(Vec<Option<Value>>, usize), String> {
+    let head_blobs = crate::git::repo::path_blobs(repo, "HEAD")?;
     let head_commit = crate::git::repo::rev_id(repo, "HEAD");
     let mut blobs = HashSet::new();
-    let reports = crate::git::repo::local_branches(repo)
-        .into_iter()
-        .filter(|branch| {
-            let tip = crate::git::repo::rev_id(repo, branch);
-            is_stray_candidate(branch, head_ref, tip, head_commit)
-        })
-        .map(|branch| branch_stray_report(repo, &branch, &head_blobs, &mut blobs))
-        .collect();
-    (reports, blobs.len())
+    let mut reports = Vec::new();
+    for branch in crate::git::repo::local_branches(repo)? {
+        let tip = crate::git::repo::rev_id(repo, &branch);
+        if is_stray_candidate(&branch, head_ref, tip, head_commit) {
+            reports.push(branch_stray_report(repo, &branch, &head_blobs, &mut blobs)?);
+        }
+    }
+    Ok((reports, blobs.len()))
 }
 
 /// Execute `stray_content` tool.
-pub fn call_stray_content(root: &str) -> Value {
-    let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+pub fn call_stray_content(root: &str) -> Result<Value, String> {
+    let at_stamp = crate::git::history::compute_git_at_stamp(root)?.unwrap_or_default();
     let repo = crate::git::repo::discover(root);
     let head_sha = repo
         .as_ref()
@@ -698,8 +708,12 @@ pub fn call_stray_content(root: &str) -> Value {
     let head_ref = repo
         .as_ref()
         .map_or_else(|| "HEAD".to_string(), crate::git::repo::head_ref);
-    let (reports, blobs) = repo
-        .as_ref()
-        .map_or_else(|| (Vec::new(), 0), |r| gather_stray_reports(r, &head_ref));
-    stray_content_value(at_stamp, head_sha, head_ref, blobs, reports)
+    let gathered = match &repo {
+        Some(repo) => gather_stray_reports(repo, &head_ref)?,
+        None => (Vec::new(), 0),
+    };
+    let (reports, blobs) = gathered;
+    Ok(stray_content_value(
+        at_stamp, head_sha, head_ref, blobs, reports,
+    ))
 }

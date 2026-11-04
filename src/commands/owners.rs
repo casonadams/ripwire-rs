@@ -30,7 +30,7 @@ report_command! {
         ],
         &[],
         |s, a| {
-            let commits = resolve_state_commits(s, 12);
+            let commits = resolve_state_commits(s, 12)?;
             let mut value = doc_tools::call_owners(
                 Some(&commits),
                 a.opt_str_any(&["path", "file"]),
@@ -57,8 +57,8 @@ pub fn render<W: Write>(
     out: &mut XmlWriter<'_, W>,
 ) -> io::Result<()> {
     let cutoff = resolve_cutoff_timestamp(None, 12);
-    let commits = walk_repository_history_scoped(ctx.root, cutoff).ok();
-    let at_stamp = compute_git_at_stamp(ctx.root);
+    let commits = walk_repository_history_scoped(ctx.root, cutoff).map_err(io::Error::other)?;
+    let at_stamp = compute_git_at_stamp(ctx.root).map_err(io::Error::other)?;
     let known_files: HashSet<String> = ctx
         .ingest
         .files
@@ -66,7 +66,7 @@ pub fn render<W: Write>(
         .map(|f| ctx.interner.resolve(&f.path).to_string())
         .collect();
     let mut val = doc_tools::call_owners(
-        commits.as_deref(),
+        Some(commits.as_slice()),
         None,
         at_stamp.as_deref(),
         Some(&known_files),

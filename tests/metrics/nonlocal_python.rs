@@ -1,22 +1,11 @@
-use ripwire_rs::metrics::nonlocal::{NonlocalFunction, find_nonlocal_state};
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
+use crate::nonlocal_support::{function, state_report as support_state_report};
+use ripwire_rs::Lang;
+use ripwire_rs::metrics::nonlocal::NonlocalFunction;
 
 const MODULE: &str = "src/module.py";
 
 fn state_report(files: &[(&str, &str)]) -> Vec<NonlocalFunction> {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let sources: Vec<(&str, Lang, &[u8])> = files
-        .iter()
-        .map(|(path, src)| (*path, Lang::Python, src.as_bytes()))
-        .collect();
-    let ingest = ingest_in_memory_files(&sources, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    find_nonlocal_state(&ingest, &graph, &interner)
-}
-
-fn function<'a>(report: &'a [NonlocalFunction], name: &str) -> Option<&'a NonlocalFunction> {
-    report.iter().find(|f| f.sym_name == name)
+    support_state_report(Lang::Python, files)
 }
 
 const CONSTANTS: &str = "from collections import namedtuple

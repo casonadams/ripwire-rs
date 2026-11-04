@@ -95,6 +95,14 @@ fn main() {
         &registry,
         &interner,
     );
+    let sources: std::collections::HashMap<String, Vec<u8>> = [
+        ("src/lib.rs", code_rust.as_slice()),
+        ("app/main.py", code_py.as_slice()),
+        ("web/index.ts", code_ts.as_slice()),
+    ]
+    .into_iter()
+    .map(|(path, src)| (path.to_string(), src.to_vec()))
+    .collect();
     let graph = Graph::build(&ingest, &interner);
     let pr_cfg = PageRankConfig::default();
     run_benchmark(
@@ -109,7 +117,12 @@ fn main() {
     run_benchmark(
         "ast_clone_detection",
         || {
-            let _ = ripwire_rs::clones::find_clones(&ingest, &interner, 5, None);
+            let _ = ripwire_rs::clones::find_clones(
+                &ingest,
+                &interner,
+                5,
+                ripwire_rs::clones::CloneSource::Sources(&sources),
+            );
         },
         50,
         200,

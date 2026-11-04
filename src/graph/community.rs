@@ -141,23 +141,3 @@ pub fn detect_communities(graph: &Graph) -> Communities {
         Err(_) => unclustered(n, true),
     }
 }
-
-/// Multi-level Leiden: one per-node assignment per aggregation level, finest first.
-#[must_use]
-pub fn detect_hierarchy(graph: &Graph) -> Vec<Vec<u32>> {
-    let n = graph.node_count();
-    if n == 0 {
-        return Vec::new();
-    }
-    let Some(data) = leiden_graph(graph) else {
-        return vec![vec![0; n]];
-    };
-    match leiden().run_hierarchical(&data) {
-        Ok(out) => out
-            .levels
-            .iter()
-            .map(|level| compact_community_ids(&level.membership).comm)
-            .collect(),
-        Err(_) => vec![unclustered(n, true).comm],
-    }
-}

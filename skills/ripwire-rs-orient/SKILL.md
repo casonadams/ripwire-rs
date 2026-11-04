@@ -41,7 +41,7 @@ Unsure? `ripwire-rs <dir> --help-task="<task in words>"` names one verb, or abst
 
 ## Honesty signals
 
-Rows marked `via="name"` are name-based hedges, not proven edges. `declined`, `unresolved`, `amb="K"` (K ambiguous calls), `counts_floor` and `capped="1"` name what was left out. Read the source at that site before a decision depends on it. `skipped_oversize=N` means N files fell to a size ceiling (`--skipped` lists them). A git root drops `.gitignore`d paths unless `--no-ignore` is passed.
+Rows marked `via="name"` are name-based hedges, not proven edges. `declined`, `unresolved`, `amb="K"` (K ambiguous calls), `counts_floor` and `capped="1"` name what was left out. Read the source at that site before a decision depends on it. Files outside the index (over `--max-file-size`, or an unsupported language) have no graph edges; `--grep` still searches unindexed text files under the size ceiling. A git root drops `.gitignore`d paths unless `--no-ignore` is passed.
 
 ## Notes
 

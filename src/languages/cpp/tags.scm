@@ -26,7 +26,7 @@
 ; and it fails for the same reason: tree-sitter-cpp nests qualified_identifier RIGHT-recursively, so
 ; `void nsD::OuterD::InnerD::deep3()` is qualified_identifier(scope: nsD, name: qualified_identifier(
 ; scope: OuterD, name: qualified_identifier(scope: InnerD, name: deep3))) and `name: (identifier)` binds
-; nothing past the second `::`. The def was dropped at EXTRACTION — no `--skipped` row, no floor, no
+; nothing past the second `::`. The def was dropped at EXTRACTION — no floor, no
 ; `unresolved=` — so every caller of such a method read as a leaf and the symbol was unreachable from every
 ; verb. Measured on memgraph (whose house style is exactly this shape): 575 of 4526 qualified out-of-line
 ; defs invisible, 16 of 29 extracted in one 35 KB file. ripwire's own src/ has ZERO instances, which is
@@ -82,7 +82,7 @@
 ; name. A nested class DEFINED OUT OF LINE — the class-level twin of the out-of-line METHOD idiom the
 ; qualified_identifier method pattern above already handles — writes its own name as a qualified_identifier
 ; instead (`class Outer::Inner : Base { … };`), so neither upstream pattern matches and the class itself is
-; silently dropped at EXTRACTION: no symbol, no --skipped row, no floor, invisible to `--for`/ranking/the
+; silently dropped at EXTRACTION: no symbol, no floor, invisible to `--for`/ranking/the
 ; call graph. Measured on ugrep's reflex/input.h: `class BufferedInput::dos_streambuf : public
 ; std::streambuf { … }` (and its sibling `class Input::dos_streambuf : … { … }`) never became a `cls`
 ; symbol, so a bare `--for="dos_streambuf"` could rank the CONSTRUCTOR (a real `fn` def, since a

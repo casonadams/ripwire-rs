@@ -7,5 +7,4 @@ mod navigate {
     mod provenance;
     mod query;
     mod shaping;
-    mod zoom;
 }

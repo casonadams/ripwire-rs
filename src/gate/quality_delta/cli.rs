@@ -11,8 +11,12 @@ fn filter_regressions_by_scope(
     root: &str,
     regressions: &mut [QualityRegression],
     scope_spec: &str,
-) {
-    let changed = crate::git::repo::working_tree_changes(root);
+) -> io::Result<()> {
+    let changed = if scope_spec == "diff" {
+        crate::git::repo::working_tree_changes(root).map_err(io::Error::other)?
+    } else {
+        Vec::new()
+    };
     let pats: Vec<&str> = scope_spec.split(',').map(str::trim).collect();
     for r in regressions {
         let in_scope = if scope_spec == "diff" {
@@ -26,6 +30,7 @@ fn filter_regressions_by_scope(
             r.is_gating = false;
         }
     }
+    Ok(())
 }
 
 pub fn apply_cli_delta_options_with_writer<W: std::io::Write>(
@@ -37,7 +42,7 @@ pub fn apply_cli_delta_options_with_writer<W: std::io::Write>(
     let root = state.root;
     let scope_opt = opts.scope.filter(|s| !s.is_empty());
     if let Some(scope_spec) = scope_opt {
-        filter_regressions_by_scope(root, &mut report.regressions, scope_spec);
+        filter_regressions_by_scope(root, &mut report.regressions, scope_spec)?;
     }
     if !opts.show_stale {
         report.stale_collapse_replay = Some(stale_replay_for(scope_opt));

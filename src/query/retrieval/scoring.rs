@@ -43,7 +43,7 @@ fn test_factor(file_path: &str, name: &str, terms: &[&str]) -> f64 {
         let l = t.to_ascii_lowercase();
         l.contains("test") || l.contains("spec")
     });
-    let is_test = crate::gate::affected::is_test_or_bench_path(file_path)
+    let is_test = crate::domain::test_path::is_test_or_bench_path(file_path)
         || name.to_ascii_lowercase().starts_with("test_");
     if is_test && !wants_test { 0.05 } else { 1.0 }
 }

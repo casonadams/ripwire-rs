@@ -1,6 +1,6 @@
 use ripwire_rs::query::retrieval::{
     ForTaskOptions, call_exemplar_in_root, call_for_task_with_options, call_lego,
-    collect_query_file_hits, compute_adaptive_cut, match_pattern_on_text, parse_for_sections,
+    collect_query_file_hits, compute_adaptive_cut, parse_for_sections,
 };
 use ripwire_rs::{
     FileInfo, Graph, IngestResult, Interner, Lang, LanguageRegistry, PageRankConfig, RefRole,
@@ -226,14 +226,7 @@ fn test_compute_adaptive_cut() {
 }
 
 #[test]
-fn test_pattern_and_ast_match() {
-    let matches = match_pattern_on_text(
-        "pub class Foo { bar(); }\nfn other() {}",
-        &["class", "{", "}"],
-    );
-    assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].0, 1);
-
+fn test_ast_match_fixture() {
     let reg = LanguageRegistry::new().unwrap();
     let interner = Interner::new();
     let code = b"pub struct Widget {}\npub fn build() {}";

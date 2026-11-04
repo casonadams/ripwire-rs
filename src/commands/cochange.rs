@@ -91,7 +91,7 @@ fn run(run: &Run<'_>, args: &CochangeFlags) -> io::Result<()> {
 }
 
 fn call_cochange(state: &QueryContext<'_>, args: &Value) -> Result<Value, String> {
-    let commits = resolve_state_commits(state, crate::git::history::DEFAULT_COCHANGE_MONTHS);
+    let commits = resolve_state_commits(state, crate::git::history::DEFAULT_COCHANGE_MONTHS)?;
     let context = safety_context(state);
     let options = crate::query::safety::CochangeOptions {
         since: args.opt_str("since"),

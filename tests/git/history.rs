@@ -3,6 +3,7 @@ use ripwire_rs::git::history::{
     filter_commits_by_scope, months_before_epoch, parse_since_scope, walk_metas,
     walk_repository_history,
 };
+use ripwire_rs::serialize::git_at_attr;
 use std::collections::HashMap;
 use std::convert::Infallible;
 
@@ -145,41 +146,32 @@ fn walk(graph: &Graph, head: u32, cutoff: Option<i64>) -> Vec<gix::ObjectId> {
 }
 
 #[test]
-fn test_walk_is_newest_first_along_parents() {
-    let mut g = Graph::new();
-    add(&mut g, 4, 400, &[3]);
-    add(&mut g, 3, 300, &[2]);
-    add(&mut g, 2, 200, &[1]);
-    add(&mut g, 1, 100, &[]);
-    assert_eq!(walk(&g, 4, None), vec![oid(4), oid(3), oid(2), oid(1)]);
-}
+fn test_walk_orders_commits_newest_first_through_parents() {
+    let mut chain = Graph::new();
+    add(&mut chain, 4, 400, &[3]);
+    add(&mut chain, 3, 300, &[2]);
+    add(&mut chain, 2, 200, &[1]);
+    add(&mut chain, 1, 100, &[]);
+    assert_eq!(walk(&chain, 4, None), vec![oid(4), oid(3), oid(2), oid(1)]);
 
-#[test]
-fn test_merge_commits_are_walked_through_but_not_reported() {
-    let mut g = Graph::new();
-    add(&mut g, 3, 300, &[1, 2]);
-    add(&mut g, 2, 200, &[]);
-    add(&mut g, 1, 100, &[]);
-    assert_eq!(walk(&g, 3, None), vec![oid(2), oid(1)]);
-}
+    for parent_time in [100, 200] {
+        let mut merge = Graph::new();
+        add(&mut merge, 3, 300, &[1, 2]);
+        add(&mut merge, 2, 200, &[]);
+        add(&mut merge, 1, parent_time, &[]);
+        assert_eq!(
+            walk(&merge, 3, None),
+            vec![oid(2), oid(1)],
+            "parent at {parent_time}"
+        );
+    }
 
-#[test]
-fn test_shared_ancestor_of_diamond_is_reported_once() {
-    let mut g = Graph::new();
-    add(&mut g, 5, 500, &[3, 4]);
-    add(&mut g, 4, 200, &[1]);
-    add(&mut g, 3, 300, &[1]);
-    add(&mut g, 1, 100, &[]);
-    assert_eq!(walk(&g, 5, None), vec![oid(3), oid(4), oid(1)]);
-}
-
-#[test]
-fn test_equal_timestamps_order_larger_id_first() {
-    let mut g = Graph::new();
-    add(&mut g, 3, 300, &[1, 2]);
-    add(&mut g, 2, 200, &[]);
-    add(&mut g, 1, 200, &[]);
-    assert_eq!(walk(&g, 3, None), vec![oid(2), oid(1)]);
+    let mut diamond = Graph::new();
+    add(&mut diamond, 5, 500, &[3, 4]);
+    add(&mut diamond, 4, 200, &[1]);
+    add(&mut diamond, 3, 300, &[1]);
+    add(&mut diamond, 1, 100, &[]);
+    assert_eq!(walk(&diamond, 5, None), vec![oid(3), oid(4), oid(1)]);
 }
 
 #[test]
@@ -249,4 +241,18 @@ fn test_lookup_error_aborts_walk() {
         None,
     );
     assert_eq!(result.unwrap_err(), "boom");
+}
+
+#[test]
+fn test_git_at_attr_labels_stamp_absence_and_unavailable_status() {
+    assert_eq!(
+        git_at_attr(Ok(Some("abc123def+dirty".to_string()))),
+        " at=\"abc123def+dirty\""
+    );
+    assert_eq!(git_at_attr(Ok(None)), "");
+    assert_eq!(git_at_attr(Ok(Some(String::new()))), "");
+    assert_eq!(
+        git_at_attr(Err("index unreadable".to_string())),
+        " at_unavailable=\"index unreadable\""
+    );
 }

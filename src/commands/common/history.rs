@@ -16,8 +16,9 @@ where
         &mut crate::serialize::XmlWriter<'_, io::StdoutLock<'_>>,
     ) -> io::Result<()>,
 {
-    let commits_vec = crate::git::history::walk_repository_history_scoped(root, cutoff).ok();
-    let commits = commits_vec.as_deref().unwrap_or(&[]);
+    let commits_vec = crate::git::history::walk_repository_history_scoped(root, cutoff)
+        .map_err(io::Error::other)?;
+    let commits = commits_vec.as_slice();
     let state = crate::Workspace::load(root)
         .ok_or_else(|| io::Error::other("failed to load repository"))?;
     let mut stdout_lock = io::stdout().lock();

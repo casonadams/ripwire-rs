@@ -1,4 +1,7 @@
-use super::harness::{GraphProtocolCase, owner_qualified_callees, sym, verify_protocol_case};
+use super::harness::{
+    GraphProtocolCase, assert_call_result_binds_factory_return, owner_qualified_callees, sym,
+    verify_protocol_case,
+};
 use ripwire_rs::{Lang, SymKind};
 
 const JAVA_STORES: &str = "class DiskStore { int open() { return 1; } }\n\
@@ -52,20 +55,12 @@ class User { void run(Pooled pooled) { pooled.close(); } }\n";
 
 #[test]
 fn java_call_result_receiver_uses_the_factory_return_type() {
-    let classes = "class DiskStore { int open() { return 1; } }\n\
+    assert_call_result_binds_factory_return(
+        Lang::Java,
+        "src/Service.java",
+        "class DiskStore { int open() { return 1; } }\n\
 class MemoryStore { int open() { return 2; } }\n\
-class Service {\n  DiskStore make() { return new DiskStore(); }\n  void run() { make().open(); }\n}\n";
-    let callees = owner_qualified_callees(
-        &[("src/Service.java", Lang::Java, classes.as_bytes())],
-        "run",
-    );
-    assert!(
-        callees.contains(&"DiskStore.open".to_string()),
-        "{callees:?}"
-    );
-    assert!(
-        !callees.contains(&"MemoryStore.open".to_string()),
-        "{callees:?}"
+class Service {\n  DiskStore make() { return new DiskStore(); }\n  void run() { make().open(); }\n}\n",
     );
 }
 

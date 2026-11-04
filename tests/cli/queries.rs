@@ -1,5 +1,5 @@
 use ripwire_rs::commands::common::edit::{resolve_edit_spec, resolve_edit_spec_with_reader};
-use ripwire_rs::commands::common::ladder::execute_expand_or_outline_compressed;
+use ripwire_rs::commands::common::ladder::execute_expand;
 use ripwire_rs::commands::doc_drift::{DOC_DRIFT, DocDriftArgs};
 use ripwire_rs::commands::flags_report::{FLAGS, FlagsArgs};
 use ripwire_rs::commands::flip::{
@@ -8,10 +8,7 @@ use ripwire_rs::commands::flip::{
 use ripwire_rs::commands::handoff::build_handoff_verified_rows;
 use ripwire_rs::commands::mentions::{MENTIONS, MentionsArgs};
 use ripwire_rs::commands::notes::{NOTES, NotesArgs, render_notes_xml};
-use ripwire_rs::commands::plan_lint::{PLAN_LINT, PlanLintArgs, render_plan_lint_xml};
-use ripwire_rs::commands::skipped::render_skipped_census_xml;
 use ripwire_rs::commands::whereis::{WHEREIS, WhereisArgs};
-use ripwire_rs::crawler::{CrawlerOptions, SkippedCensus};
 use ripwire_rs::query::detail::skeletonize_body;
 use ripwire_rs::query::doc_tools::{
     WhereisFacts, flags_from_sources, whereis_from_sources_with_facts,
@@ -44,18 +41,8 @@ fn test_skeletonize_body() {
     let interner = Interner::new();
     let ingest = IngestResult::new();
     let mut buf = Vec::new();
-    assert!(
-        execute_expand_or_outline_compressed(
-            ".", "missing", false, false, &ingest, &interner, &mut buf
-        )
-        .is_err()
-    );
-    assert!(
-        execute_expand_or_outline_compressed(
-            ".", "missing", true, false, &ingest, &interner, &mut buf
-        )
-        .is_err()
-    );
+    assert!(execute_expand(".", "missing", false, false, &ingest, &interner, &mut buf).is_err());
+    assert!(execute_expand(".", "missing", true, false, &ingest, &interner, &mut buf).is_err());
 }
 
 #[test]
@@ -185,28 +172,6 @@ fn test_render_notes_xml() {
 }
 
 #[test]
-fn test_render_plan_lint_xml() {
-    let mut buf = Vec::new();
-    render_plan_lint_xml(
-        "PLAN.md",
-        "# Heading 1\n## Heading 2\n- [ ] task 1\n- [x] task 2\n",
-        &mut buf,
-    )
-    .unwrap();
-    let out = std::str::from_utf8(&buf).unwrap();
-    assert!(out.contains("ripwire-rs.plan-lint/v1"));
-    assert!(out.contains("headings=\"2\""));
-    assert!(out.contains("tasks=\"2\""));
-    assert!(out.contains("ok=\"1\""));
-
-    buf.clear();
-    render_plan_lint_xml("EMPTY.md", "plain text without headings", &mut buf).unwrap();
-    let empty_out = std::str::from_utf8(&buf).unwrap();
-    assert!(empty_out.contains("headings=\"0\""));
-    assert!(empty_out.contains("ok=\"0\""));
-}
-
-#[test]
 fn test_render_flip_xml() {
     let flags_val = serde_json::json!({
         "flags": [
@@ -281,72 +246,6 @@ fn test_flip_reach_follows_readers_to_callers_and_tests() {
     assert!(flag_entries("FEATURE_Y", &unread).is_err());
     let none = FlipReach::default();
     assert!(none.callers.is_empty() && none.readers.is_empty());
-}
-
-#[test]
-fn test_render_skipped_census_xml() {
-    let mut census = SkippedCensus::default();
-    census
-        .oversize
-        .push(("large<&.rs".to_string(), 5000, "rs".to_string()));
-    census
-        .unsupported
-        .push(("data&.bin".to_string(), 120, "bin".to_string()));
-    census.unindexed_exts.push(("bin".to_string(), 1));
-    let opts = CrawlerOptions::default();
-
-    let reg = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let fixtures: &[(&str, Lang, &[u8])] = &[("src/lib.rs", Lang::Rust, b"pub fn run() {}\n")];
-    let ingest = ingest_in_memory_files(fixtures, &reg, &interner);
-
-    let mut buf = Vec::new();
-    render_skipped_census_xml(
-        "workspace<&",
-        &census,
-        &opts,
-        &ingest,
-        PageRequest::default(),
-        &mut buf,
-    )
-    .unwrap();
-    let out = std::str::from_utf8(&buf).unwrap();
-    let report = roxmltree::Document::parse(out).unwrap();
-    assert_eq!(report.root_element().attribute("root"), Some("workspace<&"));
-    let paths: Vec<_> = report
-        .descendants()
-        .filter(|node| node.has_tag_name("f"))
-        .map(|node| (node.attribute("p"), node.attribute("why")))
-        .collect();
-    assert_eq!(
-        paths,
-        [
-            (Some("large<&.rs"), Some("oversize")),
-            (Some("data&.bin"), Some("unsupported-ext"))
-        ]
-    );
-}
-
-#[test]
-fn test_render_skipped_census_xml_honors_page_window() {
-    let mut census = SkippedCensus::default();
-    for i in 0..3 {
-        census
-            .oversize
-            .push((format!("big{i}.rs"), 5000, "rs".to_string()));
-    }
-    let opts = CrawlerOptions::default();
-    let ingest = IngestResult::new();
-    let page = PageRequest {
-        limit: Some(1),
-        offset: Some(1),
-        budget: None,
-    };
-    let mut buf = Vec::new();
-    render_skipped_census_xml(".", &census, &opts, &ingest, page, &mut buf).unwrap();
-    let out = std::str::from_utf8(&buf).unwrap();
-    assert_eq!(out.matches("why=\"oversize\"").count(), 1);
-    assert!(out.contains("big1.rs"));
 }
 
 #[test]
@@ -462,10 +361,6 @@ fn test_session_plugins_render_in_memory_content() {
     assert!(String::from_utf8_lossy(&buf).contains("pinned in-memory note"));
 
     buf.clear();
-    render_plan_lint_xml("PLAN.md", "# Target Plan\n- [ ] step 1\n", &mut buf).unwrap();
-    assert!(String::from_utf8_lossy(&buf).contains("headings=\"1\""));
-
-    buf.clear();
     let flags_val = serde_json::json!({ "flags": [] });
     assert!(flag_entries("nonexistent_gate", &flags_val).is_err());
     assert!(String::from_utf8_lossy(&buf).is_empty());
@@ -474,10 +369,6 @@ fn test_session_plugins_render_in_memory_content() {
     assert!((FLIP.selected)(&FlipArgs {
         flip: Some("nonexistent_gate".to_string()),
     }));
-    assert!((PLAN_LINT.selected)(&PlanLintArgs {
-        plan_lint: Some("PLAN.md".to_string()),
-    }));
     assert!(!(NOTES.selected)(&NotesArgs::default()));
     assert!(!(FLIP.selected)(&FlipArgs::default()));
-    assert!(!(PLAN_LINT.selected)(&PlanLintArgs::default()));
 }

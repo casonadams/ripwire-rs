@@ -9,7 +9,7 @@ ripwire-rs, rw \- high-throughput agent context router and deterministic static 
 [\fIPATH\fR] [\fB\-\-top\-k\fR \fIN\fR] [\fB\-\-max\-tokens\fR \fIN\fR] [\fB\-\-pack\-budget\fR \fIBYTES\fR] [\fB\-\-rank\-by\fR \fIMODE\fR] [\fB\-\-legend\fR \fIMODE\fR]
 .br
 .B ripwire-rs
-[\fIPATH\fR] [\fB\-\-expand\fR \fISYMS\fR] [\fB\-\-outline\fR \fISYMS\fR] [\fB\-\-pack\-top\-n\fR \fIN\fR] [\fB\-\-tree\fR]
+[\fIPATH\fR] [\fB\-\-expand\fR \fISYMS\fR [\fB\-\-outline\fR]] [\fB\-\-tree\fR]
 .br
 .B ripwire-rs
 [\fIPATH\fR] [\fB\-\-callers\fR \fISYM\fR] [\fB\-\-callees\fR \fISYM\fR] [\fB\-\-impact\fR \fISYM\fR] [\fB\-\-uses\fR \fISYM\fR] [\fB\-\-find\-symbol\fR \fISYM\fR]
@@ -33,16 +33,16 @@ ripwire-rs, rw \- high-throughput agent context router and deterministic static 
 [\fIPATH\fR] [\fB\-\-clones\fR] [\fB\-\-hotspots\fR] [\fB\-\-slice\fR \fISYM[:VAR]\fR] [\fB\-\-cochange\fR] [\fB\-\-json\fR] [\fB\-\-batch\fR \fIFILE\fR]
 .br
 .B ripwire-rs
-[\fIPATH\fR] [\fB\-\-map\-diff\fR] [\fB\-\-seams\fR] [\fB\-\-pr\-context\fR] [\fB\-\-merge\-scout\fR \fIREFS\fR] [\fB\-\-arch\fR \fIFILE\fR] [\fB\-\-mermaid\fR] [\fB\-\-zoom\fR]
+[\fIPATH\fR] [\fB\-\-map\-diff\fR] [\fB\-\-seams\fR] [\fB\-\-pr\-context\fR] [\fB\-\-merge\-scout\fR \fIREFS\fR] [\fB\-\-arch\fR \fIFILE\fR] [\fB\-\-mermaid\fR]
 .br
 .B ripwire-rs
 [\fIPATH\fR] [\fB\-\-lint\fR] [\fB\-\-lint\-catalog\fR] [\fB\-\-at\fR \fIFILE:LINE\fR] [\fB\-\-verify\fR \fICLAIM\fR] [\fB\-\-doctor\fR] [\fB\-\-notes\fR]
 .br
 .B ripwire-rs
-[\fIPATH\fR] [\fB\-\-metrics\fR] [\fB\-\-dmm\fR [\fIREV|A..B\fR]] [\fB\-\-quality\-panel\fR [\fIPRESET\fR]] [\fB\-\-layout\fR \fISTRUCT\fR] [\fB\-\-field\-affinity\fR [\fISTRUCT\fR]]
+[\fIPATH\fR] [\fB\-\-metrics\fR] [\fB\-\-dmm\fR [\fIREV|A..B\fR]] [\fB\-\-quality\-panel\fR [\fIPRESET\fR]] [\fB\-\-field\-affinity\fR [\fISTRUCT\fR]]
 .br
 .B ripwire-rs
-[\fIPATH\fR] [\fB\-\-context\-ratio\fR] [\fB\-\-ensemble\fR] [\fB\-\-comment\-coherence\fR] [\fB\-\-plan\-lanes\fR [\fIN\fR] \fB\-\-task\fR \fIGOAL\fR] [\fB\-\-scan\-skills\fR [\fIDIR\fR]]
+[\fIPATH\fR] [\fB\-\-context\-ratio\fR] [\fB\-\-comment\-coherence\fR] [\fB\-\-plan\-lanes\fR [\fIN\fR] \fB\-\-task\fR \fIGOAL\fR] [\fB\-\-scan\-skills\fR [\fIDIR\fR]]
 .br
 .B ripwire-rs
 [\fIPATH\fR] [\fB\-\-detail\fR [\fIN\fR]] [\fB\-\-adaptive\fR] [\fB\-\-pack\-signatures\fR] [\fB\-\-with\-history\fR] [\fB\-\-eval\fR] [\fB\-\-eval\-retrieval\fR]
@@ -90,13 +90,7 @@ Emit deterministic path-ordered symbol map omitting volatile rank attributes.
 .SH DETAIL LADDER & BODY OPTIONS
 .TP
 .BI \-\-expand= SYMS
-Expand full source body of comma-separated symbols \fISYMS\fR and list callee signatures.
-.TP
-.BI \-\-outline= SYMS
-Outline control-flow skeletons of symbols (declarations, loops, branches with body statements collapsed).
-.TP
-.BI \-\-pack\-top\-n= N
-Pack source bodies of the top \fIN\fR highest PageRank symbols.
+Expand full source body of comma-separated symbols \fISYMS\fR and list callee signatures; with \fB\-\-outline\fR, show control-flow skeletons (declarations, loops, branches with body statements collapsed) instead.
 .TP
 .B \-\-tree
 Orient file by file, showing each file's top 3 symbols by rank.
@@ -243,12 +237,6 @@ Enforce architectural layering rules from file \fIFILE\fR. Exits with code \fB2\
 .TP
 .B \-\-mermaid
 Export a Mermaid flowchart diagram of module call dependency topology to stdout.
-.TP
-.BR \-\-zoom [=\fIDEPTH\fR]
-Multi-level Leiden module hierarchy over the call graph. \fBlevels=\fR is the computed depth (level 0 is the finest partition); the top \fB2\fR levels print by default, and modules at the cut carry \fBchildren=\fIK\fR. \fIDEPTH\fR keeps only the finest \fIDEPTH\fR levels. Top modules are windowed at 40 (\fB\-\-limit\fR/\fB\-\-offset\fR page them).
-.TP
-.BI \-\-zoom\-levels= N
-With \fB\-\-zoom\fR, print \fIN\fR levels from the top (\fB0\fR = every level). Refused alone.
 .TP
 .B \-\-biggest\-first
 Rank functions by readability volume and physical size, largest first.

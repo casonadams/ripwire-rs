@@ -1,6 +1,6 @@
 use ripwire_rs::crawler::{
-    CrawledFile, CrawlerOptions, DEFAULT_JSON_CEILING, DEFAULT_YAML_CEILING, SkippedCensus,
-    classify_skipped_item, evaluate_candidate, is_binary_buffer,
+    CrawledFile, CrawlerOptions, DEFAULT_JSON_CEILING, DEFAULT_YAML_CEILING, evaluate_candidate,
+    is_binary_buffer,
 };
 use ripwire_rs::domain::Lang;
 
@@ -124,97 +124,6 @@ fn test_single_file_candidate_keeps_typed_path_and_applies_file_rules() {
             assert_eq!(path, Path::new(typed));
         }
     }
-}
-
-#[test]
-fn test_classify_skipped_item_all_branches() {
-    use std::collections::HashMap;
-    let mut census = SkippedCensus::default();
-    let mut ext_counts = HashMap::new();
-    let opts = CrawlerOptions {
-        custom_excludes: vec!["vendor/*".to_string()],
-        max_file_size: 1_000,
-        ..CrawlerOptions::default()
-    };
-
-    // Directory is skipped without modifying census
-    classify_skipped_item("src/dir", true, 0, &opts, &mut census, &mut ext_counts);
-    assert!(census.excluded.is_empty());
-    assert!(census.oversize.is_empty());
-    assert!(census.unsupported.is_empty());
-
-    // Custom exclude path
-    classify_skipped_item(
-        "vendor/lib.rs",
-        false,
-        50,
-        &opts,
-        &mut census,
-        &mut ext_counts,
-    );
-    assert_eq!(census.excluded.len(), 1);
-    assert_eq!(
-        census.excluded[0],
-        ("vendor/lib.rs".to_string(), 50, "rs".to_string())
-    );
-
-    // Unknown language with extension increments ext_counts and adds to unsupported
-    classify_skipped_item(
-        "assets/logo.png",
-        false,
-        200,
-        &opts,
-        &mut census,
-        &mut ext_counts,
-    );
-    assert_eq!(census.unsupported.len(), 1);
-    assert_eq!(
-        census.unsupported[0],
-        ("assets/logo.png".to_string(), 200, "png".to_string())
-    );
-    assert_eq!(ext_counts.get("png"), Some(&1));
-
-    // Unknown language without extension adds to unsupported but does not increment ext_counts
-    classify_skipped_item(
-        "LICENSE_UNKNOWN",
-        false,
-        150,
-        &opts,
-        &mut census,
-        &mut ext_counts,
-    );
-    assert_eq!(census.unsupported.len(), 2);
-    assert_eq!(
-        census.unsupported[1],
-        ("LICENSE_UNKNOWN".to_string(), 150, String::new())
-    );
-
-    // Known language within size limit is neither unsupported nor oversize
-    classify_skipped_item(
-        "src/main.rs",
-        false,
-        500,
-        &opts,
-        &mut census,
-        &mut ext_counts,
-    );
-    assert_eq!(census.oversize.len(), 0);
-    assert_eq!(census.unsupported.len(), 2);
-
-    // Known language exceeding size limit adds to oversize
-    classify_skipped_item(
-        "src\\large.rs",
-        false,
-        5000,
-        &opts,
-        &mut census,
-        &mut ext_counts,
-    );
-    assert_eq!(census.oversize.len(), 1);
-    assert_eq!(
-        census.oversize[0],
-        ("src/large.rs".to_string(), 5000, "rs".to_string())
-    );
 }
 
 #[test]

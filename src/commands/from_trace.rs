@@ -12,11 +12,17 @@ fn trace_text(query: &QueryContext<'_>, tr: &str) -> io::Result<String> {
         stdin_trace(io::stdin())
     } else if tr.contains('\n') || tr.contains(':') {
         Ok(tr.to_string())
-    } else if let Ok(cow) = query.sources.read(tr) {
-        Ok(String::from_utf8_lossy(&cow).into_owned())
     } else {
-        Ok(tr.to_string())
+        trace_from_file_read(tr, query.sources.read(tr).map(|bytes| bytes.into_owned()))
     }
+}
+
+/// The trace text for an argument read as a file: the file's text, or the argument itself only when no
+/// file has that name. Any other read failure is an error, never a trace.
+pub fn trace_from_file_read(arg: &str, read: io::Result<Vec<u8>>) -> io::Result<String> {
+    crate::crawler::or_absent(read.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()), || {
+        arg.to_string()
+    })
 }
 
 /// The whole of a stdin stream as trace text; a read failure is an error, not an empty trace.

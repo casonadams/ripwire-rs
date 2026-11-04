@@ -73,8 +73,9 @@ pub fn dirty_key_suffix(entries: &[DirtyEntry]) -> String {
     format!("-d{:x}", hasher.finish())
 }
 
-fn dirty_entries(root: &str) -> Vec<DirtyEntry> {
-    crate::git::repo::dirty_paths(root)
+fn dirty_entries(root: &str) -> io::Result<Vec<DirtyEntry>> {
+    let paths = crate::git::repo::dirty_paths(root).map_err(io::Error::other)?;
+    Ok(paths
         .into_iter()
         .map(|rel| {
             let stat = fs::metadata(Path::new(root).join(&rel))
@@ -82,27 +83,29 @@ fn dirty_entries(root: &str) -> Vec<DirtyEntry> {
                 .and_then(|meta| Some((meta.modified().ok()?, meta.len())));
             (rel, stat)
         })
-        .collect()
+        .collect())
 }
 
-pub fn compute_cache_key(root: &str) -> String {
+/// Validation key for `root`. `Err` when the working tree cannot be read: dirtiness is then unknown,
+/// so no key may claim the tree is clean.
+pub fn compute_cache_key(root: &str) -> io::Result<String> {
     let bin_stamp = current_binary_stamp();
     let path = Path::new(root);
     if let Ok(repo) = gix::open(path)
         && let Ok(head) = repo.head_commit()
     {
-        let dirty = dirty_key_suffix(&dirty_entries(root));
-        return format!(
+        let dirty = dirty_key_suffix(&dirty_entries(root)?);
+        return Ok(format!(
             "{}-{bin_stamp:x}-{}{dirty}",
             env!("CARGO_PKG_VERSION"),
             head.id()
-        );
+        ));
     }
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     bin_stamp.hash(&mut hasher);
     root.hash(&mut hasher);
     hash_dir_entries(path, &mut hasher);
-    format!("mtime-{:x}", hasher.finish())
+    Ok(format!("mtime-{:x}", hasher.finish()))
 }
 
 /// Derive standard auto-cache path in TMPDIR for a target repository root.
@@ -119,9 +122,13 @@ fn tagged_auto_cache_path(root: &str, tag: &str) -> PathBuf {
 }
 
 /// The cache file and validation key for `root` under crawler options `tag` (empty for defaults).
-fn cache_identity(root: &str, cache_path: Option<&Path>, tag: &str) -> (PathBuf, String) {
+fn cache_identity(
+    root: &str,
+    cache_path: Option<&Path>,
+    tag: &str,
+) -> io::Result<(PathBuf, String)> {
     let path = cache_path.map_or_else(|| tagged_auto_cache_path(root, tag), Path::to_path_buf);
-    (path, format!("{}{tag}", compute_cache_key(root)))
+    Ok((path, format!("{}{tag}", compute_cache_key(root)?)))
 }
 
 /// Attempt to load cached repository analysis if validation key matches.
@@ -130,7 +137,7 @@ pub fn load_cached_analysis(
     cache_path: Option<&Path>,
     options_tag: &str,
 ) -> Option<(IngestResult, Graph, PageRankResult, Interner)> {
-    let (path, key) = cache_identity(root, cache_path, options_tag);
+    let (path, key) = cache_identity(root, cache_path, options_tag).ok()?;
     let bytes = fs::read(path).ok()?;
     load_cached_payload_slice(&bytes, &key)
 }
@@ -156,7 +163,7 @@ pub fn save_cached_analysis(
     analysis: (&IngestResult, &Graph, &PageRankResult, &Interner),
 ) -> io::Result<()> {
     let (ingest, graph, pr, interner) = analysis;
-    let (path, validation_key) = cache_identity(root, cache_path, options_tag);
+    let (path, validation_key) = cache_identity(root, cache_path, options_tag)?;
     let payload = CachePayloadRef {
         version: CACHE_VERSION,
         validation_key,

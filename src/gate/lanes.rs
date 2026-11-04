@@ -400,7 +400,7 @@ fn claimed_symbol(
         .get(id as usize)
         .copied()
         .unwrap_or(false)
-        || crate::gate::affected::is_test_path(&path);
+        || crate::domain::test_path::is_test_path(&path);
     ClaimedSymbol {
         id,
         ord,
@@ -792,7 +792,10 @@ fn assemble_plan_lanes_envelope(
     core_val: Value,
     mut built_lanes: Vec<BuiltLane>,
 ) -> Value {
-    let at_stamp = crate::git::history::compute_git_at_stamp(root);
+    let at_stamp = crate::git::history::compute_git_at_stamp(root).map_or_else(
+        |reason| json!({ "unavailable": reason }),
+        |stamp| json!(stamp),
+    );
     let (pairs, landing_order) = compute_pairs_and_landing_order(&mut built_lanes);
     let lanes_json: Vec<Value> = built_lanes.into_iter().map(|l| l.json_val).collect();
     json!({

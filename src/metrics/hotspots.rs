@@ -29,11 +29,10 @@ pub struct HotspotsReport {
 }
 
 impl HotspotsReport {
-    #[must_use]
-    pub fn with_root(mut self, root: &str) -> Self {
+    pub fn with_root(mut self, root: &str) -> Result<Self, String> {
         self.root_path = root.to_string();
-        self.at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
-        self
+        self.at_stamp = crate::git::history::compute_git_at_stamp(root)?.unwrap_or_default();
+        Ok(self)
     }
 
     #[must_use]

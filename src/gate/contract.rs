@@ -67,10 +67,14 @@ pub fn compare_contracts(
     }
 }
 
-fn tree_entry_blob(tree: &gix::Tree<'_>, path: impl AsRef<Path>) -> Option<Vec<u8>> {
-    let entry = tree.lookup_entry_by_path(path).ok()??;
-    let obj = entry.object().ok()?;
-    Some(obj.data.to_vec())
+fn tree_entry_blob(
+    tree: &gix::Tree<'_>,
+    path: impl AsRef<Path>,
+) -> Result<Option<Vec<u8>>, String> {
+    let Some(object) = crate::git::repo::object_at(tree, path)? else {
+        return Ok(None);
+    };
+    Ok(Some(object.data.to_vec()))
 }
 
 fn resolve_repo_relative_path(repo_path: &Path, workdir: &Path, rel_path: &str) -> Option<PathBuf> {
@@ -80,13 +84,28 @@ fn resolve_repo_relative_path(repo_path: &Path, workdir: &Path, rel_path: &str) 
     Some(repo_rel.to_path_buf())
 }
 
-pub(crate) fn read_head_blob_bytes(repo_path: &Path, rel_path: &str) -> Option<Vec<u8>> {
-    let repo = gix::discover(repo_path).ok()?;
-    let tree = repo.head_commit().ok()?.tree().ok()?;
-    tree_entry_blob(&tree, rel_path).or_else(|| {
-        let repo_rel = resolve_repo_relative_path(repo_path, repo.workdir()?, rel_path)?;
-        tree_entry_blob(&tree, repo_rel)
-    })
+pub(crate) fn read_head_blob_bytes(
+    repo_path: &Path,
+    rel_path: &str,
+) -> Result<Option<Vec<u8>>, String> {
+    let Ok(repo) = gix::discover(repo_path) else {
+        return Ok(None);
+    };
+    let tree = repo
+        .head_commit()
+        .map_err(|e| format!("HEAD: {e}"))?
+        .tree()
+        .map_err(|e| format!("HEAD tree: {e}"))?;
+    if let Some(bytes) = tree_entry_blob(&tree, rel_path)? {
+        return Ok(Some(bytes));
+    }
+    let Some(workdir) = repo.workdir() else {
+        return Ok(None);
+    };
+    match resolve_repo_relative_path(repo_path, workdir, rel_path) {
+        Some(repo_rel) => tree_entry_blob(&tree, repo_rel),
+        None => Ok(None),
+    }
 }
 
 fn resolve_head_visibility(
@@ -174,7 +193,7 @@ pub fn load_head_symbol_contract<P: AsRef<Path>>(
     sym_name: &str,
     lang: Lang,
 ) -> Result<Option<SignatureContract>, String> {
-    let Some(bytes) = read_head_blob_bytes(repo_path.as_ref(), rel_path) else {
+    let Some(bytes) = read_head_blob_bytes(repo_path.as_ref(), rel_path)? else {
         return Ok(None);
     };
     parse_symbol_contract_from_bytes(&bytes, sym_name, lang)

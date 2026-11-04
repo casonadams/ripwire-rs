@@ -138,8 +138,7 @@ fn collect_delta_clones(
         state.ingest,
         state.interner,
         crate::clones::DEFAULT_MIN_CLONE_TOKENS,
-        None,
-        Some(Path::new(root)),
+        crate::clones::CloneSource::Root(Path::new(root)),
         &focus,
     )
 }
@@ -149,9 +148,11 @@ pub fn evaluate_quality_delta_with_basis(
     state: &QueryContext<'_>,
     basis: DeltaBasis,
 ) -> io::Result<QualityDeltaReport> {
-    let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+    let at_stamp = crate::git::history::compute_git_at_stamp(root)
+        .map_err(io::Error::other)?
+        .unwrap_or_default();
     let head_sha = resolve_delta_head_sha(&at_stamp);
-    let changed_files = crate::git::repo::working_tree_changes(root);
+    let changed_files = crate::git::repo::working_tree_changes(root).map_err(io::Error::other)?;
     let mut working = compute_snapshot(state.ingest, state.graph, state.interner, head_sha);
     working.dirty = !changed_files.is_empty();
     attach_working_bodies(&mut working, state, &changed_files);
@@ -194,7 +195,9 @@ fn evaluate_quality_delta_since_ref(
 ) -> io::Result<QualityDeltaReport> {
     let fail = |e: String| io::Error::other(format!("--quality-delta: {e}"));
     let changes = crate::git::repo::changes_since_spec(root, spec).map_err(fail)?;
-    let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+    let at_stamp = crate::git::history::compute_git_at_stamp(root)
+        .map_err(io::Error::other)?
+        .unwrap_or_default();
     let head_sha = resolve_delta_head_sha(&at_stamp);
     let changed_files = changes.paths;
     let mut working = compute_snapshot(state.ingest, state.graph, state.interner, head_sha);

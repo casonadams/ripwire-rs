@@ -210,7 +210,9 @@ pub fn serialize_test_gate_xml<W: Write>(
     out: &mut W,
 ) -> io::Result<()> {
     use crate::serialize::XmlReport;
-    let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
+    let at_stamp = crate::git::history::compute_git_at_stamp(root)
+        .map_err(io::Error::other)?
+        .unwrap_or_default();
     TestGateReport {
         root,
         at_stamp: &at_stamp,
@@ -224,7 +226,7 @@ pub fn serialize_test_gate_xml<W: Write>(
         script_gates_registered: 0,
         script_gates_mapped: 0,
         page: crate::serialize::PageRequest::default(),
-        gauge_attrs: crate::serialize::GraphGauges::ZERO_XML_ATTRS,
+        gauge_attrs: crate::graph::GraphGauges::ZERO_XML_ATTRS,
     }
     .render_envelope(out)
 }

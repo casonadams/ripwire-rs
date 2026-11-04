@@ -1,3 +1,6 @@
+#[path = "support/corpus.rs"]
+mod corpus_support;
+
 mod languages {
     mod bash;
     mod brightscript;
@@ -33,6 +36,7 @@ mod languages {
     mod sql;
     mod swift;
     mod toml;
+    mod type_definitions;
     mod typescript;
     mod typescript_bindings;
     mod typescript_dispatch;

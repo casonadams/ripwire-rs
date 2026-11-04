@@ -1,7 +1,7 @@
 use ripwire_rs::serialize::PageRequest;
 use ripwire_rs::{
-    CloneIdiom, CloneType, Interner, Lang, LanguageRegistry, find_clones, ingest_in_memory_files,
-    render_clones_xml,
+    CloneIdiom, CloneSource, CloneType, Interner, Lang, LanguageRegistry, find_clones,
+    ingest_in_memory_files, render_clones_xml,
 };
 use std::collections::HashMap;
 
@@ -29,7 +29,7 @@ fn test_clone_type1_and_type2_detection() {
         &interner,
     );
 
-    let clones = find_clones(&ingest, &interner, 10, Some(&sources));
+    let clones = find_clones(&ingest, &interner, 10, CloneSource::Sources(&sources));
     assert!(!clones.is_empty(), "Should detect clone group");
     assert_eq!(clones[0].members.len(), 3);
     assert_eq!(clones[0].clone_type, CloneType::Type2);
@@ -50,58 +50,44 @@ fn test_clone_type1_and_type2_detection() {
 }
 
 #[test]
-fn test_clone_type3_gapped_detection() {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-
-    let code_base = b"fn process_items(items: &[i32]) -> i32 {\n    let mut total = 0;\n    for &item in items {\n        if item > 0 {\n            total += item * 2;\n        }\n    }\n    total\n}\n";
-    let code_near = b"fn process_values(values: &[i32]) -> i32 {\n    let mut total = 0;\n    let bonus = 1;\n    for &elem in values {\n        if elem > 0 {\n            total += elem * 2;\n        }\n    }\n    total + bonus\n}\n";
-
-    let mut sources = HashMap::new();
-    sources.insert("src/base.rs".into(), code_base.to_vec());
-    sources.insert("src/near.rs".into(), code_near.to_vec());
-
-    let ingest = ingest_in_memory_files(
-        &[
-            ("src/base.rs", Lang::Rust, code_base),
-            ("src/near.rs", Lang::Rust, code_near),
-        ],
-        &registry,
-        &interner,
-    );
-
-    let clones = find_clones(&ingest, &interner, 10, Some(&sources));
-    assert!(!clones.is_empty(), "Should detect Type-3 near-miss clone");
-    let t3 = clones.iter().find(|g| g.clone_type == CloneType::Type3);
-    assert!(t3.is_some(), "Expected Type-3 clone");
-    let g = t3.unwrap();
-    assert_eq!(g.members.len(), 2);
-    assert!(g.similarity >= 0.80 && g.similarity < 1.0);
-}
-
-#[test]
-fn short_unrelated_chains_do_not_form_a_type3_group() {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
+fn type3_groups_form_only_for_near_miss_bodies() {
+    let near_base = b"fn process_items(items: &[i32]) -> i32 {\n    let mut total = 0;\n    for &item in items {\n        if item > 0 {\n            total += item * 2;\n        }\n    }\n    total\n}\n";
+    let near_edit = b"fn process_values(values: &[i32]) -> i32 {\n    let mut total = 0;\n    let bonus = 1;\n    for &elem in values {\n        if elem > 0 {\n            total += elem * 2;\n        }\n    }\n    total + bonus\n}\n";
     let directory = b"fn compute_directory(path: &str) -> String {\n    Path::new(path)\n        .parent()\n        .and_then(|p| p.to_str())\n        .filter(|s| !s.is_empty())\n        .unwrap_or(\".\")\n        .to_string()\n}\n";
     let names = b"fn names(xml: &str) -> BTreeSet<String> {\n    roxmltree::Document::parse(xml)\n        .unwrap()\n        .descendants()\n        .filter_map(|node| node.attribute(\"n\"))\n        .map(str::to_owned)\n        .collect()\n}\n";
-    let mut sources = HashMap::new();
-    sources.insert("src/gate/seams.rs".into(), directory.to_vec());
-    sources.insert("tests/cli/dispatch_contract.rs".into(), names.to_vec());
-    let ingest = ingest_in_memory_files(
-        &[
-            ("src/gate/seams.rs", Lang::Rust, directory),
-            ("tests/cli/dispatch_contract.rs", Lang::Rust, names),
-        ],
-        &registry,
-        &interner,
-    );
-    let clones = find_clones(&ingest, &interner, 10, Some(&sources));
-    assert!(
-        clones.iter().all(|g| g.clone_type != CloneType::Type3),
-        "unrelated chains reached the Type-3 floor: {:?}",
-        clones.iter().map(|g| g.similarity).collect::<Vec<_>>()
-    );
+    let near_files: &[(&str, Lang, &[u8])] = &[
+        ("src/base.rs", Lang::Rust, near_base),
+        ("src/near.rs", Lang::Rust, near_edit),
+    ];
+    let unrelated_files: &[(&str, Lang, &[u8])] = &[
+        ("src/gate/seams.rs", Lang::Rust, directory),
+        ("tests/cli/dispatch_contract.rs", Lang::Rust, names),
+    ];
+    for (files, expect_type3) in [(near_files, true), (unrelated_files, false)] {
+        let interner = Interner::new();
+        let registry = LanguageRegistry::new().unwrap();
+        let sources: HashMap<String, Vec<u8>> = files
+            .iter()
+            .map(|&(path, _, src)| (path.to_string(), src.to_vec()))
+            .collect();
+        let ingest = ingest_in_memory_files(files, &registry, &interner);
+        let clones = find_clones(&ingest, &interner, 10, CloneSource::Sources(&sources));
+        let type3: Vec<_> = clones
+            .iter()
+            .filter(|g| g.clone_type == CloneType::Type3)
+            .collect();
+        if expect_type3 {
+            assert_eq!(type3.len(), 1, "Expected one Type-3 near-miss clone");
+            assert_eq!(type3[0].members.len(), 2);
+            assert!(type3[0].similarity >= 0.80 && type3[0].similarity < 1.0);
+        } else {
+            assert!(
+                type3.is_empty(),
+                "unrelated chains reached the Type-3 floor: {:?}",
+                clones.iter().map(|g| g.similarity).collect::<Vec<_>>()
+            );
+        }
+    }
 }
 
 #[test]
@@ -131,7 +117,7 @@ fn clone_report_honors_limit_and_offset() {
         .map(|(p, b)| ((*p).into(), b.as_bytes().to_vec()))
         .collect();
     let ingest = ingest_in_memory_files(&files, &registry, &interner);
-    let clones = find_clones(&ingest, &interner, 10, Some(&sources));
+    let clones = find_clones(&ingest, &interner, 10, CloneSource::Sources(&sources));
     assert_eq!(clones.len(), 2);
     let report = |limit, offset, budget| {
         let page = PageRequest {
@@ -198,8 +184,13 @@ fn test_clones_touching_a_file_keep_only_groups_with_a_member_there() {
         .collect();
     let ingest = ingest_in_memory_files(&slices, &registry, &interner);
     let focus: std::collections::HashSet<u32> = [0].into_iter().collect();
-    let groups =
-        ripwire_rs::find_clones_touching(&ingest, &interner, 10, Some(&sources), None, &focus);
+    let groups = ripwire_rs::find_clones_touching(
+        &ingest,
+        &interner,
+        10,
+        CloneSource::Sources(&sources),
+        &focus,
+    );
     let names: Vec<Vec<&str>> = groups
         .iter()
         .map(|g| {

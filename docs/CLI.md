@@ -88,10 +88,7 @@ ripwire-rs . --situ
 ripwire-rs . --expand="Symbol::new"
 
 # Outline control-flow skeletons of symbols (declarations, loops, branches)
-ripwire-rs . --outline="Interner::intern"
-
-# Pack source bodies of the top N highest PageRank symbols
-ripwire-rs . --pack-top-n=5
+ripwire-rs . --expand="Interner::intern" --outline
 
 # Orient file by file with top 3 symbols per file
 ripwire-rs . --tree
@@ -161,9 +158,6 @@ ripwire-rs . --scan-skills
 ripwire-rs . --baseline
 ripwire-rs . --baseline-update
 
-# Pin quality census snapshot
-ripwire-rs . --pin-census
-
 # Partition quality-delta by author/team ownership scope
 ripwire-rs . --quality-delta --scope="core"
 
@@ -173,9 +167,13 @@ ripwire-rs . --cochange --cochange-groups --cochange-recur=3
 # Partition codebase into cohesive modules
 ripwire-rs . --partition=5
 
-# Execute transactional versioned JSON edit plan (with --dry-run validation)
-ripwire-rs . --dry-run --edit-plan=plan.json
+# Execute transactional versioned JSON edit payload (with --dry-run validation)
+ripwire-rs . --dry-run --edit-payload=plan.json
 ripwire-rs . --edit-target-file="src/domain.rs" --no-post-check --allow-remote-edits
+
+# --edit-payload=FILE reads the JSON payload from FILE. When no file has that name, the value is read as inline JSON.
+# A file that exists but cannot be read is an error, never an empty payload.
+ripwire-rs . --replace-symbol-body=SYM --edit-payload=FILE
 * **Benefits:** Catches breaking signature changes, eliminates test suite bloat by running only affected tests, and stops architectural decay before merging.
 
 ---
@@ -215,12 +213,6 @@ ripwire-rs . --arch=rules.txt
 # Export Mermaid flowchart of module call dependencies
 ripwire-rs . --mermaid
 
-# Multi-level Leiden module hierarchy (computed levels=, top 2 printed)
-ripwire-rs . --zoom
-
-# Print every hierarchy level
-ripwire-rs . --zoom --zoom-levels=0
-
 # Rank functions by readability volume and size, largest first
 ripwire-rs . --biggest-first
 
@@ -249,17 +241,11 @@ ripwire-rs . --metrics
 # unavailable= and never substituted.
 ripwire-rs . --quality-panel=default
 
-# Show struct memory layout with computed LP64 field offsets and alignment padding
-ripwire-rs . --layout="Symbol"
-
-# Cache-conscious struct field affinity analysis against 64-byte lines
+# Cache-conscious struct field affinity against 64-byte lines; a named struct also lists its LP64 field offsets and padding
 ripwire-rs . --field-affinity="Symbol"
 
 # Local-reasoning lens measuring share of context outside a unit's file
 ripwire-rs . --context-ratio
-
-# Four orthogonal evidence families joined, ranked by distinct families fired
-ripwire-rs . --ensemble
 
 # Doc comment to identifier coherence verification
 ripwire-rs . --comment-coherence
@@ -270,9 +256,6 @@ ripwire-rs . --slice="compute:x" --slice-flow=fwd --slice-depth=12
 # Select or ignore specific AST lint rules
 ripwire-rs . --lint --lint-select="large-function,deep-nesting"
 ripwire-rs . --lint --lint-ignore="magic-number"
-
-# Calibrate naming rules against git rename history
-ripwire-rs . --naming-consistency --naming-calibration
 
 # Generate executive markdown architecture report (16 KiB by default, shared by five lists;
 # each list shows "(showing S of T)"; page with --limit/--offset, follow a capped list's next route)
@@ -363,9 +346,6 @@ ripwire-rs . --for="parser" --detail=5
 # Cut returned set at the relevance cliff (Adaptive-k)
 ripwire-rs . --for="parser" --adaptive
 
-# Print declaration skeletons with bodies elided (~80% token savings)
-ripwire-rs . --for="parser" --pack-signatures
-
 # Restore the interface/implementor <lego> section collapsed to a counted stub by default
 ripwire-rs . --for="parser" --sections=lego
 # Find which local branch defines or mentions a symbol (HEAD first, with git history oracle)
@@ -374,14 +354,14 @@ ripwire-rs . --whereis="Symbol" --with-history --whereis-full-text --whereis-lis
 # Sweep local branches for divergent authored work vs merge-base with HEAD
 ripwire-rs . --stray-content
 
-# Self-evaluations: co-change recall and known-item retrieval benchmarks
-ripwire-rs . --eval
-ripwire-rs . --eval-retrieval
+# Self-evaluations: co-change recall, known-item retrieval, and call resolution against a compiler SCIP index
+ripwire-rs . --eval=cochange
+ripwire-rs . --eval=retrieval
 # Score name-based call resolution against a compiler SCIP index (rust-analyzer scip, scip-typescript, scip-python)
-ripwire-rs . --eval-scip=index.scip
+ripwire-rs . --scip=index.scip --eval=scip
 # Every disagreement, for triage (default 10 per class and reason). unindexed= counts edges into
 # files the index holds no document for; they are sampled but left out of precision.
-ripwire-rs . --eval-scip=index.scip --eval-samples=100000
+ripwire-rs . --scip=index.scip --eval=scip --samples=100000
 # Install 9 pre-packaged ripwire-rs agent skills to ~/.agents/skills (or custom path)
 ripwire-rs --add-skills
 
@@ -415,10 +395,6 @@ ripwire-rs . --cache="index.json" --callers="parse"
 ripwire-rs . --with-profile="flamegraph.perf"
 ripwire-rs . --run-trace="cargo test" --run-timeout=30
 
-# Additional benchmark evaluation modes: mined git commits, skills, and stray branches
-ripwire-rs . --eval-mined
-ripwire-rs . --eval-skills
-ripwire-rs . --eval-stray
 ```
 * **Benefits:** Minimal prompt token consumption with maximum semantic density for coding agents.
 

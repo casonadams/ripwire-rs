@@ -31,7 +31,7 @@ pub static HANDOFF: Plugin<HandoffArgs> = Plugin {
 };
 
 fn run(run: &Run<'_>, _: &HandoffArgs) -> io::Result<()> {
-    run.report(|ctx, out| writeln!(out, "{}", build_handoff_xml(ctx, run.page())))
+    run.report(|ctx, out| writeln!(out, "{}", build_handoff_xml(ctx, run.page())?))
 }
 
 /// Branch, head subject, and detached state of the repository enclosing `root`; `None` outside git.
@@ -168,9 +168,9 @@ fn mine_cochange(
     ingest: &IngestResult,
     graph: &Graph,
     interner: &Interner,
-) -> Option<(Vec<CoPartner>, usize)> {
+) -> io::Result<(Vec<CoPartner>, usize)> {
     let cutoff = resolve_cutoff_timestamp(None, DEFAULT_COCHANGE_MONTHS);
-    let commits = walk_repository_history_scoped(root, cutoff).ok()?;
+    let commits = walk_repository_history_scoped(root, cutoff).map_err(io::Error::other)?;
     let opts = CochangeOptions::default();
     let probed = commits
         .iter()
@@ -188,7 +188,7 @@ fn mine_cochange(
         Some(interner),
         &opts,
     );
-    Some((partners, probed))
+    Ok((partners, probed))
 }
 
 /// Co-change partners of the first changed file, and the window attributes that describe their mining.
@@ -198,23 +198,18 @@ fn handoff_cochange(
     changed: &[String],
     head: Option<&GitHead>,
     ctx: &ExecutionContext<'_>,
-) -> (Vec<CoPartner>, String) {
+) -> io::Result<(Vec<CoPartner>, String)> {
     if head.is_none() {
-        return (Vec::new(), String::new());
+        return Ok((Vec::new(), String::new()));
     }
-    let mined = changed.first().map_or_else(
-        || Some((Vec::new(), 0)),
-        |probe| mine_cochange(root, probe, ctx.ingest, ctx.graph, ctx.interner),
-    );
-    match mined {
-        Some((partners, probed)) => (
-            partners,
-            format!(
-                " cochange_window=\"{DEFAULT_COCHANGE_MONTHS}mo@HEAD\" cochange_commits=\"{probed}\""
-            ),
-        ),
-        None => (Vec::new(), String::new()),
-    }
+    let (partners, probed) = match changed.first() {
+        Some(probe) => mine_cochange(root, probe, ctx.ingest, ctx.graph, ctx.interner)?,
+        None => (Vec::new(), 0),
+    };
+    Ok((
+        partners,
+        format!(" cochange_window=\"{DEFAULT_COCHANGE_MONTHS}mo@HEAD\" cochange_commits=\"{probed}\""),
+    ))
 }
 
 struct HeuristicRows {
@@ -259,7 +254,7 @@ fn handoff_heuristic_rows(
 
 /// The `at`, `root`, and git attributes of the handoff element; git attributes appear only inside a repository.
 fn handoff_header_attrs(root: &str, head: Option<&GitHead>) -> String {
-    let at = compute_git_at_stamp(root).map_or(String::new(), |at| format!(" at=\"{at}\""));
+    let at = crate::serialize::git_at_attr(compute_git_at_stamp(root));
     let git = head.map_or(String::new(), |h| {
         let detached = if h.detached { " detached=\"1\"" } else { "" };
         let subject = h
@@ -274,10 +269,14 @@ fn handoff_header_attrs(root: &str, head: Option<&GitHead>) -> String {
     format!("{at} root=\"{root}\"{git}")
 }
 
-pub fn build_handoff_xml(ctx: &ExecutionContext<'_>, page: PageRequest) -> String {
+pub fn build_handoff_xml(ctx: &ExecutionContext<'_>, page: PageRequest) -> io::Result<String> {
     let root = ctx.root;
     let head = resolve_git_head(root);
-    let changed = crate::commands::common::changes::get_working_tree_changed_files(root);
+    let changed = if head.is_some() {
+        crate::commands::common::changes::get_working_tree_changed_files(root)?
+    } else {
+        Vec::new()
+    };
     let verified_rows = build_handoff_verified_rows(&changed, ctx.ingest, ctx.interner, page);
     let blast_files = handoff_blast_files(
         &changed,
@@ -287,16 +286,16 @@ pub fn build_handoff_xml(ctx: &ExecutionContext<'_>, page: PageRequest) -> Strin
         ctx.interner,
     );
     let tests = handoff_affected_tests(&changed, ctx.ingest, ctx.graph, ctx.interner);
-    let (partners, cochange_attr) = handoff_cochange(root, &changed, head.as_ref(), ctx);
+    let (partners, cochange_attr) = handoff_cochange(root, &changed, head.as_ref(), ctx)?;
     let heur = handoff_heuristic_rows(root, &partners, head.as_ref(), page);
     let est_tokens = (verified_rows.len() + heur.rows.len() + 240) / 4;
     let header = handoff_header_attrs(root, head.as_ref());
-    format!(
+    Ok(format!(
         "<!-- ripwire-rs handoff schema=ripwire-rs.handoff/v1: session handoff bundle. -->\n<handoff schema=\"ripwire-rs.handoff/v1\"{header} est_tokens=\"{est_tokens}\"><verified changed=\"{}\" blast_files=\"{blast_files}\">{verified_rows}<tests n=\"{tests}\"/></verified><heuristic n=\"{}\" candidates=\"{}\" capped=\"{}\"{cochange_attr}>{}</heuristic></handoff>",
         changed.len(),
         heur.shown,
         heur.candidates,
         usize::from(heur.capped),
         heur.rows,
-    )
+    ))
 }

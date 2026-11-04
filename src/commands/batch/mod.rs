@@ -118,7 +118,7 @@ pub fn execute_batch_content<W: Write>(
     let sources = crate::query::FileSources {
         root: std::path::Path::new(root),
     };
-    let at = crate::git::history::compute_git_at_stamp(root);
+    let at = crate::git::history::compute_git_at_stamp(root).map_err(io::Error::other)?;
     let context = QueryContext {
         root,
         ingest,

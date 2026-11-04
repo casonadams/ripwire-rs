@@ -4,7 +4,7 @@ use ripwire_rs::gate::pr_context::{
     PrFileContext, compute_pr_context_from_facts, serialize_pr_context_xml, touched_symbols,
 };
 use ripwire_rs::git::repo::new_side_changes;
-use ripwire_rs::serialize::GraphGauges;
+use ripwire_rs::graph::GraphGauges;
 use ripwire_rs::{
     FileInfo, Graph, IngestResult, Interner, Lang, LanguageRegistry, SymKind, Symbol,
     ingest_in_memory_files,

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 pub(crate) fn is_non_entrypoint_path(rel_path: &str) -> bool {
-    if crate::gate::affected::is_test_or_bench_path(rel_path) {
+    if crate::domain::test_path::is_test_or_bench_path(rel_path) {
         return true;
     }
     Path::new(rel_path).components().any(|c| {

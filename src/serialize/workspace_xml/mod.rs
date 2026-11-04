@@ -641,19 +641,3 @@ impl TreeReport<'_> {
         (paged.window, paged.rows())
     }
 }
-
-/// Serialize `--pack-top-n` bodies to Ripwire XML.
-pub fn serialize_pack_top_n_xml<W: Write>(
-    root: &str,
-    bodies: &[(&str, &str)],
-    out: &mut W,
-) -> io::Result<()> {
-    writeln!(
-        out,
-        "<ctx schema=\"ripwire-rs.pack-top-n/v1\" root=\"{root}\">"
-    )?;
-    for (path, body) in bodies {
-        writeln!(out, "<src p=\"{}\">\n{body}\n</src>", path.xml_escaped())?;
-    }
-    writeln!(out, "</ctx>")
-}

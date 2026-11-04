@@ -54,14 +54,14 @@ pub fn render_query_value(
 pub fn resolve_state_commits<'a>(
     state: &QueryContext<'a>,
     months: u32,
-) -> std::borrow::Cow<'a, [CommitInfo]> {
+) -> Result<std::borrow::Cow<'a, [CommitInfo]>, String> {
     if let Some(commits) = state.commits {
-        return std::borrow::Cow::Borrowed(commits);
+        return Ok(std::borrow::Cow::Borrowed(commits));
     }
     let cutoff = crate::git::history::resolve_cutoff_timestamp(None, months);
-    std::borrow::Cow::Owned(
-        crate::git::history::walk_repository_history_scoped(state.root, cutoff).unwrap_or_default(),
-    )
+    let commits = crate::git::history::walk_repository_history_scoped(state.root, cutoff)
+        .map_err(|e| e.to_string())?;
+    Ok(std::borrow::Cow::Owned(commits))
 }
 
 /// Transport-neutral command metadata and implementation. `params` are `(name, type, description)` rows; a tool

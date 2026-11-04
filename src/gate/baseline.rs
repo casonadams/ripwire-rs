@@ -149,7 +149,7 @@ fn is_unreferenced_callable(
         && !is_constructor(name, scope)
         && !semantics.is_entrypoint_symbol(name, scope, sym.kind, path)
         && !semantics.is_header_file(path)
-        && !crate::gate::affected::is_test_path(path)
+        && !crate::domain::test_path::is_test_path(path)
 }
 
 /// Compute a quality snapshot from an ingested repository index.

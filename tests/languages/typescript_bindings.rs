@@ -1,4 +1,5 @@
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, NodeId, Symbol, ingest_in_memory_files};
+use crate::corpus_support::{Fixture, fixture as corpus_fixture};
+use ripwire_rs::{Lang, NodeId, Symbol};
 
 /// A fluent server function whose handler reads a response body through a property call.
 const SERVER_FN: &str = "import { createServerFn } from \"@tanstack/react-start\";\n\
@@ -25,26 +26,8 @@ export function mount(token: string): void {\n\
   handler({ token: token });\n\
 }\n";
 
-struct Fixture {
-    interner: Interner,
-    ingest: ripwire_rs::IngestResult,
-    graph: Graph,
-}
-
 fn fixture(files: &[(&str, &str)]) -> Fixture {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let sources: Vec<(&str, Lang, &[u8])> = files
-        .iter()
-        .map(|(path, src)| (*path, Lang::TypeScript, src.as_bytes()))
-        .collect();
-    let ingest = ingest_in_memory_files(&sources, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    Fixture {
-        interner,
-        ingest,
-        graph,
-    }
+    corpus_fixture(Lang::TypeScript, files)
 }
 
 impl Fixture {

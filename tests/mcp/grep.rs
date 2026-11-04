@@ -1,7 +1,7 @@
-use ripwire_rs::domain::CorpusView;
+use crate::uses_support::uses_json;
 use ripwire_rs::query::grep::{TierCounts, enclosing_metadata, tier_attrs};
 use ripwire_rs::serialize::serialize_grep_xml;
-use ripwire_rs::{Graph, IngestResult, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
+use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
 use serde_json::{Value, json};
 
 fn counts(code: usize, comment: usize, literal: usize) -> TierCounts {
@@ -42,17 +42,6 @@ fn test_empty_code_tier_serves_comments_and_strings_together() {
 fn test_no_tier_disclosure_when_every_hit_is_served_as_is() {
     assert!(tier_attrs(counts(4, 0, 0), 2, false).is_empty());
     assert!(tier_attrs(counts(4, 3, 3), 2, true).is_empty());
-}
-
-fn uses_json(ingest: &IngestResult, interner: &Interner, symbol: &str) -> Value {
-    let sites: Vec<Value> = (ingest, interner)
-        .collect_symbol_uses(symbol)
-        .into_iter()
-        .map(|(role, file, line, enclosing)| {
-            json!({"role": role, "file": file, "line": line, "enclosing": enclosing})
-        })
-        .collect();
-    json!({"symbol": symbol, "count": sites.len(), "uses": sites})
 }
 
 fn semantic_read_report(path: &str, lang: Lang, source: &[u8]) -> (Value, String) {

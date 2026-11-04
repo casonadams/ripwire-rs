@@ -1,24 +1,12 @@
 use ripwire_rs::commands::common::edit::payload_or_inline;
-use ripwire_rs::commands::from_trace::stdin_trace;
+use ripwire_rs::commands::from_trace::{stdin_trace, trace_from_file_read};
 use ripwire_rs::commands::plan_lanes::read_brief;
-use ripwire_rs::commands::plan_lint::read_plan;
 use ripwire_rs::git::repo::CommitSummary;
 use ripwire_rs::query::branch_tools::name_fate;
 use std::io::{self, ErrorKind};
 
 fn io_err(kind: ErrorKind) -> io::Error {
     io::Error::new(kind, "fixture")
-}
-
-#[test]
-fn test_read_plan_missing_file_is_error_naming_path() {
-    let err = read_plan("PLAN.md", Err(io_err(ErrorKind::NotFound))).unwrap_err();
-    assert_eq!(err.kind(), ErrorKind::NotFound);
-    assert!(err.to_string().contains("PLAN.md"));
-    assert_eq!(
-        read_plan("PLAN.md", Ok("# Plan\n".to_string())).unwrap(),
-        "# Plan\n"
-    );
 }
 
 #[test]
@@ -73,4 +61,15 @@ fn test_name_fate_unreadable_history_is_unavailable_not_never() {
     let removed = name_fate(Ok(Some(commit)));
     assert_eq!(removed["v"], "removed");
     assert_eq!(removed["commit"], "abc123def");
+}
+
+#[test]
+fn test_trace_from_file_read_falls_back_only_when_missing() {
+    let literal = trace_from_file_read("panic.txt", Err(io_err(ErrorKind::NotFound))).unwrap();
+    assert_eq!(literal, "panic.txt");
+    let text = trace_from_file_read("panic.txt", Ok(b"frame".to_vec())).unwrap();
+    assert_eq!(text, "frame");
+    let err =
+        trace_from_file_read("panic.txt", Err(io_err(ErrorKind::PermissionDenied))).unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
 }

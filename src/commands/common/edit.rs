@@ -1,7 +1,7 @@
 //! Symbol edits shared by `--replace-symbol-body`, `--insert-before-symbol` and `--insert-after-symbol`,
 //! with their MCP tools.
 use crate::commands::Run;
-use crate::commands::edit_plan::EditPlanArgs;
+use crate::commands::edit_payload::EditPayloadArgs;
 use crate::query::commands::QueryContext;
 use crate::query::edit::{self, EditOp, EditTargetRequest};
 use crate::serialize::JsonValueExt;
@@ -14,10 +14,14 @@ pub const EDIT_INS_PARAMS: &[(&str, &str, &str)] = &[
     ("path", "string", "Optional file path hint"),
 ];
 
-/// Apply one symbol edit from the CLI; the payload and dry-run come from the edit-plan flags.
+/// Apply one symbol edit from the CLI; the payload and dry-run come from the edit-payload flags.
 pub fn run_edit(run: &Run<'_>, spec: &str, op: EditOp) -> io::Result<()> {
     run.report(|ctx, out| {
-        let safety = ctx.cli.plugins.decode::<EditPlanArgs>().unwrap_or_default();
+        let safety = ctx
+            .cli
+            .plugins
+            .decode::<EditPayloadArgs>()
+            .unwrap_or_default();
         let (sym, payload) = resolve_edit_spec(spec, safety.edit_payload.as_deref())?;
         let res = edit::perform_atomic_edit_with_options(
             EditTargetRequest {
@@ -92,9 +96,6 @@ pub fn read_stdin_text() -> io::Result<String> {
 /// The payload named by `arg`: the file's text, or `arg` itself when no such file exists. Any other
 /// read failure (for example permission denied) is an error, never a payload.
 pub fn payload_or_inline(arg: &str, read: io::Result<String>) -> io::Result<String> {
-    match read {
-        Ok(text) => Ok(text),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(arg.to_string()),
-        Err(e) => Err(io::Error::new(e.kind(), format!("{arg}: {e}"))),
-    }
+    crate::crawler::or_absent(read, || arg.to_string())
+        .map_err(|e| io::Error::new(e.kind(), format!("{arg}: {e}")))
 }

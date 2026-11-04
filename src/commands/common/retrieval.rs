@@ -15,7 +15,7 @@ pub fn report_query(
         let sources = crate::query::FileSources {
             root: Path::new(ctx.root),
         };
-        let at = crate::git::history::compute_git_at_stamp(ctx.root);
+        let at = crate::git::history::compute_git_at_stamp(ctx.root).map_err(io::Error::other)?;
         let query = QueryContext {
             root: ctx.root,
             ingest: ctx.ingest,

@@ -13,7 +13,7 @@ Re-run the commands below to compare after a change.
 | ripwire-rs | 0.27 | 0.42 | 0.69 | 0.387 | 0.79 | 0.69 | 18.5 | 8276 |
 | ripwire 0.6.9 | 0.42 | 0.62 | 0.75 | 0.531 | 0.75 | 0.64 | 15.6 | 5903 |
 
-Name-exact (`--eval-retrieval`, 60 sampled symbols): MRR 1.000, recall@1 100%.
+Name-exact (`--eval=retrieval`, 60 sampled symbols): MRR 1.000, recall@1 100%.
 
 ## Default answer size, bytes (`ripwire-rs . <verb>`)
 
@@ -126,10 +126,10 @@ real/asked 1.2 to 1.02; `--pack-task` 23943 to 16496 bytes (6000-token budget, 5
 
 ## Communities: Leiden from the `leiden-rs` crate
 
-`--communities`, `--zoom` and `--pack-task --partition` ran a hand-written, single-level Louvain pass.
+`--communities` and `--pack-task --partition` ran a hand-written, single-level Louvain pass.
 `graphrs` was rejected first: its public `leiden()` seeds from the thread RNG, so the same graph gives
-different communities. `leiden-rs` (rand, rustc-hash, thiserror; rayon off) takes a seed and also returns the
-per-level hierarchy `--zoom` needs. Same graph, similar community counts:
+different communities. `leiden-rs` (rand, rustc-hash, thiserror; rayon off) takes a seed and also returns a
+per-level hierarchy, which no verb reads since `--zoom` was removed. Same graph, similar community counts:
 
 | repository | nodes | Louvain Q | Leiden Q | Leiden / Louvain time |
 |---|---|---|---|---|

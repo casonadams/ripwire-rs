@@ -39,7 +39,7 @@ pub fn count_production_identifier_uses(
         .iter()
         .filter(|file| file.lang == lang)
         .filter(|file| {
-            !crate::gate::affected::is_test_or_bench_path(ingest.file_path(file.id, interner))
+            !crate::domain::test_path::is_test_or_bench_path(ingest.file_path(file.id, interner))
         })
         .collect();
     count_uses_in_files(ingest, interner, sources, &files, uses);

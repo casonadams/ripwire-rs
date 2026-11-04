@@ -32,10 +32,13 @@ pub static STRAY_CONTENT: Plugin<StrayContentArgs> = Plugin {
         &[
         ],
         &[],
-        |s, a| render_query_value(doc_tools::call_stray_content(s.root), a, serialize_stray_content_xml)
+        |s, a| render_query_value(doc_tools::call_stray_content(s.root)?, a, serialize_stray_content_xml)
     )],
 };
 
 fn run(run: &Run<'_>, _: &StrayContentArgs) -> io::Result<()> {
-    run.report(|ctx, out| serialize_stray_content_xml(&doc_tools::call_stray_content(ctx.root), out))
+    run.report(|ctx, out| {
+        let value = doc_tools::call_stray_content(ctx.root).map_err(io::Error::other)?;
+        serialize_stray_content_xml(&value, out)
+    })
 }

@@ -39,7 +39,7 @@ pub struct EditCheckReport {
     pub total_callers: usize,
     pub incompatible_callers: usize,
     pub callers: Vec<CallerCheckResult>,
-    pub gauges: crate::serialize::GraphGauges,
+    pub gauges: crate::graph::GraphGauges,
     pub at_stamp: String,
     /// `(offset, limit)` window over unflagged caller rows; `None` emits every row.
     pub page: Option<(usize, usize)>,
@@ -78,7 +78,7 @@ impl crate::serialize::XmlReport for EditCheckReport {
         root: false,
         comment: "ripwire-rs edit-check schema=ripwire-rs.edit-check/v1: sym='s contract NOW vs HEAD."
     );
-    fn graph_gauges(&self) -> Option<crate::serialize::GraphGauges> {
+    fn graph_gauges(&self) -> Option<crate::graph::GraphGauges> {
         Some(self.gauges)
     }
     fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {

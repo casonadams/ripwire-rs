@@ -1,4 +1,4 @@
-//! `--edit-plan` / `--edit-payload`: executes a versioned edit plan or JSON edit payload.
+//! `--edit-payload`: executes a versioned JSON edit plan or payload with the safety checks.
 use super::common::safety::{context_of, report_exit};
 use super::common::safety_queries::execute_edit_plan_dispatch;
 use super::{Plugin, Run};
@@ -6,11 +6,8 @@ use clap::Args;
 use std::io;
 
 #[derive(Args, Debug, Clone, Default, PartialEq)]
-pub struct EditPlanArgs {
-    /// Execute versioned edit plan
-    #[arg(long = "edit-plan", value_name = "PLAN_JSON")]
-    pub edit_plan: Option<String>,
-    /// Execute JSON edit payload
+pub struct EditPayloadArgs {
+    /// Execute JSON edit payload: a file path, or the inline JSON when no file has that name
     #[arg(long = "edit-payload", value_name = "PAYLOAD_JSON")]
     pub edit_payload: Option<String>,
     /// Validate edits without mutating files
@@ -33,20 +30,20 @@ pub struct EditPlanArgs {
     pub allow_remote_edits: bool,
 }
 
-fn run(run: &Run<'_>, args: &EditPlanArgs) -> io::Result<()> {
-    let Some(plan_spec) = args.edit_plan.as_deref().or(args.edit_payload.as_deref()) else {
+fn run(run: &Run<'_>, args: &EditPayloadArgs) -> io::Result<()> {
+    let Some(payload) = args.edit_payload.as_deref() else {
         return Ok(());
     };
     report_exit(run, |ctx, out| {
         let safety = context_of(ctx);
-        execute_edit_plan_dispatch(plan_spec, &safety, args.dry_run, out).map(Some)
+        execute_edit_plan_dispatch(payload, &safety, args.dry_run, out).map(Some)
     })
 }
 
-pub static EDIT_PLAN: Plugin<EditPlanArgs> = Plugin {
-    name: "edit-plan",
+pub static EDIT_PAYLOAD: Plugin<EditPayloadArgs> = Plugin {
+    name: "edit-payload",
     options: &[],
-    selected: |args| args.edit_plan.is_some() || args.edit_payload.is_some(),
+    selected: |args| args.edit_payload.is_some(),
     run,
     check: None,
     tools: &[],

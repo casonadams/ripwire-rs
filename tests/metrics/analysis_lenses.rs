@@ -1,69 +1,9 @@
 use ripwire_rs::metrics::{
-    NamingScope, classify_identifier_casing, compute_comment_coherence,
-    compute_comment_coherence_with_sources, compute_context_ratio, compute_ensemble,
-    serialize_executive_report_md, serialize_naming_calibration_xml,
-    serialize_naming_consistency_xml,
+    classify_identifier_casing, compute_comment_coherence_with_sources,
+    serialize_executive_report_md, serialize_naming_consistency_xml,
 };
 use ripwire_rs::serialize::PageRequest;
 use ripwire_rs::{FileInfo, Graph, IngestResult, Interner, Lang, SymKind, Symbol};
-
-#[test]
-fn test_context_ratio_and_ensemble() {
-    let ingest = IngestResult::new();
-    let interner = Interner::new();
-    let graph = Graph::build(&ingest, &interner);
-
-    let cr = compute_context_ratio(&ingest, &graph, &interner, PageRequest::default());
-    assert_eq!(cr.units, 0);
-
-    let ens = compute_ensemble(
-        &ingest,
-        &graph,
-        &interner,
-        Err("in-memory ingest: no git history".to_string()),
-        PageRequest::default(),
-    );
-    assert_eq!(ens.eligible, 0);
-    let cc = compute_comment_coherence(&ingest, &interner, PageRequest::default());
-    assert_eq!(cc.documented, 0);
-}
-
-#[test]
-fn test_evaluate_symbol_ensemble() {
-    let interner = Interner::new();
-    let mut sym = Symbol::new(
-        0,
-        interner.intern("complex_fn"),
-        interner.intern("src/lib.rs::complex_fn"),
-        SymKind::Function,
-        Lang::Rust,
-        0,
-        1,
-    );
-    sym.ccx = 20;
-    sym.loc = 100;
-    sym.max_nest = 5;
-    sym.cx = 15;
-    sym.params = 5;
-    let mut ingest = IngestResult::new();
-    ingest.symbols.push(sym);
-    let graph = Graph::build(&ingest, &interner);
-    let ens = compute_ensemble(
-        &ingest,
-        &graph,
-        &interner,
-        Err("in-memory ingest: no git history".to_string()),
-        PageRequest::default(),
-    );
-    assert_eq!(ens.rows.len(), 1);
-    assert_eq!(ens.rows[0].fired, "structural");
-    assert!(!ens.enabled.contains(&"historical"));
-    assert!(
-        ens.unavailable
-            .iter()
-            .any(|(name, _)| *name == "historical")
-    );
-}
 
 #[test]
 fn test_naming_and_executive_report() {
@@ -99,22 +39,9 @@ fn test_naming_and_executive_report() {
     ));
     let graph = Graph::build(&ingest, &interner);
     let mut buf = Vec::new();
-    serialize_naming_consistency_xml(
-        NamingScope {
-            root: ".",
-            include_locals: false,
-        },
-        &ingest,
-        &interner,
-        PageRequest::default(),
-        &mut buf,
-    )
-    .unwrap();
-    assert!(String::from_utf8_lossy(&buf).contains("snake_case"));
-    buf.clear();
-    serialize_naming_calibration_xml(".", &ingest, &interner, PageRequest::default(), &mut buf)
+    serialize_naming_consistency_xml(".", &ingest, &interner, PageRequest::default(), &mut buf)
         .unwrap();
-    assert!(String::from_utf8_lossy(&buf).contains("ripwire-rs.naming-calibration/v1"));
+    assert!(String::from_utf8_lossy(&buf).contains("snake_case"));
     buf.clear();
     let facts = ripwire_rs::query::safety::SafetyContext {
         root: ".",

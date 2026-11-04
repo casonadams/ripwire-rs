@@ -1,6 +1,6 @@
+use crate::uses_support::uses_json;
 use ripwire_rs::commands::around::{AroundConfig, execute_around_query};
 use ripwire_rs::commands::common::safety_queries::execute_safe_delete_query;
-use ripwire_rs::domain::CorpusView;
 use ripwire_rs::gate::contract::{ContractStatus, SignatureContract, is_symbol_name_public};
 use ripwire_rs::gate::edit_check::check_symbol_contract;
 use ripwire_rs::ingest::{Capture, classify_capture, parse_file_content};
@@ -11,22 +11,10 @@ use ripwire_rs::query::navigation::{NavContext, NavMode, execute_nav_symbol_quer
 use ripwire_rs::query::retrieval::{ForTaskOptions, call_for_task_with_options, call_lego};
 use ripwire_rs::serialize::PageRequest;
 use ripwire_rs::{
-    Graph, IngestResult, Interner, Lang, LanguageRegistry, PageRankConfig, SliceContext,
-    SliceFlowDir, SliceRequest, SymKind, ingest_in_memory_files, navigate_1hop, query_slice,
-    serialize_lego_xml, serialize_uses_xml,
+    Graph, Interner, Lang, LanguageRegistry, PageRankConfig, SliceContext, SliceFlowDir,
+    SliceRequest, SymKind, ingest_in_memory_files, navigate_1hop, query_slice, serialize_lego_xml,
+    serialize_uses_xml,
 };
-use serde_json::{Value, json};
-
-fn uses_json(ingest: &IngestResult, interner: &Interner, symbol: &str) -> Value {
-    let sites: Vec<Value> = (ingest, interner)
-        .collect_symbol_uses(symbol)
-        .into_iter()
-        .map(|(role, file, line, enclosing)| {
-            json!({"role": role, "file": file, "line": line, "enclosing": enclosing})
-        })
-        .collect();
-    json!({"symbol": symbol, "count": sites.len(), "uses": sites})
-}
 
 #[test]
 fn test_classify_captures() {

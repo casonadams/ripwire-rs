@@ -222,10 +222,13 @@ fn relative_path_scopes_and_explore_task_are_served() {
 }
 
 #[test]
-fn situational_awareness_without_files_is_not_an_argument_error() {
+fn situational_awareness_without_files_names_the_missing_history() {
     let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
     let report = call_tool(&mut state, "situational_awareness", json!({}));
-    assert!(report.get("error").is_none(), "{report}");
+    assert!(
+        error_text(&report).contains("failed to open repository"),
+        "{report}"
+    );
 }
 
 #[test]

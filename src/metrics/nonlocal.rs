@@ -156,7 +156,7 @@ pub fn find_nonlocal_state(
 
 pub struct NonlocalStateReport<'a> {
     pub funcs: &'a [NonlocalFunction],
-    pub gauges: crate::serialize::GraphGauges,
+    pub gauges: crate::graph::GraphGauges,
     pub page: crate::serialize::PageRequest,
 }
 
@@ -175,7 +175,7 @@ impl crate::serialize::XmlReport for NonlocalStateReport<'_> {
         root: true,
         comment: "ripwire-rs nonlocal-state schema=ripwire-rs.nonlocal-state/v1: per function, the non-local state it reaches: mutable bindings, and constants the indexed files mutate."
     );
-    fn graph_gauges(&self) -> Option<crate::serialize::GraphGauges> {
+    fn graph_gauges(&self) -> Option<crate::graph::GraphGauges> {
         Some(self.gauges)
     }
     fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {
@@ -233,7 +233,7 @@ pub fn serialize_nonlocal_state_xml<W: Write>(
     use crate::serialize::XmlReport;
     NonlocalStateReport {
         funcs,
-        gauges: crate::serialize::GraphGauges::default(),
+        gauges: crate::graph::GraphGauges::default(),
         page: crate::serialize::PageRequest::default(),
     }
     .write_xml_report(root, out)
@@ -242,7 +242,7 @@ pub fn serialize_nonlocal_state_xml<W: Write>(
 pub fn serialize_nonlocal_state_with_gauge_xml<W: Write>(
     root: &str,
     funcs: &[NonlocalFunction],
-    gauges: crate::serialize::GraphGauges,
+    gauges: crate::graph::GraphGauges,
     page: crate::serialize::PageRequest,
     out: &mut W,
 ) -> io::Result<()> {

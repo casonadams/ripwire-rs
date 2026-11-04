@@ -44,8 +44,8 @@ pub fn collect_scout(root: &str, refs: &[&str]) -> Result<ScoutInputs, String> {
         .iter()
         .map(|&label| collect_arm(&repo, &head, label))
         .collect::<Result<Vec<_>, _>>()?;
-    if is_dirty(root) {
-        arms.push(working_tree_arm(&repo, root, &head));
+    if is_dirty(root)? {
+        arms.push(working_tree_arm(&repo, root, &head)?);
     }
     Ok(ScoutInputs {
         head: head.short,
@@ -60,7 +60,7 @@ fn read_head<'r>(repo: &'r gix::Repository, root: &str) -> Result<HeadState<'r>,
         .map_err(|e| format!("HEAD has no commit: {e}"))?;
     let tree = commit.tree().map_err(|e| format!("HEAD tree: {e}"))?;
     let short = short_id(commit.id);
-    let at = format!("{short}{}", at_suffix(repo, root));
+    let at = format!("{short}{}", at_suffix(repo, root)?);
     Ok(HeadState {
         id: commit.id,
         tree,
@@ -71,15 +71,18 @@ fn read_head<'r>(repo: &'r gix::Repository, root: &str) -> Result<HeadState<'r>,
 
 /// `+dirty` for a dirty working tree and `+shallow` for a truncated history, where merge bases
 /// may be missing.
-fn at_suffix(repo: &gix::Repository, root: &str) -> String {
+fn at_suffix(repo: &gix::Repository, root: &str) -> Result<String, String> {
     let mut suffix = String::new();
-    if is_dirty(root) {
+    if is_dirty(root)? {
         suffix.push_str("+dirty");
     }
-    if repo.is_shallow().unwrap_or(false) {
+    if repo
+        .is_shallow()
+        .map_err(|e| format!("{root}: shallow check: {e}"))?
+    {
         suffix.push_str("+shallow");
     }
-    suffix
+    Ok(suffix)
 }
 
 fn collect_arm(
@@ -96,35 +99,46 @@ fn collect_arm(
     Ok(ArmChanges {
         label: label.to_string(),
         base: Some(short_id(base)),
-        files: changed_since(repo, &base_tree, &arm_tree),
-        head_files: changed_since(repo, &base_tree, &head.tree),
+        files: changed_since(repo, &base_tree, &arm_tree)?,
+        head_files: changed_since(repo, &base_tree, &head.tree)?,
     })
 }
 
 /// The uncommitted tracked changes as an arm, against HEAD: the old side is HEAD's blob, the new
 /// side the file on disk (empty when deleted). Untracked files are not work, so an arm of only
 /// untracked files reports no work.
-fn working_tree_arm(repo: &gix::Repository, root: &str, head: &HeadState<'_>) -> ArmChanges {
+fn working_tree_arm(
+    repo: &gix::Repository,
+    root: &str,
+    head: &HeadState<'_>,
+) -> Result<ArmChanges, String> {
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| format!("{root} has no work tree"))?;
     let mut files = ChangedFiles::new();
-    for path in working_tree_changes(root) {
-        let old = blob_bytes(repo, head_blob(&head.tree, &path));
-        let new = repo
-            .workdir()
-            .map(|dir| std::fs::read(dir.join(&path)).unwrap_or_default())
-            .unwrap_or_default();
+    for path in working_tree_changes(root)? {
+        let old = blob_bytes(repo, head_blob(&head.tree, &path)?)?;
+        let new = worktree_bytes(&path, std::fs::read(workdir.join(&path)))?;
         files.insert(path.clone(), symbols_between(&path, &old, &new));
     }
-    ArmChanges {
+    Ok(ArmChanges {
         label: WORKING_TREE.to_string(),
         base: Some(head.short.clone()),
         files,
         head_files: ChangedFiles::new(),
-    }
+    })
 }
 
-fn head_blob(tree: &gix::Tree<'_>, path: &str) -> Option<gix::ObjectId> {
-    let entry = tree.lookup_entry_by_path(path).ok().flatten()?;
-    entry.mode().is_blob().then(|| entry.object_id())
+/// Working-tree bytes of `path`: empty when the file is gone (a deleted side), `Err` for any other read
+/// failure, so an unreadable file is never taken for an empty one.
+pub fn worktree_bytes(path: &str, read: std::io::Result<Vec<u8>>) -> Result<Vec<u8>, String> {
+    crate::crawler::or_absent(read, Vec::new).map_err(|e| format!("{path}: {e}"))
+}
+
+fn head_blob(tree: &gix::Tree<'_>, path: &str) -> Result<Option<gix::ObjectId>, String> {
+    Ok(crate::git::repo::entry_at(tree, path)?
+        .filter(|entry| entry.mode().is_blob())
+        .map(|entry| entry.object_id()))
 }
 
 fn unrelated_arm(label: &str) -> ArmChanges {
@@ -146,70 +160,71 @@ fn commit_tree(repo: &gix::Repository, id: gix::ObjectId) -> Result<gix::Tree<'_
 }
 
 /// Every blob path that differs from `from` to `to`, with the symbols its changed lines touch.
-fn changed_since(repo: &gix::Repository, from: &gix::Tree<'_>, to: &gix::Tree<'_>) -> ChangedFiles {
-    tree_deltas(from, to)
+fn changed_since(
+    repo: &gix::Repository,
+    from: &gix::Tree<'_>,
+    to: &gix::Tree<'_>,
+) -> Result<ChangedFiles, String> {
+    tree_deltas(from, to)?
         .into_iter()
-        .map(|delta| {
-            let names = delta_symbols(repo, &delta);
-            (delta.path, names)
-        })
+        .map(|delta| delta_symbols(repo, &delta).map(|names| (delta.path, names)))
         .collect()
 }
 
-fn tree_deltas(from: &gix::Tree<'_>, to: &gix::Tree<'_>) -> Vec<FileDelta> {
+fn tree_deltas(from: &gix::Tree<'_>, to: &gix::Tree<'_>) -> Result<Vec<FileDelta>, String> {
     use gix::object::tree::diff::Change;
     let mut deltas = Vec::new();
-    let Ok(mut changes) = from.changes() else {
-        return deltas;
-    };
+    let mut changes = from.changes().map_err(|e| format!("diff: {e}"))?;
     changes.options(|o| {
         o.track_rewrites(None);
     });
-    let _ = changes.for_each_to_obtain_tree(to, |change| {
-        match change {
-            Change::Addition {
-                location,
-                id,
-                entry_mode,
-                ..
-            } if entry_mode.is_blob() => deltas.push(FileDelta {
-                path: location.to_string(),
-                old: None,
-                new: Some(id.detach()),
-            }),
-            Change::Deletion {
-                location,
-                id,
-                entry_mode,
-                ..
-            } if entry_mode.is_blob() => deltas.push(FileDelta {
-                path: location.to_string(),
-                old: Some(id.detach()),
-                new: None,
-            }),
-            Change::Modification {
-                location,
-                previous_id,
-                id,
-                entry_mode,
-                ..
-            } if entry_mode.is_blob() => deltas.push(FileDelta {
-                path: location.to_string(),
-                old: Some(previous_id.detach()),
-                new: Some(id.detach()),
-            }),
-            _ => {}
-        }
-        Ok::<_, gix::Error>(std::ops::ControlFlow::Continue(()))
-    });
-    deltas
+    changes
+        .for_each_to_obtain_tree(to, |change| {
+            match change {
+                Change::Addition {
+                    location,
+                    id,
+                    entry_mode,
+                    ..
+                } if entry_mode.is_blob() => deltas.push(FileDelta {
+                    path: location.to_string(),
+                    old: None,
+                    new: Some(id.detach()),
+                }),
+                Change::Deletion {
+                    location,
+                    id,
+                    entry_mode,
+                    ..
+                } if entry_mode.is_blob() => deltas.push(FileDelta {
+                    path: location.to_string(),
+                    old: Some(id.detach()),
+                    new: None,
+                }),
+                Change::Modification {
+                    location,
+                    previous_id,
+                    id,
+                    entry_mode,
+                    ..
+                } if entry_mode.is_blob() => deltas.push(FileDelta {
+                    path: location.to_string(),
+                    old: Some(previous_id.detach()),
+                    new: Some(id.detach()),
+                }),
+                _ => {}
+            }
+            Ok::<_, gix::Error>(std::ops::ControlFlow::Continue(()))
+        })
+        .map_err(|e| format!("diff: {e}"))?;
+    Ok(deltas)
 }
 
 /// Symbols touched by one committed file change.
-fn delta_symbols(repo: &gix::Repository, delta: &FileDelta) -> BTreeSet<String> {
-    let old = blob_bytes(repo, delta.old);
-    let new = blob_bytes(repo, delta.new);
-    symbols_between(&delta.path, &old, &new)
+fn delta_symbols(repo: &gix::Repository, delta: &FileDelta) -> Result<BTreeSet<String>, String> {
+    let old = blob_bytes(repo, delta.old)?;
+    let new = blob_bytes(repo, delta.new)?;
+    Ok(symbols_between(&delta.path, &old, &new))
 }
 
 /// Symbols touched on either side of one file's change: old-side lines name what was removed or
@@ -225,15 +240,18 @@ fn symbols_between(path: &str, old: &[u8], new: &[u8]) -> BTreeSet<String> {
     names
 }
 
-/// Blob contents; empty when absent, unreadable, or binary (binary files have no symbols).
-fn blob_bytes(repo: &gix::Repository, id: Option<gix::ObjectId>) -> Vec<u8> {
+/// Blob contents; empty when absent or binary (binary files have no symbols). `Err` when a blob the
+/// tree names cannot be read.
+fn blob_bytes(repo: &gix::Repository, id: Option<gix::ObjectId>) -> Result<Vec<u8>, String> {
     let Some(id) = id else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    match repo.find_blob(id) {
-        Ok(blob) if !crate::crawler::is_binary_buffer(&blob.data) => blob.data.to_vec(),
-        _ => Vec::new(),
-    }
+    let blob = repo.find_blob(id).map_err(|e| format!("blob {id}: {e}"))?;
+    Ok(if crate::crawler::is_binary_buffer(&blob.data) {
+        Vec::new()
+    } else {
+        blob.data.to_vec()
+    })
 }
 
 /// Changed line ranges (0-based, half-open) on the old and new side of a line diff.

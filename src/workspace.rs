@@ -27,7 +27,7 @@ impl Workspace {
         no_cache: bool,
         scip_index: Option<&std::path::Path>,
     ) -> std::io::Result<Self> {
-        let stamp = crate::cache::compute_cache_key(root);
+        let stamp = crate::cache::compute_cache_key(root)?;
         let (ingest, graph, pr, interner) = load_repo_analysis_with_options(
             root,
             None,
@@ -36,7 +36,8 @@ impl Workspace {
             scip_index,
         )?;
         let mut state = Self::from_analysis(root, ingest, graph, pr, interner);
-        state.at = crate::git::history::compute_git_at_stamp(root);
+        state.at =
+            crate::git::history::compute_git_at_stamp(root).map_err(std::io::Error::other)?;
         state.stamp = Some(stamp);
         state.scip_index = scip_index.map(std::path::Path::to_path_buf);
         Ok(state)
@@ -96,7 +97,7 @@ impl Workspace {
         let Some(stamp) = self.stamp.as_deref() else {
             return Ok(false);
         };
-        if crate::cache::compute_cache_key(&self.root) == stamp {
+        if crate::cache::compute_cache_key(&self.root)? == stamp {
             return Ok(false);
         }
         let mut fresh = Self::load_with_cache(&self.root, false, self.scip_index.as_deref())?;

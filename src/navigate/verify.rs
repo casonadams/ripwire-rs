@@ -1,8 +1,8 @@
 use super::{find_symbols_by_name, transitive_impact_multi};
 use crate::domain::{CorpusView, IngestResult, Interner, NodeId};
-use crate::graph::Graph;
+use crate::graph::{Graph, GraphGauges};
 use crate::serialize::{
-    GraphGauges, PageRequest, PageWindow, Paged, PathLayerExt, XmlEscapeExt, XmlReport, row_bytes,
+    PageRequest, PageWindow, Paged, PathLayerExt, XmlEscapeExt, XmlReport, row_bytes,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{self, Write};

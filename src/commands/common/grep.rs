@@ -1,15 +1,13 @@
-//! Corpus search shared by `--grep` and `--regex`, plus the modifiers they take; `--pattern` and `--match` reuse
-//! [`write_hits`] for their paged hit lists.
+//! Corpus search behind `--grep`, plus the modifiers it takes; `--match` reuses [`write_hits`] for its paged hit lists.
 use crate::cli::TopModifierArgs;
 use crate::commands::context::ExecutionContext;
 use crate::serialize::PageRequest;
 use serde_json::Value;
 use std::io::{self, Write};
 
-/// Searches the corpus for `pat` as `verb` (`grep` or `regex`) and writes the hits windowed by `page`.
+/// Searches the corpus for `pat` as a literal and writes the hits windowed by `page`.
 pub fn execute<W: Write>(
     ctx: &ExecutionContext<'_>,
-    verb: &str,
     pat: &str,
     page: PageRequest,
     in_scope: Option<&str>,
@@ -26,7 +24,6 @@ pub fn execute<W: Write>(
         limit: page.limit,
         offset: page.offset.unwrap_or(0),
         budget: page.budget,
-        verb,
         path_filter: in_scope,
         any_tier: crate::query::grep::parse_any_tier(modifiers.grep_in.as_deref())?,
         before: modifiers

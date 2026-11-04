@@ -72,44 +72,40 @@ pub fn for_each_tracked_path(root: &str, mut visit: impl FnMut(&str)) {
 }
 
 /// Paths of tracked files whose working-tree content differs from `HEAD` (`git diff --name-only HEAD`).
-#[must_use]
-pub fn working_tree_changes(root: &str) -> Vec<String> {
+/// `Err` when the status cannot be read: an unreadable tree is never reported as clean.
+pub fn working_tree_changes(root: &str) -> Result<Vec<String>, String> {
     status_paths(root, gix::status::UntrackedFiles::None)
 }
 
 /// True when tracked files differ from `HEAD` or an untracked, non-ignored file exists (`+dirty`).
-#[must_use]
-pub fn is_dirty(root: &str) -> bool {
-    !dirty_paths(root).is_empty()
+pub fn is_dirty(root: &str) -> Result<bool, String> {
+    dirty_paths(root).map(|paths| !paths.is_empty())
 }
 
 /// Repo-relative paths that differ from `HEAD`: changed tracked files plus untracked, non-ignored ones.
-#[must_use]
-pub fn dirty_paths(root: &str) -> Vec<String> {
+pub fn dirty_paths(root: &str) -> Result<Vec<String>, String> {
     status_paths(root, gix::status::UntrackedFiles::Files)
 }
 
-fn status_paths(root: &str, untracked: gix::status::UntrackedFiles) -> Vec<String> {
+fn status_paths(root: &str, untracked: gix::status::UntrackedFiles) -> Result<Vec<String>, String> {
     if std::env::var_os("LLVM_PROFILE_FILE").is_some() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    let Some(repo) = discover(root) else {
-        return Vec::new();
-    };
-    let Ok(iter) = repo
+    let repo = gix::discover(root).map_err(|e| format!("{root}: {e}"))?;
+    let iter = repo
         .status(gix::progress::Discard)
         .and_then(|s| s.untracked_files(untracked).into_iter(None))
-    else {
-        return Vec::new();
-    };
-    let mut files: Vec<String> = iter
-        .filter_map(Result::ok)
-        .filter(|item| !is_stat_only(item))
-        .map(|item| item.location().to_string())
-        .collect();
+        .map_err(|e| format!("{root}: git status: {e}"))?;
+    let mut files = Vec::new();
+    for item in iter {
+        let item = item.map_err(|e| format!("{root}: git status: {e}"))?;
+        if !is_stat_only(&item) {
+            files.push(item.location().to_string());
+        }
+    }
     files.sort_unstable();
     files.dedup();
-    files
+    Ok(files)
 }
 
 fn is_stat_only(item: &gix::status::Item) -> bool {
@@ -122,21 +118,19 @@ fn is_stat_only(item: &gix::status::Item) -> bool {
     )
 }
 
-/// Short names of `refs/heads/*`, sorted like `git for-each-ref`.
-#[must_use]
-pub fn local_branches(repo: &gix::Repository) -> Vec<String> {
-    let Ok(refs) = repo.references() else {
-        return Vec::new();
-    };
-    let Ok(iter) = refs.local_branches() else {
-        return Vec::new();
-    };
-    let mut names: Vec<String> = iter
-        .filter_map(Result::ok)
-        .map(|r| r.name().shorten().to_string())
-        .collect();
+/// Short names of `refs/heads/*`, sorted like `git for-each-ref`. `Err` when the refs cannot be read.
+pub fn local_branches(repo: &gix::Repository) -> Result<Vec<String>, String> {
+    let refs = repo.references().map_err(|e| format!("references: {e}"))?;
+    let iter = refs
+        .local_branches()
+        .map_err(|e| format!("local branches: {e}"))?;
+    let mut names = Vec::new();
+    for reference in iter {
+        let reference = reference.map_err(|e| format!("local branch: {e}"))?;
+        names.push(reference.name().shorten().to_string());
+    }
     names.sort_unstable();
-    names
+    Ok(names)
 }
 
 /// Checked-out branch short name, or `HEAD` when detached (`git rev-parse --abbrev-ref HEAD`).
@@ -156,8 +150,12 @@ pub struct WordGrep {
 
 /// Match `git grep -n -w -F` within a `dir/` scope; paths are scope-relative.
 /// Shared revision blobs are read once.
-#[must_use]
-pub fn grep_word_revs(repo: &gix::Repository, revs: &[&str], scope: &str, word: &str) -> WordGrep {
+pub fn grep_word_revs(
+    repo: &gix::Repository,
+    revs: &[&str],
+    scope: &str,
+    word: &str,
+) -> Result<WordGrep, String> {
     use rayon::prelude::*;
     let sync_repo = repo.clone().into_sync();
     let trees: Vec<Vec<(String, gix::ObjectId)>> = revs
@@ -166,18 +164,21 @@ pub fn grep_word_revs(repo: &gix::Repository, revs: &[&str], scope: &str, word: 
             || sync_repo.to_thread_local(),
             |r, rev| sorted_blobs(r, rev, scope),
         )
-        .collect();
+        .collect::<Result<Vec<_>, String>>()?;
     let mut oids: Vec<gix::ObjectId> = trees.iter().flatten().map(|(_, oid)| *oid).collect();
     oids.sort_unstable();
     oids.dedup();
     let blobs = oids.len();
-    let by_blob: std::collections::HashMap<gix::ObjectId, Vec<(usize, String)>> = oids
+    let lines: Vec<(gix::ObjectId, Vec<(usize, String)>)> = oids
         .into_par_iter()
         .map_init(
             || sync_repo.to_thread_local(),
-            |r, oid| (oid, word_lines(r, oid, word)),
+            |r, oid| word_lines(r, oid, word).map(|found| (oid, found)),
         )
-        .filter(|(_, lines)| !lines.is_empty())
+        .collect::<Result<Vec<_>, String>>()?;
+    let by_blob: std::collections::HashMap<gix::ObjectId, Vec<(usize, String)>> = lines
+        .into_iter()
+        .filter(|(_, found)| !found.is_empty())
         .collect();
     let per_rev = trees
         .into_iter()
@@ -198,17 +199,21 @@ pub fn grep_word_revs(repo: &gix::Repository, revs: &[&str], scope: &str, word: 
                 .collect()
         })
         .collect();
-    WordGrep { per_rev, blobs }
+    Ok(WordGrep { per_rev, blobs })
 }
 
-fn sorted_blobs(repo: &gix::Repository, rev: &str, scope: &str) -> Vec<(String, gix::ObjectId)> {
-    let Some(tree) = scoped_tree(repo, rev, scope) else {
-        return Vec::new();
+fn sorted_blobs(
+    repo: &gix::Repository,
+    rev: &str,
+    scope: &str,
+) -> Result<Vec<(String, gix::ObjectId)>, String> {
+    let Some(tree) = scoped_tree(repo, rev, scope)? else {
+        return Ok(Vec::new());
     };
     let mut recorder = gix::traverse::tree::Recorder::default();
-    if tree.traverse().breadthfirst(&mut recorder).is_err() {
-        return Vec::new();
-    }
+    tree.traverse()
+        .breadthfirst(&mut recorder)
+        .map_err(|e| format!("'{rev}': tree walk: {e}"))?;
     let mut blobs: Vec<(String, gix::ObjectId)> = recorder
         .records
         .into_iter()
@@ -216,7 +221,7 @@ fn sorted_blobs(repo: &gix::Repository, rev: &str, scope: &str) -> Vec<(String, 
         .map(|e| (e.filepath.to_string(), e.oid))
         .collect();
     blobs.sort_unstable();
-    blobs
+    Ok(blobs)
 }
 
 #[must_use]
@@ -229,45 +234,84 @@ pub fn revision_tree<'a>(repo: &'a gix::Repository, rev: &str) -> Option<gix::Tr
         .ok()
 }
 
-fn scoped_path_tree<'r>(tree: gix::Tree<'r>, scope: &str) -> Option<gix::Tree<'r>> {
+/// Tree of `rev`; `Err` when `rev` does not resolve to a tree.
+fn rev_tree<'r>(repo: &'r gix::Repository, rev: &str) -> Result<gix::Tree<'r>, String> {
+    let id = repo
+        .rev_parse_single(rev)
+        .map_err(|e| format!("'{rev}': {e}"))?;
+    let object = id.object().map_err(|e| format!("'{rev}': {e}"))?;
+    object.peel_to_tree().map_err(|e| format!("'{rev}': {e}"))
+}
+
+/// The tree at `scope` (`dir/`, empty for the whole tree) in `rev`; `Ok(None)` when `scope` is
+/// absent or is not a directory at `rev`.
+fn scoped_tree<'r>(
+    repo: &'r gix::Repository,
+    rev: &str,
+    scope: &str,
+) -> Result<Option<gix::Tree<'r>>, String> {
+    let tree = rev_tree(repo, rev)?;
     let scope = scope.trim_end_matches('/');
     if scope.is_empty() {
-        return Some(tree);
+        return Ok(Some(tree));
     }
-    tree.lookup_entry_by_path(scope)
-        .ok()
-        .flatten()?
-        .object()
-        .ok()?
-        .try_into_tree()
-        .ok()
-}
-
-fn scoped_tree<'r>(repo: &'r gix::Repository, rev: &str, scope: &str) -> Option<gix::Tree<'r>> {
-    revision_tree(repo, rev).and_then(|tree| scoped_path_tree(tree, scope))
-}
-
-fn word_lines(repo: &gix::Repository, oid: gix::ObjectId, word: &str) -> Vec<(usize, String)> {
-    if repo
-        .find_header(oid)
-        .is_ok_and(|header| header.size() > MAX_WORD_BLOB_BYTES)
-    {
-        return Vec::new();
-    }
-    let Ok(blob) = repo.find_blob(oid) else {
-        return Vec::new();
+    let Some(object) = object_at(&tree, scope).map_err(|e| format!("'{rev}': {e}"))? else {
+        return Ok(None);
     };
-    if is_binary(&blob.data) || blob.data.find(word).is_none() {
-        return Vec::new();
+    Ok(object.try_into_tree().ok())
+}
+
+/// The entry at `path` in `tree`; `Ok(None)` when the path is absent from it.
+pub fn entry_at<'r>(
+    tree: &gix::Tree<'r>,
+    path: impl AsRef<std::path::Path>,
+) -> Result<Option<gix::object::tree::Entry<'r>>, String> {
+    let shown = path.as_ref().display().to_string();
+    tree.lookup_entry_by_path(path)
+        .map_err(|e| format!("{shown}: {e}"))
+}
+
+/// The object at `path` in `tree`; `Ok(None)` when the path is absent from it.
+pub fn object_at<'r>(
+    tree: &gix::Tree<'r>,
+    path: impl AsRef<std::path::Path>,
+) -> Result<Option<gix::Object<'r>>, String> {
+    let shown = path.as_ref().display().to_string();
+    match entry_at(tree, path)? {
+        Some(entry) => entry
+            .object()
+            .map(Some)
+            .map_err(|e| format!("{shown}: {e}")),
+        None => Ok(None),
     }
-    blob.data
+}
+
+fn word_lines(
+    repo: &gix::Repository,
+    oid: gix::ObjectId,
+    word: &str,
+) -> Result<Vec<(usize, String)>, String> {
+    let header = repo
+        .find_header(oid)
+        .map_err(|e| format!("object {oid}: {e}"))?;
+    if header.size() > MAX_WORD_BLOB_BYTES {
+        return Ok(Vec::new());
+    }
+    let blob = repo
+        .find_blob(oid)
+        .map_err(|e| format!("blob {oid}: {e}"))?;
+    if is_binary(&blob.data) || blob.data.find(word).is_none() {
+        return Ok(Vec::new());
+    }
+    Ok(blob
+        .data
         .lines()
         .enumerate()
         .filter_map(|(idx, line)| {
             let text = line.to_str_lossy();
             has_word(&text, word).then(|| (idx + 1, text.into_owned()))
         })
-        .collect()
+        .collect())
 }
 
 /// True when `word` occurs in `line` bounded by non-identifier characters.
@@ -502,9 +546,9 @@ pub fn changes_since_ref(root: &str, rev: &str) -> Result<RefChanges, String> {
         .ok_or_else(|| format!("'{rev}' shares no history with HEAD"))?
         .to_hex()
         .to_string();
-    let base_blobs = path_blobs(&repo, &base);
-    let head_blobs = path_blobs(&repo, "HEAD");
-    let dirty: std::collections::BTreeSet<String> = dirty_paths(root).into_iter().collect();
+    let base_blobs = path_blobs(&repo, &base)?;
+    let head_blobs = path_blobs(&repo, "HEAD")?;
+    let dirty: std::collections::BTreeSet<String> = dirty_paths(root)?.into_iter().collect();
     let worktree = dirty
         .iter()
         .map(|path| Ok((path.clone(), worktree_blob_id(&repo, workdir, path)?)))
@@ -655,13 +699,12 @@ pub fn rev_id(repo: &gix::Repository, rev: &str) -> Option<gix::ObjectId> {
     repo.rev_parse_single(rev).ok().map(gix::Id::detach)
 }
 
-/// Blob oids of `rev`'s tree keyed by path; empty when `rev` does not resolve.
-#[must_use]
+/// Blob oids of `rev`'s tree keyed by path; `Err` when `rev` does not resolve to a tree.
 pub fn path_blobs(
     repo: &gix::Repository,
     rev: &str,
-) -> std::collections::BTreeMap<String, gix::ObjectId> {
-    sorted_blobs(repo, rev, "").into_iter().collect()
+) -> Result<std::collections::BTreeMap<String, gix::ObjectId>, String> {
+    Ok(sorted_blobs(repo, rev, "")?.into_iter().collect())
 }
 
 /// Text of a blob for line comparison; empty when the blob is binary or unreadable.

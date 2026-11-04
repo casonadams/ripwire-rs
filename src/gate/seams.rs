@@ -1,5 +1,5 @@
+use crate::domain::test_path::is_test_path;
 use crate::domain::{IngestResult, Interner, NodeId};
-use crate::gate::affected::is_test_path;
 use crate::graph::Graph;
 use crate::serialize::XmlEscapeExt;
 use std::collections::{BTreeMap, BTreeSet};
@@ -35,7 +35,7 @@ pub struct SeamsReport {
     pub doc_links: Option<usize>,
     pub groups: Vec<SeamGroup>,
     pub pr_iters: u32,
-    pub gauges: crate::serialize::GraphGauges,
+    pub gauges: crate::graph::GraphGauges,
     pub page: crate::serialize::PageRequest,
 }
 
@@ -315,7 +315,7 @@ impl crate::serialize::XmlReport for SeamsReport {
     fn pr_iters(&self) -> Option<u32> {
         Some(self.pr_iters)
     }
-    fn graph_gauges(&self) -> Option<crate::serialize::GraphGauges> {
+    fn graph_gauges(&self) -> Option<crate::graph::GraphGauges> {
         Some(self.gauges)
     }
     fn write_extra_attrs<W: Write>(&self, w: &mut W) -> io::Result<()> {

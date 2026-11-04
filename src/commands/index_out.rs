@@ -38,7 +38,7 @@ fn run(run: &Run<'_>, args: &IndexOutArgs) -> io::Result<()> {
         ingest.files.len(),
         ingest.symbols.len(),
         graph.edge_count(),
-        escape_xml_str(&crate::cache::compute_cache_key(run.root)),
+        escape_xml_str(&crate::cache::compute_cache_key(run.root)?),
         escape_xml_str(path),
     )
 }
