@@ -1,41 +1,34 @@
 use ripwire_rs::Lang;
 use ripwire_rs::clones::{
-    SKETCH_HASHES, compress_source_body, compute_jaccard, compute_kgrams, compute_lcs_len,
-    compute_sketch, hash_tokens, scan_body_ids, sketch_matches, tokenize_body,
+    SKETCH_HASHES, compress_source_body, compute_jaccard, compute_kgrams_ids, compute_lcs_len,
+    compute_sketch, scan_body_ids, sketch_matches, token_id,
 };
 
 #[test]
 fn test_tokenize_normalization() {
     let code = b"fn add(x: i32, y: i32) -> i32 { return x + y + 10; }";
-    let (raw, norm) = tokenize_body(code, Lang::Rust);
-    assert!(norm.contains(&"$I".to_string()));
-    assert!(norm.contains(&"$N".to_string()));
-    assert!(norm.contains(&"return".to_string()));
-    assert_eq!(raw[0], "fn");
-    let (rh, nh, ids) = scan_body_ids(code, Lang::Rust);
-    assert_eq!(rh, hash_tokens(&raw));
-    assert_eq!(nh, hash_tokens(&norm));
-    assert_eq!(ids.len(), norm.len());
+    let (_, _, ids) = scan_body_ids(code, Lang::Rust);
+    assert!(ids.contains(&token_id(b"$I")));
+    assert!(ids.contains(&token_id(b"$N")));
+    assert!(ids.contains(&token_id(b"return")));
 }
 
 #[test]
 fn test_skip_comments_and_strings() {
     let code = b"// line comment\n/* block comment */\n\"hello world\"\n'c'\n# hash comment\n123";
-    let (raw, norm) = tokenize_body(code, Lang::Python);
-    assert!(norm.contains(&"$S".to_string()));
-    assert!(norm.contains(&"$N".to_string()));
-    assert_eq!(raw[0], "\"hello world\"");
+    let (_, _, ids) = scan_body_ids(code, Lang::Python);
+    assert_eq!(ids, vec![token_id(b"$S"), token_id(b"$S"), token_id(b"$N")]);
 }
 
 #[test]
 fn test_kgrams_jaccard_and_sketch() {
-    let toks1: Vec<String> = vec!["fn", "$I", "(", "$I", ")", "{", "return", "$N", "}", ";"]
+    let toks1: Vec<u32> = ["fn", "$I", "(", "$I", ")", "{", "return", "$N", "}", ";"]
         .into_iter()
-        .map(String::from)
+        .map(|t| token_id(t.as_bytes()))
         .collect();
     let toks2 = toks1.clone();
-    let fp1 = compute_kgrams(&toks1, 5);
-    let fp2 = compute_kgrams(&toks2, 5);
+    let fp1 = compute_kgrams_ids(&toks1, 5);
+    let fp2 = compute_kgrams_ids(&toks2, 5);
     let jaccard = compute_jaccard(&fp1, &fp2);
     assert!((jaccard - 1.0).abs() < 1e-6);
     let s1 = compute_sketch(&fp1);

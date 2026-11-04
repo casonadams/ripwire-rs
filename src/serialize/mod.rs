@@ -153,6 +153,13 @@ pub fn text_bytes(parts: &[&str]) -> usize {
     parts.iter().map(|part| part.len() + 1).sum()
 }
 
+/// Render into an in-memory buffer. A `Vec` sink cannot fail, so a failure here is a bug in the renderer.
+pub(crate) fn render_string(render: impl FnOnce(&mut Vec<u8>) -> std::io::Result<()>) -> String {
+    let mut out = Vec::new();
+    render(&mut out).expect("in-memory serialization should never fail");
+    String::from_utf8(out).expect("valid utf-8 output")
+}
+
 /// One list of rows, windowed once: the single place its cap, disclosure attributes and shown rows come from.
 pub struct Paged<'a, T> {
     all: &'a [T],
@@ -178,6 +185,21 @@ impl<'a, T> Paged<'a, T> {
     pub fn attrs(&self) -> String {
         self.window.xml_attrs()
     }
+}
+
+/// Write the rows of `all` that fit `page`, each row through `write_row`. The window is computed from the
+/// bytes each row measures when minified, so a row costs what it writes.
+pub fn write_paged_rows<T, W: std::io::Write>(
+    out: &mut W,
+    all: &[T],
+    page: PageRequest,
+    write_row: impl Fn(&mut dyn std::io::Write, &T) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let shown = Paged::new(all, page, |row| row_bytes(|w| write_row(w, row)));
+    for row in shown.rows() {
+        write_row(out, row)?;
+    }
+    Ok(())
 }
 
 /// Computed pagination slice and Ripwire truncation disclosure metadata.
@@ -217,19 +239,31 @@ impl PageWindow {
         }
     }
 
-    /// Format Ripwire XML pagination disclosure attributes (`shown=`, `capped=`, `total=`, `has_more=`, `next_offset=`).
-    #[must_use]
-    pub fn xml_attrs(&self) -> String {
+    /// Write Ripwire XML pagination disclosure attributes (`shown=`, `capped=`, `total=`, `has_more=`, `next_offset=`).
+    pub fn write_xml_attrs<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<()> {
         if self.capped || self.offset > 0 || self.limit > 0 {
-            let hm = usize::from(self.has_more);
-            let cap = usize::from(self.capped);
-            format!(
-                " shown=\"{}\" capped=\"{cap}\" total=\"{}\" has_more=\"{hm}\" next_offset=\"{}\" offset=\"{}\" limit=\"{}\"",
-                self.shown, self.total, self.next_offset, self.offset, self.limit
+            write!(
+                out,
+                " shown=\"{}\" capped=\"{}\" total=\"{}\" has_more=\"{}\" next_offset=\"{}\" offset=\"{}\" limit=\"{}\"",
+                self.shown,
+                usize::from(self.capped),
+                self.total,
+                usize::from(self.has_more),
+                self.next_offset,
+                self.offset,
+                self.limit
             )
         } else {
-            format!(" shown=\"{}\" capped=\"0\"", self.shown)
+            write!(out, " shown=\"{}\" capped=\"0\"", self.shown)
         }
+    }
+
+    /// [`Self::write_xml_attrs`] as a string.
+    #[must_use]
+    pub fn xml_attrs(&self) -> String {
+        let mut buf = Vec::new();
+        let _ = self.write_xml_attrs(&mut buf);
+        String::from_utf8(buf).unwrap_or_default()
     }
 }
 
@@ -263,11 +297,9 @@ pub trait GraphGaugeProvider {
 
     #[must_use]
     fn xml_gauge_attrs(&self) -> String {
-        let g = self.gauges();
-        format!(
-            "graph_ambiguous=\"{}\" graph_unresolved=\"{}\" graph_unindexed=\"{}\" counts_floor=\"1\"",
-            g.ambiguous, g.unresolved, g.unindexed
-        )
+        let mut buf = Vec::new();
+        let _ = self.write_xml_gauge_attrs(&mut buf);
+        String::from_utf8(buf).unwrap_or_default()
     }
 
     fn write_xml_gauge_attrs<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<()> {
@@ -465,7 +497,7 @@ pub trait XmlReport {
             write!(out, "<{tag} schema=\"{ver}\"")?;
         }
         if let Some(pw) = self.page_window() {
-            out.write_all(pw.xml_attrs().as_bytes())?;
+            pw.write_xml_attrs(out)?;
         }
         if let Some(iters) = self.pr_iters() {
             write!(out, " pr_iters=\"{}\"", iters.max(1))?;

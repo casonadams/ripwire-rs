@@ -1,4 +1,4 @@
-use ripwire_rs::git::cochange::{CoGroup, CoPair, CoPartner};
+use ripwire_rs::git::cochange::CoPartner;
 use ripwire_rs::git::history::CommitInfo;
 use ripwire_rs::query::safety::*;
 use ripwire_rs::serialize::PageRequest;
@@ -93,61 +93,30 @@ fn test_cochange_printers_and_formatting() {
     assert!(text.contains("<partner path=\"src/b.rs\" together=\"5\" deg=\"0.85\" deg_rev=\"0.80\" recur=\"2\" surprising=\"1\" />"));
     assert!(text.contains("<partner path=\"src/c.rs\" together=\"2\" deg=\"0.40\" deg_rev=\"0.30\" recur=\"1\" dep_capable=\"0\" />"));
 
-    out.clear();
-    let pairs = [
-        CoPair {
-            file_a: "src/one.rs".to_string(),
-            file_b: "src/two.rs".to_string(),
-            together: 7,
-            deg: 0.9,
-            conf_ab: 0.8,
-            conf_ba: 0.7,
-            driver: "a",
-            recur: 3,
-            surprising: false,
-            dep_capable: true,
-        },
-        CoPair {
-            file_a: "src/alpha.rs".to_string(),
-            file_b: "src/beta.rs".to_string(),
-            together: 3,
-            deg: 0.5,
-            conf_ab: 0.4,
-            conf_ba: 0.3,
-            driver: "b",
-            recur: 1,
-            surprising: true,
-            dep_capable: true,
-        },
-    ];
-    let limited = PageRequest {
-        limit: Some(1),
-        offset: Some(0),
-        budget: None,
-    };
-    print_cochange_pairs_paged("root", &pairs, limited, &mut out).unwrap();
-    let text = std::str::from_utf8(&out).unwrap();
-    assert!(text.contains("<cochange schema=\"ripwire-rs.cochange/v1\" pairs=\"2\""));
-    assert!(text.contains("<pair a=\"src/one.rs\" b=\"src/two.rs\" together=\"7\" deg=\"0.90\" conf_ab=\"0.80\" conf_ba=\"0.70\" driver=\"a\" recur=\"3\" surprising=\"0\"/>"));
-    assert!(!text.contains("src/alpha.rs"));
+    with_cochange_history(|context, commits| {
+        let mut pairs_xml = Vec::new();
+        execute_cochange_with_options(
+            None,
+            CochangeOptions::default(),
+            commits,
+            context,
+            &mut pairs_xml,
+        )
+        .unwrap();
+        let text = std::str::from_utf8(&pairs_xml).unwrap();
+        assert!(text.contains("<cochange schema=\"ripwire-rs.cochange/v1\" pairs=\"2\""));
+        assert!(text.contains("<pair a=\"src/one.rs\""));
 
-    out.clear();
-    let groups = [CoGroup {
-        core: "src/x.rs".to_string(),
-        partners: vec!["src/y.rs".to_string()],
-        max_together: 4,
-        max_deg: 0.75,
-    }];
-    print_cochange_groups_paged("root", &groups, PageRequest::default(), &mut out).unwrap();
-    let text = std::str::from_utf8(&out).unwrap();
-    assert!(
-        text.contains("<cochange-groups schema=\"ripwire-rs.cochange-groups/v1\" groups=\"1\"")
-    );
-    assert!(text.contains(
-        "<group core=\"src/x.rs\" partners=\"src/y.rs\" size=\"2\" together=\"4\" deg=\"0.75\"/>"
-    ));
-    assert!(text.contains("src/x.rs"));
-    assert!(text.contains("src/y.rs"));
+        let mut groups_xml = Vec::new();
+        let options = CochangeOptions {
+            cochange_groups: true,
+            ..Default::default()
+        };
+        execute_cochange_with_options(None, options, commits, context, &mut groups_xml).unwrap();
+        let text = std::str::from_utf8(&groups_xml).unwrap();
+        assert!(text.contains("<cochange-groups schema=\"ripwire-rs.cochange-groups/v1\""));
+        assert!(text.contains("<group core="));
+    });
 }
 
 #[test]
@@ -225,14 +194,11 @@ fn test_execute_cochange_and_hotspots_with_injected_history() {
     }
 
     out.clear();
-    execute_cochange_with(
-        Some("src/a.rs"),
-        Some("2023-01-01"),
-        &commits,
-        &s_ctx,
-        &mut out,
-    )
-    .unwrap();
+    let options = CochangeOptions {
+        since: Some("2023-01-01"),
+        ..Default::default()
+    };
+    execute_cochange_with_options(Some("src/a.rs"), options, &commits, &s_ctx, &mut out).unwrap();
     let text = std::str::from_utf8(&out).unwrap();
     let partners = roxmltree::Document::parse(text).unwrap();
     let paths: Vec<_> = partners
@@ -322,42 +288,63 @@ fn test_situational_report_consumer_facts() {
     assert!(xml.contains("<changed path=\"src/lib.rs\"/>"));
 }
 
-fn cochange_pair(a: &str) -> CoPair {
-    CoPair {
-        file_a: a.to_string(),
-        file_b: "src/other.rs".to_string(),
-        together: 3,
-        deg: 0.5,
-        conf_ab: 0.4,
-        conf_ba: 0.3,
-        driver: "a",
-        recur: 1,
-        surprising: false,
-        dep_capable: true,
-    }
+fn with_cochange_history(check: impl FnOnce(&SafetyContext<'_>, &[CommitInfo])) {
+    let interner = Interner::new();
+    let registry = LanguageRegistry::new().unwrap();
+    let files = [
+        ("src/one.rs", Lang::Rust, b"pub fn one() {}\n".as_slice()),
+        ("src/two.rs", Lang::Rust, b"pub fn two() {}\n".as_slice()),
+        (
+            "src/three.rs",
+            Lang::Rust,
+            b"pub fn three() {}\n".as_slice(),
+        ),
+    ];
+    let ingest = ingest_in_memory_files(&files, &registry, &interner);
+    let graph = Graph::build(&ingest, &interner);
+    let context = SafetyContext {
+        root: "root",
+        ingest: &ingest,
+        graph: &graph,
+        interner: &interner,
+    };
+    let commit = |index: i64, changed: [&str; 2]| CommitInfo {
+        id: format!("commit{index}"),
+        timestamp: 1_700_000_000 - index * 3_000_000,
+        author: "Ada".to_string(),
+        changed_files: changed.iter().map(|f| f.to_string()).collect(),
+    };
+    let mut commits: Vec<CommitInfo> = (0..4)
+        .map(|index| commit(index, ["src/one.rs", "src/two.rs"]))
+        .collect();
+    commits.extend((4..8).map(|index| commit(index, ["src/one.rs", "src/three.rs"])));
+    check(&context, &commits);
 }
 
 #[test]
 fn cochange_pairs_budget_fits_rows() {
-    let pairs = [cochange_pair("src/one.rs"), cochange_pair("src/two.rs")];
-    let render = |page: PageRequest| {
-        let mut out = Vec::new();
-        print_cochange_pairs_paged("root", &pairs, page, &mut out).unwrap();
-        String::from_utf8(out).unwrap()
-    };
-    let roomy = render(PageRequest {
-        limit: None,
-        offset: None,
-        budget: Some(usize::MAX),
+    with_cochange_history(|context, commits| {
+        let render = |page: PageRequest| {
+            let mut out = Vec::new();
+            let options = CochangeOptions {
+                page,
+                ..Default::default()
+            };
+            execute_cochange_with_options(None, options, commits, context, &mut out).unwrap();
+            String::from_utf8(out).unwrap()
+        };
+        let roomy = render(PageRequest {
+            limit: None,
+            offset: None,
+            budget: Some(usize::MAX),
+        });
+        assert!(roomy.contains("shown=\"2\""));
+        let tight = render(PageRequest {
+            limit: None,
+            offset: None,
+            budget: Some(1),
+        });
+        assert!(tight.contains("shown=\"1\""));
+        assert!(tight.contains("has_more=\"1\""));
     });
-    assert!(roomy.contains("shown=\"2\""));
-    assert!(roomy.contains("src/two.rs"));
-    let tight = render(PageRequest {
-        limit: None,
-        offset: None,
-        budget: Some(1),
-    });
-    assert!(tight.contains("shown=\"1\""));
-    assert!(tight.contains("has_more=\"1\""));
-    assert!(!tight.contains("src/two.rs"));
 }

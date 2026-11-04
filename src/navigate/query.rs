@@ -495,25 +495,6 @@ impl crate::serialize::XmlReport for GraphQueryReport<'_> {
     }
 }
 
-pub fn execute_graph_query_expr<W: Write>(
-    expr: &str,
-    root: &str,
-    ingest: &IngestResult,
-    graph: &Graph,
-    interner: &Interner,
-    out: &mut W,
-) -> io::Result<()> {
-    execute_graph_query_expr_paged(
-        expr,
-        root,
-        ingest,
-        graph,
-        interner,
-        crate::serialize::PageRequest::default(),
-        out,
-    )
-}
-
 pub fn execute_graph_query_expr_paged<W: Write>(
     expr: &str,
     root: &str,

@@ -288,7 +288,7 @@ fn task_detail_preserves_all_acquired_bodies_in_canonical_xml() {
 
 #[test]
 fn connect_radius_metadata_matches_bounded_graph_search() {
-    use ripwire_rs::query::graph::{execute_connect_query, execute_connect_query_with_radius};
+    use ripwire_rs::query::graph::{DEFAULT_CONNECT_RADIUS, execute_connect_query_with_radius};
     let registry = ripwire_rs::LanguageRegistry::new().unwrap();
     let interner = Interner::new();
     let bytes = b"pub fn first() { second(); }\npub fn second() { third(); }\npub fn third() { last(); }\npub fn last() {}\n";
@@ -299,7 +299,16 @@ fn connect_radius_metadata_matches_bounded_graph_search() {
     );
     let graph = ripwire_rs::graph::Graph::build(&ingest, &interner);
     let mut output = Vec::new();
-    execute_connect_query("first,last", &ingest, &graph, &interner, &mut output).unwrap();
+    execute_connect_query_with_radius(
+        ".",
+        "first,last",
+        DEFAULT_CONNECT_RADIUS,
+        &ingest,
+        &graph,
+        &interner,
+        &mut output,
+    )
+    .unwrap();
     let xml = String::from_utf8(output).unwrap();
     assert!(xml.contains("root=\".\""));
     assert!(xml.contains("radius=\"2\""));

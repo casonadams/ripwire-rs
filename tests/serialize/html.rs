@@ -1,5 +1,4 @@
 use ripwire_rs::serialize::PageRequest;
-use ripwire_rs::serialize::html::{cx_color, lang_color};
 use ripwire_rs::{
     ColorBy, Graph, IngestResult, Interner, Lang, SymKind, Symbol, write_call_graph_html,
 };
@@ -21,16 +20,10 @@ fn test_color_by_parsing() {
 }
 
 #[test]
-fn test_colors_lang_and_cx() {
-    assert_eq!(lang_color(Lang::Rust), "#dea584");
-    assert_eq!(lang_color(Lang::Python), "#3572a5");
-    assert_eq!(lang_color(Lang::Unknown), "#888888");
-
-    assert_eq!(cx_color(3), "#4caf50");
-    assert_eq!(cx_color(8), "#8bc34a");
-    assert_eq!(cx_color(14), "#ffeb3b");
-    assert_eq!(cx_color(20), "#ff9800");
-    assert_eq!(cx_color(50), "#f44336");
+fn test_lang_display_colors() {
+    assert_eq!(Lang::Rust.semantics().display_color(), "#dea584");
+    assert_eq!(Lang::Python.semantics().display_color(), "#3572a5");
+    assert_eq!(Lang::Unknown.semantics().display_color(), "#888888");
 }
 
 #[test]

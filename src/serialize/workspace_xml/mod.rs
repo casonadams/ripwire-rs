@@ -3,21 +3,23 @@ use crate::serialize::{JsonValueExt, Paged};
 use serde_json::Value;
 use std::io::{self, Write};
 
+mod doc_drift;
+pub use doc_drift::{DocDriftReport, serialize_doc_drift_xml};
+
 /// Serialize `whereis` branch symbol search to Ripwire XML.
 fn emit_whereis_fate<W: Write>(out: &mut W, fate: &Value, sym: &str) -> io::Result<()> {
     let v = fate.str_or("v", "never");
-    let mut row = format!("  <fate sym=\"{sym}\" v=\"{v}\"");
+    write!(out, "  <fate sym=\"{sym}\" v=\"{v}\"")?;
     if let Some(c) = fate.opt_str("commit") {
-        row.push_str(&format!(" commit=\"{c}\""));
+        write!(out, " commit=\"{c}\"")?;
     }
     if let Some(d) = fate.opt_str("date") {
-        row.push_str(&format!(" date=\"{d}\""));
+        write!(out, " date=\"{d}\"")?;
     }
     if let Some(n) = fate.opt_str("note") {
-        row.push_str(&format!(" note=\"{}\"", n.xml_escaped()));
+        write!(out, " note=\"{}\"", n.xml_escaped())?;
     }
-    row.push_str("/>");
-    writeln!(out, "{row}")
+    writeln!(out, "/>")
 }
 
 fn emit_whereis_history<W: Write>(out: &mut W, hist: &Value, sym: &str) -> io::Result<()> {
@@ -31,28 +33,24 @@ fn emit_whereis_history<W: Write>(out: &mut W, hist: &Value, sym: &str) -> io::R
 }
 
 fn emit_whereis_hit<W: Write>(out: &mut W, h: &Value, refs: usize) -> io::Result<()> {
-    let ref_attr = h
-        .opt_str("ref")
-        .map_or_else(String::new, |r| format!(" ref=\"{}\"", r.xml_escaped()));
-    let mut stamp = String::new();
+    write!(out, "  <hit")?;
+    if let Some(r) = h.opt_str("ref") {
+        write!(out, " ref=\"{}\"", r.xml_escaped())?;
+    }
     for key in ["tip", "date"] {
         if let Some(v) = h.opt_str(key).filter(|v| !v.is_empty()) {
-            stamp.push_str(&format!(" {key}=\"{}\"", v.xml_escaped()));
+            write!(out, " {key}=\"{}\"", v.xml_escaped())?;
         }
     }
     let path = h.str_any(&["path", "file"], "").xml_escaped();
     let line = h.u64_or("line", 0);
     let kind = h.str_or("kind", "def");
-    let refs_attr = if refs > 1 {
-        format!(" refs=\"{refs}\"")
-    } else {
-        String::new()
-    };
+    write!(out, " p=\"{path}\" l=\"{line}\" kind=\"{kind}\"")?;
+    if refs > 1 {
+        write!(out, " refs=\"{refs}\"")?;
+    }
     let text = h.str_or("text", "").xml_escaped();
-    writeln!(
-        out,
-        "  <hit{ref_attr}{stamp} p=\"{path}\" l=\"{line}\" kind=\"{kind}\"{refs_attr} t=\"{text}\"/>"
-    )
+    writeln!(out, " t=\"{text}\"/>")
 }
 
 /// Rows a `--whereis` listing prints: `(hit, refs holding the same line)`, plus the folded count.
@@ -276,50 +274,53 @@ pub fn serialize_owners_xml<W: Write>(val: &Value, out: &mut W) -> io::Result<()
     OwnersReport { val }.render_envelope(out)
 }
 
-/// Serialize `flags` environment and compile gates to Ripwire XML.
+fn write_flag_gate_attrs<W: Write>(
+    out: &mut W,
+    g: &Value,
+    reads: Option<&Vec<Value>>,
+) -> io::Result<()> {
+    if let Some(d) = g.opt_str("default").filter(|s| !s.is_empty()) {
+        write!(out, " default=\"{}\"", d.xml_escaped())?;
+    }
+    if let Some(d) = g.get("dark").and_then(Value::as_u64) {
+        write!(out, " dark=\"{d}\"")?;
+    }
+    if let Some(r) = g.get("regions").and_then(Value::as_u64) {
+        write!(out, " regions=\"{r}\"")?;
+    }
+    if let Some(l) = g.get("loc").and_then(Value::as_u64) {
+        write!(out, " loc=\"{l}\"")?;
+    }
+    let reads_count = g
+        .get("reads_count")
+        .and_then(Value::as_u64)
+        .or_else(|| reads.map(|r| r.len() as u64));
+    if let Some(c) = reads_count {
+        write!(out, " reads=\"{c}\"")?;
+    }
+    Ok(())
+}
+
 fn write_flag_gate_entry<W: Write>(out: &mut W, g: &Value) -> io::Result<()> {
     let name = g.str_any(&["name", "flag"], "").xml_escaped();
     let kind = g.str_or("kind", "compile");
     let file = g.str_any(&["file", "path"], "").xml_escaped();
     let line = g.u64_or("line", 0);
-    let def_attr = match g.opt_str("default").filter(|s| !s.is_empty()) {
-        Some(d) => format!(" default=\"{}\"", d.xml_escaped()),
-        None => String::new(),
-    };
-    let dark_attr = g
-        .get("dark")
-        .and_then(Value::as_u64)
-        .map_or_else(String::new, |d| format!(" dark=\"{d}\""));
-    let reg_attr = g
-        .get("regions")
-        .and_then(Value::as_u64)
-        .map_or_else(String::new, |r| format!(" regions=\"{r}\""));
-    let loc_attr = g
-        .get("loc")
-        .and_then(Value::as_u64)
-        .map_or_else(String::new, |l| format!(" loc=\"{l}\""));
     let reads = g["reads"].as_array();
-    let reads_attr = g
-        .get("reads_count")
-        .and_then(Value::as_u64)
-        .or_else(|| reads.map(|r| r.len() as u64))
-        .map_or_else(String::new, |c| format!(" reads=\"{c}\""));
-    if let Some(read_list) = reads.filter(|r| !r.is_empty()) {
-        writeln!(
-            out,
-            "  <gate name=\"{name}\" kind=\"{kind}\"{def_attr}{dark_attr}{reg_attr}{loc_attr}{reads_attr} p=\"{file}\" l=\"{line}\">"
-        )?;
-        for r in read_list {
-            let rp = r.str_any(&["path", "file"], "").xml_escaped();
-            let rl = r.u64_or("line", 1);
-            writeln!(out, "    <read p=\"{rp}\" l=\"{rl}\"/>")?;
+    write!(out, "  <gate name=\"{name}\" kind=\"{kind}\"")?;
+    write_flag_gate_attrs(out, g, reads)?;
+    write!(out, " p=\"{file}\" l=\"{line}\"")?;
+    match reads.filter(|r| !r.is_empty()) {
+        Some(read_list) => {
+            writeln!(out, ">")?;
+            for r in read_list {
+                let rp = r.str_any(&["path", "file"], "").xml_escaped();
+                let rl = r.u64_or("line", 1);
+                writeln!(out, "    <read p=\"{rp}\" l=\"{rl}\"/>")?;
+            }
+            writeln!(out, "  </gate>")
         }
-        writeln!(out, "  </gate>")
-    } else {
-        writeln!(
-            out,
-            "  <gate name=\"{name}\" kind=\"{kind}\"{def_attr}{dark_attr}{reg_attr}{loc_attr}{reads_attr} p=\"{file}\" l=\"{line}\"/>"
-        )
+        None => writeln!(out, "/>"),
     }
 }
 
@@ -361,124 +362,10 @@ impl crate::serialize::XmlReport for FlagsReport<'_> {
     }
 }
 
+/// Serialize `flags` environment and compile gates to Ripwire XML.
 pub fn serialize_flags_xml<W: Write>(val: &Value, out: &mut W) -> io::Result<()> {
     use crate::serialize::XmlReport;
     FlagsReport { val }.render_envelope(out)
-}
-
-/// Serialize `doc_drift` out-of-date document references to Ripwire XML.
-fn format_doc_drift_extra_attrs(d: &Value) -> String {
-    let mut extra = String::new();
-    for key in ["sym", "got", "tgt", "fate", "commit", "date", "subject"] {
-        if let Some(v) = d[key].as_str()
-            && !v.is_empty()
-        {
-            extra.push_str(&format!(" {key}=\"{}\"", v.xml_escaped()));
-        }
-    }
-    extra
-}
-
-fn write_doc_drift_anchor<W: Write>(out: &mut W, file: &str, d: &Value) -> io::Result<()> {
-    let line = d.u64_any(&["line", "doc_line"], 0);
-    let kind = d.str_or("kind", "symbol").xml_escaped();
-    let why = d.str_or("why", "undefined").xml_escaped();
-    let ref_str = d.str_any(&["referenced", "target_file"], "").xml_escaped();
-    let extra = format_doc_drift_extra_attrs(d);
-    writeln!(
-        out,
-        "    <a k=\"{kind}\" l=\"{line}\" why=\"{why}\" p=\"{file}\" ref=\"{ref_str}\"{extra}/>"
-    )
-}
-
-fn format_doc_drift_header_counts(val: &Value) -> String {
-    let Some(clean) = val["clean_docs"].as_u64() else {
-        return String::new();
-    };
-    let dated = val.u64_or("dated_docs", 0);
-    let prose_attr = val["prose_docs"]
-        .as_u64()
-        .map_or_else(String::new, |p| format!(" prose=\"{p}\""));
-    let corpus_attr = val["corpus"]
-        .as_u64()
-        .map_or_else(String::new, |c| format!(" corpus=\"{c}\""));
-    let anchor_attrs = match val["anchors"].as_u64() {
-        Some(anchors) => {
-            let checked = val.u64_or("checked", 0);
-            let unchecked = val.u64_or("unchecked", anchors.saturating_sub(checked));
-            format!(" anchors=\"{anchors}\" checked=\"{checked}\" unchecked=\"{unchecked}\"")
-        }
-        None => String::new(),
-    };
-    format!(" clean=\"{clean}\" dated=\"{dated}\"{prose_attr}{corpus_attr}{anchor_attrs}")
-}
-
-fn group_doc_drift_items(val: &Value) -> Vec<(&str, Vec<&Value>)> {
-    let mut grouped: Vec<(&str, Vec<&Value>)> = Vec::new();
-    if let Some(items) = val["drift"].as_array() {
-        for d in items {
-            let doc = d["doc"].as_str().unwrap_or("");
-            if let Some((_, list)) = grouped.iter_mut().find(|(p, _)| *p == doc) {
-                list.push(d);
-            } else {
-                grouped.push((doc, vec![d]));
-            }
-        }
-    }
-    grouped
-}
-
-fn write_doc_drift_group<W: Write>(out: &mut W, doc: &str, list: &[&Value]) -> io::Result<()> {
-    let file = escape_xml_str(doc);
-    writeln!(out, "  <doc p=\"{file}\" drift=\"{}\">", list.len())?;
-    for d in list {
-        write_doc_drift_anchor(out, &file, d)?;
-    }
-    writeln!(out, "  </doc>")
-}
-
-pub struct DocDriftReport<'a> {
-    pub val: &'a Value,
-}
-
-impl crate::serialize::XmlReport for DocDriftReport<'_> {
-    crate::xml_report_meta!("doc-drift", "ripwire-rs.doc-drift/v1", root: false);
-    fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        use crate::serialize::GitStampExt;
-        let count = self.val["drift"].as_array().map_or(0, Vec::len);
-        let raw_root = self.val["root"].as_str().unwrap_or(".");
-        let root = escape_xml_str(raw_root);
-        let at_attr = raw_root.git_at_xml_attr();
-        let grouped = group_doc_drift_items(self.val);
-        let docs_cnt = self.val["docs_scanned"]
-            .as_u64()
-            .map_or(grouped.len(), |n| n as usize);
-        let extra_counts = format_doc_drift_header_counts(self.val);
-        let paged = Paged::new(&grouped[..], self.val.page_request(), |(doc, list)| {
-            crate::serialize::row_bytes(|mut w| write_doc_drift_group(&mut w, doc, list))
-        });
-        let page_attrs = paged.attrs();
-        write!(
-            out,
-            " root=\"{root}\" docs=\"{docs_cnt}\"{extra_counts} drift=\"{count}\"{page_attrs}{at_attr}"
-        )
-    }
-    fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        let grouped = group_doc_drift_items(self.val);
-        let paged = Paged::new(&grouped[..], self.val.page_request(), |(doc, list)| {
-            crate::serialize::row_bytes(|mut w| write_doc_drift_group(&mut w, doc, list))
-        });
-        let page = paged.rows();
-        for (doc, list) in page {
-            write_doc_drift_group(out, doc, list)?;
-        }
-        Ok(())
-    }
-}
-
-pub fn serialize_doc_drift_xml<W: Write>(val: &Value, out: &mut W) -> io::Result<()> {
-    use crate::serialize::XmlReport;
-    DocDriftReport { val }.render_envelope(out)
 }
 
 /// Serialize `stray_content` branch divergence to Ripwire XML.

@@ -229,18 +229,6 @@ fn try_atomic_edit_in_root(
     }))
 }
 
-/// Perform an atomic symbol edit (replace, insert_before, or insert_after).
-pub fn perform_atomic_edit(
-    ingest: &IngestResult,
-    interner: &crate::domain::Interner,
-    op: EditOp,
-    symbol_name: &str,
-    path_hint: Option<&str>,
-    payload: &str,
-) -> Value {
-    perform_atomic_edit_in_root(".", ingest, interner, op, symbol_name, path_hint, payload)
-}
-
 pub fn perform_atomic_edit_in_root(
     root: &str,
     ingest: &IngestResult,

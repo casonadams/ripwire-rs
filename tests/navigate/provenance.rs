@@ -1,16 +1,8 @@
-use ripwire_rs::query::navigation::{NavMode, execute_nav_symbol_query};
-use ripwire_rs::{Graph, Lang, LanguageRegistry, ingest_in_memory_files};
-use ripwire_rs::{Interner, PageRankConfig};
+use ripwire_rs::Lang;
+use ripwire_rs::query::navigation::NavMode;
 
 fn nav_xml(fixtures: &[(&str, Lang, &[u8])], sym: &str, mode: NavMode) -> std::io::Result<String> {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(fixtures, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
-    let mut out = Vec::new();
-    execute_nav_symbol_query(sym, mode, &ingest, &graph, &ranks, &interner, &mut out)?;
-    Ok(String::from_utf8(out).unwrap())
+    crate::nav_support::nav_xml(fixtures, None, sym, mode)
 }
 
 const AMBIGUOUS: &[(&str, Lang, &[u8])] = &[

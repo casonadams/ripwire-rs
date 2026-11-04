@@ -372,74 +372,84 @@ fn ambiguity_of(graph: &Graph, id: NodeId) -> usize {
     graph.amb_out.get(id as usize).map_or(0, |&n| n as usize)
 }
 
-fn build_lane_claims_and_files(node_ids: &[NodeId], env: &LaneBuildEnv<'_>) -> LaneClaimsSummary {
-    let (ingest, interner) = (env.ingest, env.interner);
-    let mut sym_rows = Vec::new();
-    let mut claim_keys = BTreeMap::new();
-    let mut file_stats: BTreeMap<String, (usize, u32)> = BTreeMap::new();
-    let mut max_ccx = 0u32;
-    let mut sum_ccx = 0u32;
-    let mut untested = 0usize;
-    for (ord, &id) in node_ids.iter().enumerate() {
-        let Some(sym) = ingest.sym(id) else {
-            continue;
-        };
-        let path = ingest.sym_file_path(sym, interner).to_string();
-        let name = interner.resolve(&sym.name).to_string();
-        let scope = sym.scope.map_or("", |sc| interner.resolve(&sc)).to_string();
-        let key = fnv1a64_claim_key(&path, &scope, &name);
-        let is_tested = env
-            .index
-            .tested_mask
-            .get(id as usize)
-            .copied()
-            .unwrap_or(false)
-            || crate::gate::affected::is_test_path(&path);
-        if !is_tested {
-            untested += 1;
-        }
-        max_ccx = max_ccx.max(sym.ccx);
-        sum_ccx = sum_ccx.saturating_add(sym.ccx);
-        claim_keys.insert(key, (path.clone(), name.clone(), id));
-        let entry = file_stats.entry(path.clone()).or_insert((0, 0));
-        entry.0 += 1;
-        entry.1 = entry.1.saturating_add(sym.ccx);
-        let defs = env
-            .index
-            .id_defs
-            .get(&(scope.clone(), name.clone()))
-            .copied()
-            .unwrap_or(1);
-        let churn = env.churn.map(|c| c.get(&path).copied().unwrap_or(0));
-        let addressable = !scope.is_empty();
-        let mut row = json!({
-            "p": path,
-            "n": name,
-            "scope": scope,
-            "key": format!("{key:016x}"),
-            "id": if addressable { json!(format!("{scope}::{name}")) } else { Value::Null },
-            "id_addressable": addressable,
-            "l": sym.line,
-            "ord": ord,
-            "overloads": defs,
-            "amb": ambiguity_of(env.graph, id),
-            "cx": sym.cx.max(1),
-            "ccx": sym.ccx,
-            "tested": usize::from(is_tested),
-        });
-        if addressable {
-            row["id_collides_with"] = json!(defs - 1);
-        }
-        if let Some(churn) = churn {
-            row["churn"] = json!(churn);
-        }
-        sym_rows.push(row);
+/// One symbol a lane claims, with the identity its claim row and claim key derive from.
+struct ClaimedSymbol {
+    id: NodeId,
+    ord: usize,
+    key: u64,
+    path: String,
+    name: String,
+    scope: String,
+    is_tested: bool,
+}
+
+fn claimed_symbol(
+    id: NodeId,
+    ord: usize,
+    sym: &crate::domain::Symbol,
+    env: &LaneBuildEnv<'_>,
+) -> ClaimedSymbol {
+    let interner = env.interner;
+    let path = env.ingest.sym_file_path(sym, interner).to_string();
+    let name = interner.resolve(&sym.name).to_string();
+    let scope = sym.scope.map_or("", |sc| interner.resolve(&sc)).to_string();
+    let key = fnv1a64_claim_key(&path, &scope, &name);
+    let is_tested = env
+        .index
+        .tested_mask
+        .get(id as usize)
+        .copied()
+        .unwrap_or(false)
+        || crate::gate::affected::is_test_path(&path);
+    ClaimedSymbol {
+        id,
+        ord,
+        key,
+        path,
+        name,
+        scope,
+        is_tested,
     }
-    let file_counts: BTreeMap<String, usize> = file_stats
-        .iter()
-        .map(|(k, (cnt, _))| (k.clone(), *cnt))
-        .collect();
-    let file_rows: Vec<Value> = file_stats
+}
+
+fn claim_row(claim: &ClaimedSymbol, sym: &crate::domain::Symbol, env: &LaneBuildEnv<'_>) -> Value {
+    let defs = env
+        .index
+        .id_defs
+        .get(&(claim.scope.clone(), claim.name.clone()))
+        .copied()
+        .unwrap_or(1);
+    let churn = env.churn.map(|c| c.get(&claim.path).copied().unwrap_or(0));
+    let addressable = !claim.scope.is_empty();
+    let mut row = json!({
+        "p": claim.path,
+        "n": claim.name,
+        "scope": claim.scope,
+        "key": format!("{:016x}", claim.key),
+        "id": if addressable { json!(format!("{}::{}", claim.scope, claim.name)) } else { Value::Null },
+        "id_addressable": addressable,
+        "l": sym.line,
+        "ord": claim.ord,
+        "overloads": defs,
+        "amb": ambiguity_of(env.graph, claim.id),
+        "cx": sym.cx.max(1),
+        "ccx": sym.ccx,
+        "tested": usize::from(claim.is_tested),
+    });
+    if addressable {
+        row["id_collides_with"] = json!(defs - 1);
+    }
+    if let Some(churn) = churn {
+        row["churn"] = json!(churn);
+    }
+    row
+}
+
+fn file_claim_rows(
+    file_stats: BTreeMap<String, (usize, u32)>,
+    env: &LaneBuildEnv<'_>,
+) -> Vec<Value> {
+    file_stats
         .into_iter()
         .map(|(p, (cnt, ccx))| {
             let churn = env.churn.map(|c| c.get(&p).copied().unwrap_or(0));
@@ -451,16 +461,172 @@ fn build_lane_claims_and_files(node_ids: &[NodeId], env: &LaneBuildEnv<'_>) -> L
             }
             row
         })
+        .collect()
+}
+
+fn build_lane_claims_and_files(node_ids: &[NodeId], env: &LaneBuildEnv<'_>) -> LaneClaimsSummary {
+    let mut sym_rows = Vec::new();
+    let mut claim_keys = BTreeMap::new();
+    let mut file_stats: BTreeMap<String, (usize, u32)> = BTreeMap::new();
+    let mut max_ccx = 0u32;
+    let mut sum_ccx = 0u32;
+    let mut untested = 0usize;
+    for (ord, &id) in node_ids.iter().enumerate() {
+        let Some(sym) = env.ingest.sym(id) else {
+            continue;
+        };
+        let claim = claimed_symbol(id, ord, sym, env);
+        if !claim.is_tested {
+            untested += 1;
+        }
+        max_ccx = max_ccx.max(sym.ccx);
+        sum_ccx = sum_ccx.saturating_add(sym.ccx);
+        claim_keys.insert(claim.key, (claim.path.clone(), claim.name.clone(), id));
+        let entry = file_stats.entry(claim.path.clone()).or_insert((0, 0));
+        entry.0 += 1;
+        entry.1 = entry.1.saturating_add(sym.ccx);
+        sym_rows.push(claim_row(&claim, sym, env));
+    }
+    let file_counts: BTreeMap<String, usize> = file_stats
+        .iter()
+        .map(|(k, (cnt, _))| (k.clone(), *cnt))
         .collect();
     LaneClaimsSummary {
         sym_rows,
-        file_rows,
+        file_rows: file_claim_rows(file_stats, env),
         claim_keys,
         file_counts,
         max_ccx,
         sum_ccx,
         untested,
     }
+}
+
+/// What a lane reaches through the call graph: its blast radius, and the files it touches there.
+struct LaneBlast {
+    reaches: usize,
+    files_total: usize,
+    capped: bool,
+    files: Vec<String>,
+    ids: BTreeSet<NodeId>,
+}
+
+fn lane_blast(node_ids: &[NodeId], env: &LaneBuildEnv<'_>) -> LaneBlast {
+    let impact = crate::navigate::transitive_impact_multi(
+        node_ids,
+        env.ingest,
+        env.graph,
+        env.ranks,
+        env.interner,
+        None,
+    );
+    let ids: BTreeSet<NodeId> = impact.iter().map(|n| n.id).collect();
+    let files_set: BTreeSet<String> = impact.iter().map(|n| n.path.clone()).collect();
+    let all: Vec<&String> = files_set.iter().collect();
+    let paged = Paged::new(&all, env.page, |p| text_bytes(&[p.as_str()]));
+    LaneBlast {
+        reaches: impact.len(),
+        files_total: files_set.len(),
+        capped: paged.window.capped,
+        files: paged.rows().iter().map(|path| (*path).clone()).collect(),
+        ids,
+    }
+}
+
+/// The affected tests a lane runs: those reached from the files its claims touch.
+struct LaneTests {
+    total: usize,
+    capped: bool,
+    to_run: Vec<String>,
+}
+
+fn lane_tests(file_counts: &BTreeMap<String, usize>, env: &LaneBuildEnv<'_>) -> LaneTests {
+    let changed_paths: Vec<&str> = file_counts.keys().map(String::as_str).collect();
+    let aff = crate::gate::affected::find_affected_tests(
+        &changed_paths,
+        env.ingest,
+        env.graph,
+        env.interner,
+    );
+    let paged = Paged::new(&aff.tests, env.page, |t| text_bytes(&[t.path.as_str()]));
+    LaneTests {
+        total: aff.tests.len(),
+        capped: paged.window.capped,
+        to_run: paged.rows().iter().map(|t| t.path.clone()).collect(),
+    }
+}
+
+fn lane_model(max_ccx: u32, reaches: usize) -> &'static str {
+    if max_ccx >= 15 || reaches > 20 {
+        "frontier"
+    } else {
+        "standard"
+    }
+}
+
+/// The inputs a lane's JSON reports, gathered once by `build_single_lane`.
+struct LaneReport<'a> {
+    lane_id: &'a str,
+    lane_idx: usize,
+    lane_task: &'a str,
+    module_span: usize,
+    symbol_count: usize,
+    ambiguous_calls: usize,
+    model: &'static str,
+    claims: &'a LaneClaimsSummary,
+    blast: &'a LaneBlast,
+    tests: &'a LaneTests,
+}
+
+fn lane_json(report: &LaneReport<'_>) -> Value {
+    let (claims, blast, tests) = (report.claims, report.blast, report.tests);
+    let module_span = report.module_span.max(1);
+    json!({
+        "id": report.lane_id,
+        "lane": report.lane_idx + 1,
+        "target": format!("worktree-lane-{}", report.lane_idx + 1),
+        "task": report.lane_task,
+        "symbols_count": claims.sym_rows.len(),
+        "symbols": claims.sym_rows,
+        "claims": {
+            "symbols": claims.sym_rows,
+            "files": claims.file_rows,
+        },
+        "blast_radius": {
+            "reaches": blast.reaches,
+            "files_total": blast.files_total,
+            "capped": blast.capped,
+            "files": blast.files,
+        },
+        "tests_to_run": tests.to_run,
+        "tests_total": tests.total,
+        "tests_capped": tests.capped,
+        "tests_granularity": "claimed-symbols",
+        "untested": claims.untested,
+        "module_span": module_span,
+        "notes": [],
+        "execution": {
+            "policy": "isolated-worktree",
+            "model": report.model,
+            "reasoning": if report.model == "frontier" { "high" } else { "medium" },
+            "rule": "ccx-and-blast-threshold",
+            "basis": "static-call-graph",
+            "signals": {
+                "claims": report.symbol_count,
+                "files": claims.file_counts.len(),
+                "module_span": module_span,
+                "max_ccx": claims.max_ccx,
+                "sum_ccx": claims.sum_ccx,
+                "ambiguous_calls": report.ambiguous_calls,
+                "blast_reaches": blast.reaches,
+                "untested": claims.untested,
+                "tests_total": tests.total,
+                "blast_capped": blast.capped,
+                "tests_capped": tests.capped,
+            },
+            "caveats": [],
+        }
+    })
 }
 
 fn build_single_lane(
@@ -471,97 +637,28 @@ fn build_single_lane(
     env: &LaneBuildEnv<'_>,
 ) -> BuiltLane {
     let lane_id = format!("lane-{lane_idx}");
-    let LaneClaimsSummary {
-        sym_rows,
-        file_rows,
-        claim_keys,
-        file_counts,
-        max_ccx,
-        sum_ccx,
-        untested,
-    } = build_lane_claims_and_files(&node_ids, env);
-    let impact = crate::navigate::transitive_impact_multi(
-        &node_ids,
-        env.ingest,
-        env.graph,
-        env.ranks,
-        env.interner,
-        None,
-    );
-    let blast_ids: BTreeSet<NodeId> = impact.iter().map(|n| n.id).collect();
-    let blast_files_set: BTreeSet<String> = impact.iter().map(|n| n.path.clone()).collect();
-    let blast_all: Vec<&String> = blast_files_set.iter().collect();
-    let blast = Paged::new(&blast_all, env.page, |p| text_bytes(&[p.as_str()]));
-    let blast_win = blast.window;
-    let blast_files: Vec<String> = blast.rows().iter().map(|path| (*path).clone()).collect();
-    let changed_paths: Vec<&str> = file_counts.keys().map(String::as_str).collect();
-    let aff = crate::gate::affected::find_affected_tests(
-        &changed_paths,
-        env.ingest,
-        env.graph,
-        env.interner,
-    );
-    let tests = Paged::new(&aff.tests, env.page, |t| text_bytes(&[t.path.as_str()]));
-    let tests_win = tests.window;
-    let tests_to_run: Vec<String> = tests.rows().iter().map(|t| t.path.clone()).collect();
-    let model = if max_ccx >= 15 || impact.len() > 20 {
-        "frontier"
-    } else {
-        "standard"
-    };
-    let json_val = json!({
-        "id": lane_id,
-        "lane": lane_idx + 1,
-        "target": format!("worktree-lane-{}", lane_idx + 1),
-        "task": lane_task,
-        "symbols_count": sym_rows.len(),
-        "symbols": sym_rows,
-        "claims": {
-            "symbols": sym_rows,
-            "files": file_rows,
-        },
-        "blast_radius": {
-            "reaches": impact.len(),
-            "files_total": blast_files_set.len(),
-            "capped": blast_win.capped,
-            "files": blast_files,
-        },
-        "tests_to_run": tests_to_run,
-        "tests_total": aff.tests.len(),
-        "tests_capped": tests_win.capped,
-        "tests_granularity": "claimed-symbols",
-        "untested": untested,
-        "module_span": module_span.max(1),
-        "notes": [],
-        "execution": {
-            "policy": "isolated-worktree",
-            "model": model,
-            "reasoning": if model == "frontier" { "high" } else { "medium" },
-            "rule": "ccx-and-blast-threshold",
-            "basis": "static-call-graph",
-            "signals": {
-                "claims": node_ids.len(),
-                "files": file_counts.len(),
-                "module_span": module_span.max(1),
-                "max_ccx": max_ccx,
-                "sum_ccx": sum_ccx,
-                "ambiguous_calls": node_ids.iter().map(|&id| ambiguity_of(env.graph, id)).sum::<usize>(),
-                "blast_reaches": impact.len(),
-                "untested": untested,
-                "tests_total": aff.tests.len(),
-                "blast_capped": blast_win.capped,
-                "tests_capped": tests_win.capped,
-            },
-            "caveats": [],
-        }
+    let claims = build_lane_claims_and_files(&node_ids, env);
+    let blast = lane_blast(&node_ids, env);
+    let tests = lane_tests(&claims.file_counts, env);
+    let json_val = lane_json(&LaneReport {
+        lane_id: &lane_id,
+        lane_idx,
+        lane_task,
+        module_span,
+        symbol_count: node_ids.len(),
+        ambiguous_calls: node_ids.iter().map(|&id| ambiguity_of(env.graph, id)).sum(),
+        model: lane_model(claims.max_ccx, blast.reaches),
+        claims: &claims,
+        blast: &blast,
+        tests: &tests,
     });
     BuiltLane {
         id: lane_id,
         lane_num: lane_idx + 1,
         node_ids,
-        claim_keys,
-        file_counts,
-        blast_ids,
+        claim_keys: claims.claim_keys,
+        file_counts: claims.file_counts,
+        blast_ids: blast.ids,
         json_val,
     }
 }

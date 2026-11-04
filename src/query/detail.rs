@@ -1,5 +1,6 @@
-use crate::domain::{IngestResult, Interner};
+use crate::domain::{IngestResult, Interner, NodeId, Symbol};
 use crate::query::SourceReader;
+use crate::serialize::workspace_xml::{BodyItem, BodyReport};
 use std::borrow::Cow;
 use std::io::{self, Write};
 
@@ -72,13 +73,19 @@ fn body_range<'a>(body: &'a str, request: &BodyRequest<'_>) -> io::Result<BodySe
     })
 }
 
-pub fn execute_body_query<W: Write>(
+struct PreparedBody<'a> {
+    symbol: &'a Symbol,
+    name: &'a str,
+    path: &'a str,
+    body: Cow<'a, str>,
+    range: Option<(usize, usize, usize)>,
+}
+
+fn select_symbols(
     request: &BodyRequest<'_>,
     ingest: &IngestResult,
     interner: &Interner,
-    sources: &dyn SourceReader,
-    out: &mut W,
-) -> io::Result<()> {
+) -> io::Result<Vec<NodeId>> {
     let mut selected = Vec::new();
     for name in request
         .symbols
@@ -102,8 +109,17 @@ pub fn execute_body_query<W: Write>(
     if selected.is_empty() {
         return Err(io::Error::other("symbol name is required"));
     }
+    Ok(selected)
+}
+
+fn read_source_files<'a>(
+    selected: &[NodeId],
+    ingest: &IngestResult,
+    interner: &Interner,
+    sources: &'a dyn SourceReader,
+) -> io::Result<std::collections::HashMap<u32, Cow<'a, [u8]>>> {
     let mut files = std::collections::HashMap::new();
-    for &id in &selected {
+    for &id in selected {
         let sym = &ingest.symbols[id as usize];
         let path = ingest.sym_file_path(sym, interner);
         if let std::collections::hash_map::Entry::Vacant(entry) = files.entry(sym.file_id) {
@@ -112,7 +128,16 @@ pub fn execute_body_query<W: Write>(
             })?);
         }
     }
-    let source_bodies: Vec<_> = selected
+    Ok(files)
+}
+
+fn source_texts<'a>(
+    selected: &[NodeId],
+    ingest: &IngestResult,
+    interner: &Interner,
+    files: &'a std::collections::HashMap<u32, Cow<'_, [u8]>>,
+) -> io::Result<Vec<Cow<'a, str>>> {
+    selected
         .iter()
         .map(|&id| {
             let sym = &ingest.symbols[id as usize];
@@ -124,9 +149,18 @@ pub fn execute_body_query<W: Write>(
                 ))
             })
         })
-        .collect::<io::Result<_>>()?;
+        .collect()
+}
+
+fn prepare_bodies<'a>(
+    request: &BodyRequest<'_>,
+    selected: &[NodeId],
+    ingest: &'a IngestResult,
+    interner: &'a Interner,
+    source_texts: &'a [Cow<'a, str>],
+) -> io::Result<Vec<PreparedBody<'a>>> {
     let mut bodies = Vec::with_capacity(selected.len());
-    for (id, source) in selected.into_iter().zip(&source_bodies) {
+    for (&id, source) in selected.iter().zip(source_texts) {
         let sym = &ingest.symbols[id as usize];
         let path = ingest.sym_file_path(sym, interner);
         let BodySelection { body, range } = body_range(source, request)?;
@@ -140,22 +174,40 @@ pub fn execute_body_query<W: Write>(
         } else {
             body
         };
-        bodies.push((sym, interner.resolve(&sym.name), path, body, range));
+        bodies.push(PreparedBody {
+            symbol: sym,
+            name: interner.resolve(&sym.name),
+            path,
+            body,
+            range,
+        });
     }
-    let items: Vec<_> = bodies
+    Ok(bodies)
+}
+
+pub fn execute_body_query<W: Write>(
+    request: &BodyRequest<'_>,
+    ingest: &IngestResult,
+    interner: &Interner,
+    sources: &dyn SourceReader,
+    out: &mut W,
+) -> io::Result<()> {
+    let selected = select_symbols(request, ingest, interner)?;
+    let files = read_source_files(&selected, ingest, interner, sources)?;
+    let texts = source_texts(&selected, ingest, interner, &files)?;
+    let bodies = prepare_bodies(request, &selected, ingest, interner, &texts)?;
+    let items: Vec<BodyItem<'_>> = bodies
         .iter()
-        .map(
-            |(symbol, name, path, body, range)| crate::serialize::workspace_xml::BodyItem {
-                symbol,
-                name,
-                path,
-                body,
-                range: *range,
-            },
-        )
+        .map(|body| BodyItem {
+            symbol: body.symbol,
+            name: body.name,
+            path: body.path,
+            body: &body.body,
+            range: body.range,
+        })
         .collect();
     crate::serialize::XmlReport::render_envelope(
-        &crate::serialize::workspace_xml::BodyReport {
+        &BodyReport {
             root: request.root,
             items: &items,
         },

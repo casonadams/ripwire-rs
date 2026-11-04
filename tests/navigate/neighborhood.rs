@@ -1,7 +1,7 @@
 use ripwire_rs::navigate::{
     ImpactReport, NavDir, find_symbols_by_name, navigate_1hop, transitive_impact,
 };
-use ripwire_rs::query::navigation::{NavMode, execute_nav_symbol_query};
+use ripwire_rs::query::navigation::NavMode;
 use ripwire_rs::serialize::{GraphGauges, PageRequest, XmlReport};
 use ripwire_rs::{
     FileInfo, Graph, IngestResult, Interner, Lang, RefRole, Reference, SymKind, Symbol,
@@ -68,22 +68,10 @@ fn test_navigate_1hop_and_impact() {
     assert_eq!(nav.callees.len(), 1);
     assert_eq!(nav.callees[0].name, "c");
 
-    let mut callers_xml = Vec::new();
-    execute_nav_symbol_query(
-        "b",
-        NavMode::Callers,
-        &ingest,
-        &graph,
-        &ranks,
-        &interner,
-        &mut callers_xml,
-    )
-    .unwrap();
-    assert!(
-        String::from_utf8(callers_xml)
-            .unwrap()
-            .contains("sites_at=\"src/lib.rs:2\"")
-    );
+    let callers_xml =
+        crate::nav_support::nav_report(&ingest, &graph, &ranks, &interner, "b", NavMode::Callers)
+            .unwrap();
+    assert!(callers_xml.contains("sites_at=\"src/lib.rs:2\""));
 
     let impact = transitive_impact(2, &ingest, &graph, &ranks, &interner, None);
     assert_eq!(impact.len(), 2);

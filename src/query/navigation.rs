@@ -1,4 +1,4 @@
-use crate::domain::{IngestResult, Interner};
+use crate::domain::{IngestResult, Interner, NodeId};
 use crate::graph::Graph;
 use std::io::{self, Write};
 
@@ -103,27 +103,6 @@ pub fn serialize_1hop_mode<W: Write>(
     .render_envelope(out)
 }
 
-pub fn execute_nav_symbol_query<W: Write>(
-    sym: &str,
-    mode: NavMode,
-    ingest: &IngestResult,
-    graph: &Graph,
-    ranks: &[f64],
-    interner: &Interner,
-    out: &mut W,
-) -> io::Result<()> {
-    let ctx = NavContext {
-        ingest,
-        graph,
-        ranks,
-        interner,
-        page: crate::serialize::PageRequest::default(),
-        max_depth: None,
-        pr_iters: None,
-    };
-    execute_nav_symbol_query_in_root(".", sym, mode, &ctx, out)
-}
-
 pub fn execute_nav_symbol_query_in_root<W: Write>(
     root: &str,
     sym: &str,
@@ -135,8 +114,6 @@ pub fn execute_nav_symbol_query_in_root<W: Write>(
     if ids.is_empty() && !matches!(mode, NavMode::Uses) {
         return Err(symbol_not_found(mode, sym, ctx));
     }
-    use crate::domain::CorpusView;
-    use crate::serialize::XmlReport;
     match mode {
         NavMode::Uses => execute_uses_query(
             root,
@@ -144,66 +121,81 @@ pub fn execute_nav_symbol_query_in_root<W: Write>(
             ctx,
             out,
         ),
-        NavMode::Impact => {
-            let gauge_attrs = ctx.graph.xml_gauge_attrs();
-            let impact = crate::navigate::transitive_impact_multi(
-                &ids,
-                ctx.ingest,
-                ctx.graph,
-                ctx.ranks,
-                ctx.interner,
-                ctx.max_depth,
-            );
-            crate::navigate::ImpactReport {
-                root,
-                sym_name: sym,
-                defs: crate::navigate::impact_defs(&ids, ctx.ingest, ctx.interner),
-                nodes: &impact,
-                importers: (ctx.ingest, ctx.interner).resolve_symbol_importers(&ids),
-                declined: crate::navigate::declined_calls(&ids, &impact, ctx.ingest, ctx.interner),
-                gauge_attrs: &gauge_attrs,
-                pr_iters: ctx.pr_iters,
-                page: ctx.page,
-            }
-            .render_envelope(out)
-        }
+        NavMode::Impact => serialize_impact(root, sym, &ids, ctx, out),
         NavMode::Callers | NavMode::Callees | NavMode::FindSymbol => {
-            if let Some(nav) = crate::navigate::navigate_1hop_multi(
-                &ids,
-                ctx.ingest,
-                ctx.graph,
-                ctx.ranks,
-                ctx.interner,
-            ) {
-                let declined = match mode {
-                    NavMode::Callers | NavMode::FindSymbol => {
-                        crate::navigate::declined_calls(&ids, &[], ctx.ingest, ctx.interner)
-                    }
-                    NavMode::Callees => {
-                        crate::navigate::declined_calls_from(&ids, ctx.ingest, ctx.interner)
-                    }
-                    _ => Vec::new(),
-                };
-                let declined_from = if mode == NavMode::FindSymbol {
-                    crate::navigate::declined_calls_from(&ids, ctx.ingest, ctx.interner)
-                } else {
-                    Vec::new()
-                };
-                let def_rows = crate::navigate::impact_defs(&ids, ctx.ingest, ctx.interner);
-                let query = NavQuery {
-                    root,
-                    sym,
-                    mode,
-                    declined: &declined,
-                    declined_from: &declined_from,
-                    def_rows: &def_rows,
-                    page: ctx.page,
-                };
-                serialize_1hop_mode(&query, ids.len(), &nav, out)?;
-            }
-            Ok(())
+            serialize_one_hop(root, sym, mode, &ids, ctx, out)
         }
     }
+}
+
+fn serialize_impact<W: Write>(
+    root: &str,
+    sym: &str,
+    ids: &[NodeId],
+    ctx: &NavContext<'_>,
+    out: &mut W,
+) -> io::Result<()> {
+    use crate::domain::CorpusView;
+    use crate::serialize::XmlReport;
+    let gauge_attrs = ctx.graph.xml_gauge_attrs();
+    let impact = crate::navigate::transitive_impact_multi(
+        ids,
+        ctx.ingest,
+        ctx.graph,
+        ctx.ranks,
+        ctx.interner,
+        ctx.max_depth,
+    );
+    crate::navigate::ImpactReport {
+        root,
+        sym_name: sym,
+        defs: crate::navigate::impact_defs(ids, ctx.ingest, ctx.interner),
+        nodes: &impact,
+        importers: (ctx.ingest, ctx.interner).resolve_symbol_importers(ids),
+        declined: crate::navigate::declined_calls(ids, &impact, ctx.ingest, ctx.interner),
+        gauge_attrs: &gauge_attrs,
+        pr_iters: ctx.pr_iters,
+        page: ctx.page,
+    }
+    .render_envelope(out)
+}
+
+fn serialize_one_hop<W: Write>(
+    root: &str,
+    sym: &str,
+    mode: NavMode,
+    ids: &[NodeId],
+    ctx: &NavContext<'_>,
+    out: &mut W,
+) -> io::Result<()> {
+    let Some(nav) =
+        crate::navigate::navigate_1hop_multi(ids, ctx.ingest, ctx.graph, ctx.ranks, ctx.interner)
+    else {
+        return Ok(());
+    };
+    let declined = match mode {
+        NavMode::Callers | NavMode::FindSymbol => {
+            crate::navigate::declined_calls(ids, &[], ctx.ingest, ctx.interner)
+        }
+        NavMode::Callees => crate::navigate::declined_calls_from(ids, ctx.ingest, ctx.interner),
+        _ => Vec::new(),
+    };
+    let declined_from = if mode == NavMode::FindSymbol {
+        crate::navigate::declined_calls_from(ids, ctx.ingest, ctx.interner)
+    } else {
+        Vec::new()
+    };
+    let def_rows = crate::navigate::impact_defs(ids, ctx.ingest, ctx.interner);
+    let query = NavQuery {
+        root,
+        sym,
+        mode,
+        declined: &declined,
+        declined_from: &declined_from,
+        def_rows: &def_rows,
+        page: ctx.page,
+    };
+    serialize_1hop_mode(&query, ids.len(), &nav, out)
 }
 
 fn symbol_not_found(mode: NavMode, sym: &str, ctx: &NavContext<'_>) -> io::Error {

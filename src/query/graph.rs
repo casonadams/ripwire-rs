@@ -13,24 +13,6 @@ pub struct ConnectRequest<'a> {
     pub radius: u32,
 }
 
-pub fn execute_connect_query<W: Write>(
-    syms: &str,
-    ingest: &IngestResult,
-    graph: &Graph,
-    interner: &Interner,
-    out: &mut W,
-) -> io::Result<()> {
-    execute_connect_query_with_radius(
-        ".",
-        syms,
-        DEFAULT_CONNECT_RADIUS,
-        ingest,
-        graph,
-        interner,
-        out,
-    )
-}
-
 pub fn execute_connect_query_with_radius<W: Write>(
     root: &str,
     syms: &str,
@@ -265,28 +247,6 @@ pub fn call_path_between(
         "hops": path.len().saturating_sub(1),
         "path": path,
         "steps": steps
-    })
-}
-
-/// Execute `uses` tool: all statically resolvable use-sites of a symbol.
-pub fn call_uses(ingest: &IngestResult, interner: &Interner, symbol_name: &str) -> Value {
-    use crate::domain::CorpusView;
-    let use_sites: Vec<Value> = (ingest, interner)
-        .collect_symbol_uses(symbol_name)
-        .into_iter()
-        .map(|(role, file, line, enclosing)| {
-            json!({
-                "role": role,
-                "file": file,
-                "line": line,
-                "enclosing": enclosing
-            })
-        })
-        .collect();
-    json!({
-        "symbol": symbol_name,
-        "count": use_sites.len(),
-        "uses": use_sites
     })
 }
 

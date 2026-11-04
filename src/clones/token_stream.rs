@@ -212,28 +212,6 @@ pub fn scan_body_ids(bytes: &[u8], lang: Lang) -> (u64, u64, Vec<u32>) {
     (raw_hash, norm_hash, norm_ids)
 }
 
-/// Tokenize symbol source body into raw and normalized token streams.
-#[must_use]
-pub fn tokenize_body(bytes: &[u8], lang: Lang) -> (Vec<String>, Vec<String>) {
-    let mut raw_tokens = Vec::new();
-    let mut norm_tokens = Vec::new();
-    for_each_body_token(bytes, lang, |raw_slice, norm_slice| {
-        raw_tokens.push(String::from_utf8_lossy(raw_slice).into_owned());
-        norm_tokens.push(String::from_utf8_lossy(norm_slice).into_owned());
-    });
-    (raw_tokens, norm_tokens)
-}
-
-/// Compute 64-bit FNV-1a hash of a token sequence.
-#[must_use]
-pub fn hash_tokens(tokens: &[String]) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325u64;
-    for token in tokens {
-        hash = fnv1a_absorb_token(hash, token.as_bytes());
-    }
-    hash
-}
-
 fn sorted_window_hashes<T>(slice: &[T], k: usize, hasher: fn(&[T]) -> u64) -> Vec<u64> {
     if slice.len() < k {
         return Vec::new();
@@ -242,12 +220,6 @@ fn sorted_window_hashes<T>(slice: &[T], k: usize, hasher: fn(&[T]) -> u64) -> Ve
     list.sort_unstable();
     list.dedup();
     list
-}
-
-/// Compute sorted, unique k-gram fingerprint hashes for Type-3 detection.
-#[must_use]
-pub fn compute_kgrams(tokens: &[String], k: usize) -> Vec<u64> {
-    sorted_window_hashes(tokens, k, hash_tokens)
 }
 
 /// Compute 32-bit FNV-1a hash of a token byte slice.

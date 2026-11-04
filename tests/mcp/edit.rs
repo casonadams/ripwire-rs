@@ -1,5 +1,5 @@
 use ripwire_rs::query::edit::{
-    EditOp, execute_edit_plan_json, perform_atomic_edit, splice_file_bytes,
+    EditOp, execute_edit_plan_json, perform_atomic_edit_in_root, splice_file_bytes,
 };
 use ripwire_rs::{IngestResult, Interner};
 
@@ -55,7 +55,8 @@ fn test_perform_atomic_edit_refusals() {
     let interner = Interner::new();
     let ingest = IngestResult::new();
 
-    let res_nul = perform_atomic_edit(
+    let res_nul = perform_atomic_edit_in_root(
+        ".",
         &ingest,
         &interner,
         EditOp::ReplaceBody,
@@ -65,7 +66,8 @@ fn test_perform_atomic_edit_refusals() {
     );
     assert_eq!(res_nul["applied"], false);
 
-    let res_missing = perform_atomic_edit(
+    let res_missing = perform_atomic_edit_in_root(
+        ".",
         &ingest,
         &interner,
         EditOp::ReplaceBody,

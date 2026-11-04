@@ -130,37 +130,48 @@
   // a screenshot could not tell which, nor that "3-9" meant three commits inside an 18-month window rather
   // than three commits ever. The window is not spelled here either: it comes from CHURN_WINDOW, which the
   // C++ fills with the string it actually handed mineChurnPerFile.
+  function legendSwatch(c) { return '<span style="background:' + c + '"></span>'; }
+  function legendRing(c) { return '<span style="background:transparent;border:2px dashed ' + c + ';box-sizing:border-box"></span>'; }
+  function legendName(t) { return '<span class="lg">' + t + '</span> '; }
+
+  function legendBuckets(labels) {
+    var html = '';
+    for (var i = 0; i < 5; i++) html += legendSwatch(rampColor[i]) + labels[i] + ' ';
+    return html;
+  }
+
+  function legendCommunity() {
+    var maxComm = -1;
+    for (var i = 0; i < NODES.length; i++) if (NODES[i].comm > maxComm) { maxComm = NODES[i].comm; }
+    var shown = Math.min(maxComm + 1, hullColor.length);
+    var html = legendName('module (community):');
+    for (i = 0; i < shown; i++) html += legendSwatch(commColor[i]) + 'm' + i + ' ';
+    return html + legendSwatch('#666') + 'none';
+  }
+
+  function legendChurn() {
+    if (!CHURN_OK) return 'churn unavailable (no git history)';
+    return legendName('commits (' + (CHURN_WINDOW || 'window not recorded') + '), per FILE:') +
+           legendBuckets(['0','1-2','3-9','10-29','30+']);
+  }
+
+  function legendLang() {
+    var html = legendName('language:');
+    for (var k in langColor) { if (Object.prototype.hasOwnProperty.call(langColor, k)) { html += legendSwatch(langColor[k]) + (k === '?' ? 'unknown' : k) + ' '; } }
+    return html;
+  }
+
+  function legendHtml() {
+    if (mode === 'community') return legendCommunity();
+    if (mode === 'cx') return legendName('cyclomatic complexity:') + legendBuckets(['0','1-4','5-9','10-19','20+']);
+    if (mode === 'churn') return legendChurn();
+    if (mode === 'tested') return legendName('has a test:') + legendSwatch(TESTED_FILL) + 'tested ' + legendRing(UNTESTED_FILL) + 'untested (hollow)';
+    return legendLang();
+  }
+
   function renderLegend() {
     var el = document.getElementById('legend');
-    function sw(c) { return '<span style="background:' + c + '"></span>'; }
-    function ring(c) { return '<span style="background:transparent;border:2px dashed ' + c + ';box-sizing:border-box"></span>'; }
-    function name(t) { return '<span class="lg">' + t + '</span> '; }
-    var html = '', i, lbl;
-    if (mode === 'community') {
-      var maxComm = -1;
-      for (i = 0; i < NODES.length; i++) if (NODES[i].comm > maxComm) { maxComm = NODES[i].comm; }
-      var shown = Math.min(maxComm + 1, hullColor.length);
-      html = name('module (community):');
-      for (i = 0; i < shown; i++) html += sw(commColor[i]) + 'm' + i + ' ';
-      html += sw('#666') + 'none';
-    } else if (mode === 'cx') {
-      lbl = ['0','1-4','5-9','10-19','20+'];
-      html = name('cyclomatic complexity:');
-      for (i = 0; i < 5; i++) html += sw(rampColor[i]) + lbl[i] + ' ';
-    } else if (mode === 'churn') {
-      if (!CHURN_OK) {
-        html = 'churn unavailable (no git history)';
-      } else {
-        lbl = ['0','1-2','3-9','10-29','30+'];
-        html = name('commits (' + (CHURN_WINDOW || 'window not recorded') + '), per FILE:');
-        for (i = 0; i < 5; i++) html += sw(rampColor[i]) + lbl[i] + ' ';
-      }
-    } else if (mode === 'tested') {
-      html = name('has a test:') + sw(TESTED_FILL) + 'tested ' + ring(UNTESTED_FILL) + 'untested (hollow)';
-    } else {
-      html = name('language:');
-      for (var k in langColor) { if (Object.prototype.hasOwnProperty.call(langColor, k)) { html += sw(langColor[k]) + (k === '?' ? 'unknown' : k) + ' '; } }
-    }
+    var html = legendHtml();
     // C1 EDGE-CONFIDENCE clause. The node swatches above colour the node legend; this names the one thing
     // that is true of the LINES. Emitted only when the payload actually has such an edge — a corpus that
     // resolved cleanly gets no clause, because a legend for a stroke nobody can see is noise, not honesty.
@@ -208,23 +219,16 @@
   // space (the caller remaps to a local 0..n-1 index for the sim) and callees/callers are the DEPTH-1
   // counts in each direction. This is the Sourcetrail-style recenter: computed fresh at every click,
   // over the full in-memory LINKS array — no server round-trip.
-  function egoGraph(centre, depth) {
-    var seen = new Set([centre]);
-    var frontier = [centre];
-    var callees = (gout[centre] || []).length, callers = (gin[centre] || []).length;
-    for (var d = 0; d < depth; d++) {
-      var next = [];
-      for (var fi = 0; fi < frontier.length; fi++) {
-        var u = frontier[fi];
-        var outs = gout[u] || [], ins = gin[u] || [];
-        for (var j = 0; j < outs.length; j++) if (!seen.has(outs[j])) { seen.add(outs[j]); next.push(outs[j]); }
-        for (var j2 = 0; j2 < ins.length; j2++) if (!seen.has(ins[j2])) { seen.add(ins[j2]); next.push(ins[j2]); }
-      }
-      frontier = next;
-      if (!frontier.length) break;
+  function egoExpand(frontier, seen) {
+    var next = [];
+    for (var fi = 0; fi < frontier.length; fi++) {
+      var around = (gout[frontier[fi]] || []).concat(gin[frontier[fi]] || []);
+      for (var j = 0; j < around.length; j++) if (!seen.has(around[j])) { seen.add(around[j]); next.push(around[j]); }
     }
-    var ids = Array.from(seen).sort(function(a,b){ return a-b; });
-    var idSet = seen;
+    return next;
+  }
+
+  function egoEdges(idSet) {
     var edges = [];
     for (var k = 0; k < GL; k++) {
       // the RECORD, not a fresh {s,t}: a rebuilt pair drops the split-arm bit this edge was emitted
@@ -232,7 +236,19 @@
       // view where a reader is looking closely at a handful of edges
       if (idSet.has(LINKS[k].s) && idSet.has(LINKS[k].t)) edges.push(LINKS[k]);
     }
-    return { ids: ids, edges: edges, callees: callees, callers: callers };
+    return edges;
+  }
+
+  function egoGraph(centre, depth) {
+    var seen = new Set([centre]);
+    var frontier = [centre];
+    var callees = (gout[centre] || []).length, callers = (gin[centre] || []).length;
+    for (var d = 0; d < depth; d++) {
+      frontier = egoExpand(frontier, seen);
+      if (!frontier.length) break;
+    }
+    var ids = Array.from(seen).sort(function(a,b){ return a-b; });
+    return { ids: ids, edges: egoEdges(seen), callees: callees, callers: callers };
   }
 
   // ---- breadcrumb trail (Sourcetrail "recenter" history): an array of visited #node/ID hashes with
@@ -409,8 +425,7 @@
 
   // load a subset {ids: [NODES idx...], edges: [{s,t} in NODES idx space]} into the sim, remapped to a
   // local 0..n-1 index space. Resets camera/sim state — called on every view switch.
-  function loadSubset(ids, edges) {
-    seed = 42;
+  function seedNodes(ids) {
     var gidToLocal = new Map();
     nodes = [];
     // seed spread floored at 300 world units: a zero-sized viewport at boot (hidden tab/iframe — W=H=0)
@@ -432,6 +447,10 @@
                    x: W/2 + (rng()-0.5)*SPREAD_X, y: H/2 + (rng()-0.5)*SPREAD_Y, vx: 0, vy: 0 });
     }
     N = nodes.length;
+    return gidToLocal;
+  }
+
+  function buildLinks(edges, gidToLocal) {
     links = [];
     selfEdgesDropped = 0;
     ambEdges = 0;
@@ -454,90 +473,105 @@
       links.push({ s: s, t: t, a: amb });
     }
     L = links.length;
+  }
+
+  function buildAdjacency() {
     nbr = [];
     for (var i = 0; i < N; i++) nbr.push([]);
     for (var k = 0; k < L; k++) { nbr[links[k].s].push(links[k].t); nbr[links[k].t].push(links[k].s); }
     // IN-VIEW degree, resolved once per load: it drives label selection AND node radius, and both used to
     // read `rank` instead — a GLOBAL score that says nothing about this view.
-    for (var i = 0; i < N; i++) { nodes[i].deg = nbr[i].length; }
+    for (var j = 0; j < N; j++) { nodes[j].deg = nbr[j].length; }
+  }
 
-    // ---- persistent labels. Three rules, and the measurement that chose them.
-    //
-    // The old rule was "top 24 by rank". On this repository's own README cut — the depth-2 neighbourhood of
-    // lexicalScoresTiered, 239 nodes — it spent 22 of its 24 labels on container methods (size, empty, buf,
-    // push_back, find, clear, end, reserve, begin, emplace_back, back, pop_back, grow, min), 13 of them from
-    // src/infra/svector.h alone, and left exactly 2 for functions this repository is actually about.
-    //
-    // Ranking by in-view DEGREE alone does not fix that, and neither does rank x degree: those container
-    // methods ARE the hubs (size has in-view degree 111, push_back 59, empty 49), so both rules re-elect
-    // them. The measurable culprit is something else — 13 NAMES covered 28 of those nodes. Three different
-    // `find`, three `empty`, two each of `buf`/`end`/`begin`/`back`/`data`/`push_back`: the label set was
-    // spending its budget printing the same word again and again over different symbols, which is not only
-    // clutter but ambiguous (nothing on the page said which `find`).
-    //
-    //   1. order by IN-VIEW degree (rank breaks ties) — importance in THIS picture, not in the repository
-    //   2. at most one label per distinct NAME — the rule that actually frees the budget
-    //   3. drop degree-1 nodes — a leaf with one edge is fringe; its name costs a slot and explains nothing
-    //
-    // Measured on that same cut: 24 labels over 24 distinct names, and 11 of them domain functions
-    // (lexicalScoresTiered, namingLensChecks, resolveAtSeed, gitLogFileSets, buildPreciseIncludeAdj,
-    // lexicalScoresNameExactTiered, getIndex, resolveAllByNameQualified, declaredFieldsFor,
-    // joinNormalizeLookup, lexicalNormalize) against 2 before. rank x degree scored 1.
-    //
-    // Rule 2 hides symbols, so the page must SAY so rather than let a reader infer "one find exists": the
-    // provenance caption states the rule, the tooltip and info line name the FILE, and hover/search/select
-    // still label any node on demand. The centre of a #node view is always labelled (draw() forces it).
+  // ---- persistent labels. Three rules, and the measurement that chose them.
+  //
+  // The old rule was "top 24 by rank". On this repository's own README cut — the depth-2 neighbourhood of
+  // lexicalScoresTiered, 239 nodes — it spent 22 of its 24 labels on container methods (size, empty, buf,
+  // push_back, find, clear, end, reserve, begin, emplace_back, back, pop_back, grow, min), 13 of them from
+  // src/infra/svector.h alone, and left exactly 2 for functions this repository is actually about.
+  //
+  // Ranking by in-view DEGREE alone does not fix that, and neither does rank x degree: those container
+  // methods ARE the hubs (size has in-view degree 111, push_back 59, empty 49), so both rules re-elect
+  // them. The measurable culprit is something else — 13 NAMES covered 28 of those nodes. Three different
+  // `find`, three `empty`, two each of `buf`/`end`/`begin`/`back`/`data`/`push_back`: the label set was
+  // spending its budget printing the same word again and again over different symbols, which is not only
+  // clutter but ambiguous (nothing on the page said which `find`).
+  //
+  //   1. order by IN-VIEW degree (rank breaks ties) — importance in THIS picture, not in the repository
+  //   2. at most one label per distinct NAME — the rule that actually frees the budget
+  //   3. drop degree-1 nodes — a leaf with one edge is fringe; its name costs a slot and explains nothing
+  //
+  // Measured on that same cut: 24 labels over 24 distinct names, and 11 of them domain functions
+  // (lexicalScoresTiered, namingLensChecks, resolveAtSeed, gitLogFileSets, buildPreciseIncludeAdj,
+  // lexicalScoresNameExactTiered, getIndex, resolveAllByNameQualified, declaredFieldsFor,
+  // joinNormalizeLookup, lexicalNormalize) against 2 before. rank x degree scored 1.
+  //
+  // Rule 2 hides symbols, so the page must SAY so rather than let a reader infer "one find exists": the
+  // provenance caption states the rule, the tooltip and info line name the FILE, and hover/search/select
+  // still label any node on demand. The centre of a #node view is always labelled (draw() forces it).
+  function selectLabels() {
     labelSet = new Set();
     labelDegreeOrder = [];
     var byDegree = [];
     for (var i = 0; i < N; i++) { if (nodes[i].deg >= MIN_LABEL_DEGREE) { byDegree.push(i); } }
     byDegree.sort(function(a,b){ return nodes[b].deg - nodes[a].deg || nodes[b].rank - nodes[a].rank || a - b; });
     var labelSeenNames = new Set();
-    for (var i = 0; i < byDegree.length && labelDegreeOrder.length < MAX_LABELS; i++) {
-      var li = byDegree[i];
+    for (var j = 0; j < byDegree.length && labelDegreeOrder.length < MAX_LABELS; j++) {
+      var li = byDegree[j];
       if (labelSeenNames.has(nodes[li].label)) continue;
       labelSeenNames.add(nodes[li].label);
       labelDegreeOrder.push(li);
       labelSet.add(li);
     }
+  }
 
-    // ---- module HULLS: which groups get an outline.
-    //
-    // WHAT THIS REPLACES. Module identity was carried by hue alone, `commColor[comm % 12]` — twelve
-    // colours over 26 modules on this repository's own default page, 31 on the README hero, and 299 and
-    // 188 on two larger corpora. At --top-k=2000 that is 24-25 distinct modules sharing every hue, while
-    // the legend printed "m0 ... m11" and said nothing about the collision, so two adjacent
-    // same-coloured clusters read as one module and there was no way to tell from the picture that they
-    // were not. Twelve categorical hues is roughly the ceiling for a colour channel and the module count
-    // is unbounded, so no palette fixes this: CONTAINMENT is the only channel that can honestly express
-    // 26-299 groups, and it is also the single largest "this hairball has structure" win available.
-    //
-    // The outline is independent of --color-by. It says WHICH MODULE; the fill inside still says
-    // whatever lens the reader picked, so a `cx` view shows hot symbols AND the module boundaries they
-    // sit inside instead of making the reader choose.
-    //
-    // A group needs MIN_HULL_MEMBERS points before a hull means anything (two points are a line), and at
-    // most MAX_HULLS are drawn because 26 overlapping outlines is the hairball again in a second
-    // channel. Both the cap and the total are handed to the caption — an undisclosed cap would be this
-    // page implying it had drawn every module.
+  // ---- module HULLS: which groups get an outline.
+  //
+  // WHAT THIS REPLACES. Module identity was carried by hue alone, `commColor[comm % 12]` — twelve
+  // colours over 26 modules on this repository's own default page, 31 on the README hero, and 299 and
+  // 188 on two larger corpora. At --top-k=2000 that is 24-25 distinct modules sharing every hue, while
+  // the legend printed "m0 ... m11" and said nothing about the collision, so two adjacent
+  // same-coloured clusters read as one module and there was no way to tell from the picture that they
+  // were not. Twelve categorical hues is roughly the ceiling for a colour channel and the module count
+  // is unbounded, so no palette fixes this: CONTAINMENT is the only channel that can honestly express
+  // 26-299 groups, and it is also the single largest "this hairball has structure" win available.
+  //
+  // The outline is independent of --color-by. It says WHICH MODULE; the fill inside still says
+  // whatever lens the reader picked, so a `cx` view shows hot symbols AND the module boundaries they
+  // sit inside instead of making the reader choose.
+  //
+  // A group needs MIN_HULL_MEMBERS points before a hull means anything (two points are a line), and at
+  // most MAX_HULLS are drawn because 26 overlapping outlines is the hairball again in a second
+  // channel. Both the cap and the total are handed to the caption — an undisclosed cap would be this
+  // page implying it had drawn every module.
+  function buildHullGroups() {
     hullGroups = [];
     hullsTotal = 0;
-    if (typeof MODULES !== 'undefined' && MODULES.length) {
-      var byComm = new Map();
-      for (var hi = 0; hi < N; hi++) {
-        var hc = nodes[hi].comm;
-        if (hc < 0 || hc >= MODULES.length) { continue; }
-        if (!byComm.has(hc)) { byComm.set(hc, []); }
-        byComm.get(hc).push(hi);
-      }
-      var groups = [];
-      byComm.forEach(function(idx, c) {
-        if (idx.length >= MIN_HULL_MEMBERS) { groups.push({ comm: c, name: MODULES[c].name, idx: idx }); }
-      });
-      hullsTotal = groups.length;
-      groups.sort(function(a,b){ return b.idx.length - a.idx.length || a.comm - b.comm; });
-      hullGroups = groups.slice(0, HULL_CANDIDATES);   // draw() applies the purity test and the cap — both need geometry
+    if (typeof MODULES === 'undefined' || !MODULES.length) return;
+    var byComm = new Map();
+    for (var hi = 0; hi < N; hi++) {
+      var hc = nodes[hi].comm;
+      if (hc < 0 || hc >= MODULES.length) { continue; }
+      if (!byComm.has(hc)) { byComm.set(hc, []); }
+      byComm.get(hc).push(hi);
     }
+    var groups = [];
+    byComm.forEach(function(idx, c) {
+      if (idx.length >= MIN_HULL_MEMBERS) { groups.push({ comm: c, name: MODULES[c].name, idx: idx }); }
+    });
+    hullsTotal = groups.length;
+    groups.sort(function(a,b){ return b.idx.length - a.idx.length || a.comm - b.comm; });
+    hullGroups = groups.slice(0, HULL_CANDIDATES);   // draw() applies the purity test and the cap — both need geometry
+  }
+
+  function loadSubset(ids, edges) {
+    seed = 42;
+    var gidToLocal = seedNodes(ids);
+    buildLinks(edges, gidToLocal);
+    buildAdjacency();
+    selectLabels();
+    buildHullGroups();
 
     ox = 0; oy = 0; scale = 1; autoFit = true;
     dragging = -1; panStart = null; hovered = -1; selected = -1; searchSet = null;
@@ -577,72 +611,89 @@
   // very small canvas still gets a margin at all; the graph is meant to sit IN the frame, not against it.
   var FIT_PAD_FRAC = 0.13, FIT_PAD_MIN_PX = 18;
   function fitPad() { return Math.max(FIT_PAD_MIN_PX, FIT_PAD_FRAC*Math.min(W, H)); }
-  function fitView() {
-    if (!N) return;
+  var FIT_SCALE_MIN = 0.05, FIT_SCALE_MAX = 2.0;
+
+  function fitBoxes() {
     ctx.font = '11px sans-serif';                       // placeLabel's font — measure what IT will draw
-    var lft = new Float64Array(N), rgt = new Float64Array(N);
-    var top = new Float64Array(N), bot = new Float64Array(N);
+    var b = { lft: new Float64Array(N), rgt: new Float64Array(N), top: new Float64Array(N), bot: new Float64Array(N) };
     for (var i = 0; i < N; i++) {
       var rp = nodeRadiusPx(nodes[i]);
-      lft[i] = rp; rgt[i] = rp; top[i] = rp; bot[i] = rp;
+      b.lft[i] = rp; b.rgt[i] = rp; b.top[i] = rp; b.bot[i] = rp;
     }
     for (var li = 0; li < labelDegreeOrder.length; li++) {
       // The declutter grid may still drop some of these; reserving for a label that is then skipped only
       // zooms out a hair, while NOT reserving for one that is drawn slices it. Over-reserve, deliberately.
       var k = labelDegreeOrder[li], rpk = nodeRadiusPx(nodes[k]);
-      rgt[k] = Math.max(rgt[k], rpk + LABEL_GAP_PX + ctx.measureText(nodes[k].label).width);
-      top[k] = Math.max(top[k], LABEL_H - LABEL_BASE_PX);
-      bot[k] = Math.max(bot[k], LABEL_BASE_PX + 2);
+      b.rgt[k] = Math.max(b.rgt[k], rpk + LABEL_GAP_PX + ctx.measureText(nodes[k].label).width);
+      b.top[k] = Math.max(b.top[k], LABEL_H - LABEL_BASE_PX);
+      b.bot[k] = Math.max(b.bot[k], LABEL_BASE_PX + 2);
     }
+    return b;
+  }
 
-    // The admissible offset interval on one axis at scale s, or null when no offset fits every box.
-    function offsetRange(s, pad, axisY, extent) {
-      var lo = -Infinity, hi = Infinity;
-      for (var i = 0; i < N; i++) {
-        var q = ( axisY ? nodes[i].y : nodes[i].x ) * s;
-        var before = axisY ? top[i] : lft[i], after = axisY ? bot[i] : rgt[i];
-        var l = pad + before - q;                      if ( l > lo ) { lo = l; }
-        var h = extent - pad - after - q;              if ( h < hi ) { hi = h; }
-      }
-      return lo <= hi ? [lo, hi] : null;
+  // The admissible offset interval on one axis at scale s, or null when no offset fits every box.
+  function fitOffsetRange(b, s, pad, axisY, extent) {
+    var lo = -Infinity, hi = Infinity;
+    for (var i = 0; i < N; i++) {
+      var q = ( axisY ? nodes[i].y : nodes[i].x ) * s;
+      var before = axisY ? b.top[i] : b.lft[i], after = axisY ? b.bot[i] : b.rgt[i];
+      var l = pad + before - q;                      if ( l > lo ) { lo = l; }
+      var h = extent - pad - after - q;              if ( h < hi ) { hi = h; }
     }
+    return lo <= hi ? [lo, hi] : null;
+  }
 
-    // PADDING IS A PREFERENCE; CONTAINMENT IS THE PROPERTY. On a narrow canvas one long name can be most
-    // of the width — `_get_altered_foo_together_operations` measures ~200 px against a 430 px figure — so
-    // the proportional pad plus that label can be wider than the frame, at which point NO scale fits and
-    // the graph would fall back to the old clipping fit. Give the pad up before giving up containment:
-    // halve it until a fit exists. The generous margin survives wherever there is room for it, which is
-    // every full-width figure, and a cramped thumbnail loses air rather than losing a symbol's name.
+  function fitFits(b, pad, s) {
+    return fitOffsetRange(b, s, pad, false, W) !== null && fitOffsetRange(b, s, pad, true, H) !== null;
+  }
+
+  // PADDING IS A PREFERENCE; CONTAINMENT IS THE PROPERTY. On a narrow canvas one long name can be most
+  // of the width — `_get_altered_foo_together_operations` measures ~200 px against a 430 px figure — so
+  // the proportional pad plus that label can be wider than the frame, at which point NO scale fits and
+  // the graph would fall back to the old clipping fit. Give the pad up before giving up containment:
+  // halve it until a fit exists. The generous margin survives wherever there is room for it, which is
+  // every full-width figure, and a cramped thumbnail loses air rather than losing a symbol's name.
+  function fitPadFor(b) {
     var pad = fitPad();
-    while (pad > 0.5 && !(offsetRange(0.05, pad, false, W) && offsetRange(0.05, pad, true, H))) { pad /= 2; }
+    while (pad > 0.5 && !(fitOffsetRange(b, FIT_SCALE_MIN, pad, false, W) && fitOffsetRange(b, FIT_SCALE_MIN, pad, true, H))) { pad /= 2; }
     if (pad <= 0.5) { pad = 0; }
-    function fits(s) { return offsetRange(s, pad, false, W) !== null && offsetRange(s, pad, true, H) !== null; }
+    return pad;
+  }
 
-    var loS = 0.05, hiS = 2.0;
-    if (!fits(loS)) {
-      // Even the floor cannot hold the drawn boxes (a canvas smaller than one label, say). Fall back to
-      // the centre-box fit rather than emitting a NaN camera, and let the picture overflow visibly.
-      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (var j = 0; j < N; j++) {
-        var n = nodes[j];
-        if (n.x < minX) minX = n.x;  if (n.x > maxX) maxX = n.x;
-        if (n.y < minY) minY = n.y;  if (n.y > maxY) maxY = n.y;
-      }
-      scale = loS;
-      ox = (W - scale*(minX+maxX))/2;
-      oy = (H - scale*(minY+maxY))/2;
-      return;
+  // Even the floor cannot hold the drawn boxes (a canvas smaller than one label, say). Fall back to
+  // the centre-box fit rather than emitting a NaN camera, and let the picture overflow visibly.
+  function fitCentreBox() {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (var j = 0; j < N; j++) {
+      var n = nodes[j];
+      if (n.x < minX) minX = n.x;  if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;  if (n.y > maxY) maxY = n.y;
     }
-    if (!fits(hiS)) {
+    scale = FIT_SCALE_MIN;
+    ox = (W - scale*(minX+maxX))/2;
+    oy = (H - scale*(minY+maxY))/2;
+  }
+
+  function fitScale(b, pad) {
+    var loS = FIT_SCALE_MIN, hiS = FIT_SCALE_MAX;
+    if (!fitFits(b, pad, hiS)) {
       for (var it = 0; it < 24; it++) {                 // 2.0 halved 24 times resolves scale to ~1e-7
         var mid = (loS + hiS)/2;
-        if (fits(mid)) { loS = mid; } else { hiS = mid; }
+        if (fitFits(b, pad, mid)) { loS = mid; } else { hiS = mid; }
       }
     } else {
       loS = hiS;                                       // a tiny graph: the 2.0 ceiling is the binding limit
     }
-    scale = loS;
-    var rx = offsetRange(scale, pad, false, W), ry = offsetRange(scale, pad, true, H);
+    return loS;
+  }
+
+  function fitView() {
+    if (!N) return;
+    var b = fitBoxes();
+    var pad = fitPadFor(b);
+    if (!fitFits(b, pad, FIT_SCALE_MIN)) { fitCentreBox(); return; }
+    scale = fitScale(b, pad);
+    var rx = fitOffsetRange(b, scale, pad, false, W), ry = fitOffsetRange(b, scale, pad, true, H);
     ox = (rx[0] + rx[1])/2;                            // centre the DRAWN content, not the centres
     oy = (ry[0] + ry[1])/2;
   }
@@ -652,44 +703,40 @@
   // driver, which is why the page could only ever be watched settling: there was no way to ask for the
   // finished layout. settle() below runs it in a tight loop; step() keeps the progressive path for the
   // over-budget case.
-  function simTick() {
-    SIM_STEPS++;
-    var repulse = 1500, spring = 0.04, rest = 80, dampen = 0.82, gravity = 0.025;
-    var cx = W/2, cy = H/2;
-    var ax = new Float64Array(N), ay = new Float64Array(N);
-
-    // repulsion O(n²) — the hottest loop on the page. Node i's position and its two force accumulators
-    // are invariant in j and are lifted out of the inner loop. The accumulators are the load-bearing
-    // half: N-1 typed-array read-modify-writes per i collapse to one read and one write.
-    //
-    // Lifting ax[i] is SAFE for a reason worth stating, because it looks like it should not be. ax[i] is
-    // also written by EARLIER outer iterations, as ax[j] with j == i — but every i' < i has finished
-    // before iteration i begins, and iteration i writes only ax[j] for j > i. So the addition ORDER is
-    // unchanged, and a Float64Array element is a double either way: the result is bit-identical, verified
-    // by running the emitted page's own script with and without these hoists and comparing every drawn
-    // node centre (equal step counts in both arms — settle() stops on budget OR MAX_SIM, and the faster
-    // arm otherwise simply gets further, which reads as a difference and is not one).
-    //
-    // Bit-identity is the bar rather than "close enough" because this layout is chaotic: one ulp of
-    // difference is two different pictures 300 steps later, and the label rule in loadSubset and the
-    // radius rule in nodeRadiusPx were both calibrated on specific settled pictures. A rewrite that
-    // REORDERS these sums is not free even when it is faster — see the integrate loop below.
-    //
-    // WHY THIS STAYS O(n²). Barnes-Hut was implemented and measured against this loop, and declined.
-    // The tempting summary — "BH is 3-8x faster but still misses SETTLE_BUDGET_MS at n=5000" — is
-    // circular, because that budget is a constant in this file chosen for how long a page may block
-    // before painting, not a yardstick for an algorithm. Measured in the unit that means something,
-    // median node displacement from that arm's OWN settled layout at first paint (n=5000), the exact
-    // loop lands 6.3% of the graph's span from settled and BH 0.3%: BH genuinely wins at the ceiling,
-    // and this is a trade rather than a rout. It is declined because the benefit is confined to the
-    // --top-k=5000 ceiling while the cost is paid at every n — BH is an APPROXIMATION, so it perturbs
-    // every layout including the default 200-node picture the label and radius rules were calibrated
-    // on, and it puts ~120 lines of quadtree into a page whose value is being self-contained and
-    // auditable. The hoists directly above bought 57 -> 141 steps at that same ceiling (2.45x) for no
-    // layout change at all, which is the cheaper half of the same win. If the whole-map view at 5000
-    // nodes ever becomes the common case rather than a reachable one, BH is the right next step and
-    // these are the numbers to start from. Step counts are wall-clock and machine-dependent; the
-    // ratios and the bit-identity are not.
+  // repulsion O(n²) — the hottest loop on the page. Node i's position and its two force accumulators
+  // are invariant in j and are lifted out of the inner loop. The accumulators are the load-bearing
+  // half: N-1 typed-array read-modify-writes per i collapse to one read and one write.
+  //
+  // Lifting ax[i] is SAFE for a reason worth stating, because it looks like it should not be. ax[i] is
+  // also written by EARLIER outer iterations, as ax[j] with j == i — but every i' < i has finished
+  // before iteration i begins, and iteration i writes only ax[j] for j > i. So the addition ORDER is
+  // unchanged, and a Float64Array element is a double either way: the result is bit-identical, verified
+  // by running the emitted page's own script with and without these hoists and comparing every drawn
+  // node centre (equal step counts in both arms — settle() stops on budget OR MAX_SIM, and the faster
+  // arm otherwise simply gets further, which reads as a difference and is not one).
+  //
+  // Bit-identity is the bar rather than "close enough" because this layout is chaotic: one ulp of
+  // difference is two different pictures 300 steps later, and the label rule in loadSubset and the
+  // radius rule in nodeRadiusPx were both calibrated on specific settled pictures. A rewrite that
+  // REORDERS these sums is not free even when it is faster — see the integrate loop below.
+  //
+  // WHY THIS STAYS O(n²). Barnes-Hut was implemented and measured against this loop, and declined.
+  // The tempting summary — "BH is 3-8x faster but still misses SETTLE_BUDGET_MS at n=5000" — is
+  // circular, because that budget is a constant in this file chosen for how long a page may block
+  // before painting, not a yardstick for an algorithm. Measured in the unit that means something,
+  // median node displacement from that arm's OWN settled layout at first paint (n=5000), the exact
+  // loop lands 6.3% of the graph's span from settled and BH 0.3%: BH genuinely wins at the ceiling,
+  // and this is a trade rather than a rout. It is declined because the benefit is confined to the
+  // --top-k=5000 ceiling while the cost is paid at every n — BH is an APPROXIMATION, so it perturbs
+  // every layout including the default 200-node picture the label and radius rules were calibrated
+  // on, and it puts ~120 lines of quadtree into a page whose value is being self-contained and
+  // auditable. The hoists directly above bought 57 -> 141 steps at that same ceiling (2.45x) for no
+  // layout change at all, which is the cheaper half of the same win. If the whole-map view at 5000
+  // nodes ever becomes the common case rather than a reachable one, BH is the right next step and
+  // these are the numbers to start from. Step counts are wall-clock and machine-dependent; the
+  // ratios and the bit-identity are not.
+  function simRepel(ax, ay) {
+    var repulse = 1500;
     for (var i = 0; i < N; i++) {
       var ni = nodes[i], nix = ni.x, niy = ni.y, axi = ax[i], ayi = ay[i];
       for (var j = i+1; j < N; j++) {
@@ -703,7 +750,11 @@
       }
       ax[i] = axi; ay[i] = ayi;
     }
-    // spring along links — links[k], nodes[s] and nodes[t] were each loaded twice per edge
+  }
+
+  // spring along links — links[k], nodes[s] and nodes[t] were each loaded twice per edge
+  function simSprings(ax, ay) {
+    var spring = 0.04, rest = 80;
     for (var k = 0; k < L; k++) {
       var lk = links[k], s = lk.s, t = lk.t, ns = nodes[s], nt = nodes[t];
       var dx = nt.x - ns.x, dy = nt.y - ns.y;
@@ -713,22 +764,27 @@
       ax[s] += gx; ay[s] += gy;
       ax[t] -= gx; ay[t] -= gy;
     }
-    // Gravity to centre, in the VIEWPORT'S OWN PROPORTIONS. An isotropic pull produces a circular
-    // cloud, and this page is drawn on a 16:9 canvas: measured on the README hero at 1600x900, the
-    // settled graph used 86% of the height and 37% of the width, so the flagship picture was almost half
-    // empty margin. Seeding in the frame's aspect (loadSubset) starts it right and an isotropic well
-    // pulls it back round over 300 steps, so the well is elliptical too — the pull is weaker along the
-    // long axis. The RATIO is the calibration and it was measured, not derived: at gravY/gravX = (W/H)^2
-    // the settled cloud came out at aspect 3.6 in a 1.98 frame, i.e. the cloud's aspect tracks the
-    // gravity ratio almost linearly rather than as the g^(-1/3) a linear-force-against-1/r^2 argument
-    // predicts (the springs dominate). So the ratio is set to the FRAME's aspect, which lands the cloud
-    // just inside it and leaves a margin instead of stretching the picture flat.
-    //
-    // WHAT IT COSTS, stated because it is a real cost. A force layout's one claim is "near means
-    // related", and it is rotation-invariant: an anisotropic well makes "near" mildly direction-
-    // dependent, so a horizontal gap and a vertical gap of the same pixel length no longer mean quite
-    // the same thing. The exponent keeps that mild at the aspects a browser window actually has, and it
-    // is the deliberate trade for a picture that uses the frame it is drawn in.
+  }
+
+  // Gravity to centre, in the VIEWPORT'S OWN PROPORTIONS. An isotropic pull produces a circular
+  // cloud, and this page is drawn on a 16:9 canvas: measured on the README hero at 1600x900, the
+  // settled graph used 86% of the height and 37% of the width, so the flagship picture was almost half
+  // empty margin. Seeding in the frame's aspect (loadSubset) starts it right and an isotropic well
+  // pulls it back round over 300 steps, so the well is elliptical too — the pull is weaker along the
+  // long axis. The RATIO is the calibration and it was measured, not derived: at gravY/gravX = (W/H)^2
+  // the settled cloud came out at aspect 3.6 in a 1.98 frame, i.e. the cloud's aspect tracks the
+  // gravity ratio almost linearly rather than as the g^(-1/3) a linear-force-against-1/r^2 argument
+  // predicts (the springs dominate). So the ratio is set to the FRAME's aspect, which lands the cloud
+  // just inside it and leaves a margin instead of stretching the picture flat.
+  //
+  // WHAT IT COSTS, stated because it is a real cost. A force layout's one claim is "near means
+  // related", and it is rotation-invariant: an anisotropic well makes "near" mildly direction-
+  // dependent, so a horizontal gap and a vertical gap of the same pixel length no longer mean quite
+  // the same thing. The exponent keeps that mild at the aspects a browser window actually has, and it
+  // is the deliberate trade for a picture that uses the frame it is drawn in.
+  function simGravity(ax, ay) {
+    var gravity = 0.025;
+    var cx = W/2, cy = H/2;
     var wellA = Math.sqrt(Math.max(0.4, Math.min(2.5, (W > 0 && H > 0) ? W/H : 1)));
     var gravX = gravity/wellA, gravY = gravity*wellA;
     for (var i = 0; i < N; i++) {
@@ -736,14 +792,18 @@
       ax[i] += gravX*(cx-ng.x);
       ay[i] += gravY*(cy-ng.y);
     }
-    // integrate, with the per-tick displacement capped at MAX_STEP (see its declaration for the
-    // exponential divergence this bounds, and the frozen tab that divergence produced)
-    // nodes[i] was loaded four times per node. The reciprocal in the clamp is deliberately left ALONE:
-    // q = MAX_STEP/sp then vx *= q is one division instead of two, but a*(b/c) and a*b/c differ by an
-    // ulp, so unlike the three hoists above it is not value-preserving. It is already the shipped
-    // behaviour and it binds on a fraction of a percent of integrations, so this is a note and not a
-    // change — only that the two are different KINDS of edit, and the difference is the reason the
-    // hoists above could be verified bit-identical and this one could not be.
+  }
+
+  // integrate, with the per-tick displacement capped at MAX_STEP (see its declaration for the
+  // exponential divergence this bounds, and the frozen tab that divergence produced)
+  // nodes[i] was loaded four times per node. The reciprocal in the clamp is deliberately left ALONE:
+  // q = MAX_STEP/sp then vx *= q is one division instead of two, but a*(b/c) and a*b/c differ by an
+  // ulp, so unlike the three hoists above it is not value-preserving. It is already the shipped
+  // behaviour and it binds on a fraction of a percent of integrations, so this is a note and not a
+  // change — only that the two are different KINDS of edit, and the difference is the reason the
+  // hoists above could be verified bit-identical and this one could not be.
+  function simIntegrate(ax, ay) {
+    var dampen = 0.82;
     for (var i = 0; i < N; i++) {
       if (i === dragging) continue;
       var nv = nodes[i];
@@ -753,6 +813,15 @@
       nv.vx = vx; nv.vy = vy;
       nv.x += vx;  nv.y += vy;
     }
+  }
+
+  function simTick() {
+    SIM_STEPS++;
+    var ax = new Float64Array(N), ay = new Float64Array(N);
+    simRepel(ax, ay);
+    simSprings(ax, ay);
+    simGravity(ax, ay);
+    simIntegrate(ax, ay);
   }
 
   function now() { return (window.performance && window.performance.now) ? window.performance.now() : Date.now(); }
@@ -882,324 +951,393 @@
     ctx.fillRect(0, 0, W, H);
   }
 
-  function draw() {
-    paintBackdrop();
-    ctx.save();
-    ctx.translate(ox, oy); ctx.scale(scale, scale);
+  function highlightSet() {
+    if (selected < 0) return null;
+    var hl = new Set(nbr[selected]);
+    hl.add(selected);
+    return hl;
+  }
 
-    // highlight set: neighbours of selected
-    var hl = null;
-    if (selected >= 0) {
-      hl = new Set(nbr[selected]);
-      hl.add(selected);
+  // ---- module HULLS, behind everything. Containment is the channel; see loadSubset's hull block for
+  // the 12-hues-over-26-modules collision it replaces and why no palette could have fixed it. The hue
+  // is what is LEFT after containment took the job, so it comes from hullColor — a deliberately quiet
+  // band measured against rampColor rather than the community lens' twelve saturated hues, which put
+  // decoration on the two axes the metric uses. See hullColor's note for the numbers.
+  //
+  // Each outline is pushed HULL_PAD_PX (a screen quantity, converted here like every other one on this
+  // canvas) outward from the group's centroid so it clears its own members instead of threading
+  // through them, and it is drawn as a rounded blob — quadratic curves through the edge midpoints,
+  // one pass over the same vertices — because a hard polygon reads as a diagram of a region and a
+  // rounded one reads as the region. The fill is deliberately faint: the outline is a second channel
+  // sitting UNDER whatever --color-by the reader chose, and a hull that competes with the node colours
+  // has taken the lens away from them.
+  function hullGroupPoints(grp) {
+    var gpts = [];
+    for (var mi = 0; mi < grp.idx.length; mi++) { gpts.push({ x: nodes[grp.idx[mi]].x, y: nodes[grp.idx[mi]].y }); }
+    return gpts;
+  }
+
+  // THE SHAPE TEST — see HULL_COMPACTNESS for the three streaks that made it necessary and for why
+  // 0.20. It runs FIRST because it is one O(ring) pass and the purity test below is O(N): a group
+  // that cannot be a region at all never costs a walk over every node in view. A ring of fewer than
+  // three points is the extreme case of the same defect — a fully collinear group, whose hull has no
+  // area whatsoever — and it lands in the same counted branch, where it used to be skipped silently.
+  function hullIsThin(ring) {
+    var hullArea = 0, hullPerim = 0, hk;
+    for (hk = 0; hk < ring.length; hk++) {
+      var rb = ring[(hk + 1) % ring.length], rdx = rb.x - ring[hk].x, rdy = rb.y - ring[hk].y;
+      hullArea  += ring[hk].x*rb.y - rb.x*ring[hk].y;
+      hullPerim += Math.sqrt(rdx*rdx + rdy*rdy);
     }
+    hullArea = Math.abs(hullArea)/2;
+    return ring.length < 3 || !(hullPerim > 0) || 4*Math.PI*hullArea/(hullPerim*hullPerim) < HULL_COMPACTNESS;
+  }
 
-    // ---- module HULLS, behind everything. Containment is the channel; see loadSubset's hull block for
-    // the 12-hues-over-26-modules collision it replaces and why no palette could have fixed it. The hue
-    // is what is LEFT after containment took the job, so it comes from hullColor — a deliberately quiet
-    // band measured against rampColor rather than the community lens' twelve saturated hues, which put
-    // decoration on the two axes the metric uses. See hullColor's note for the numbers.
-    //
-    // Each outline is pushed HULL_PAD_PX (a screen quantity, converted here like every other one on this
-    // canvas) outward from the group's centroid so it clears its own members instead of threading
-    // through them, and it is drawn as a rounded blob — quadratic curves through the edge midpoints,
-    // one pass over the same vertices — because a hard polygon reads as a diagram of a region and a
-    // rounded one reads as the region. The fill is deliberately faint: the outline is a second channel
-    // sitting UNDER whatever --color-by the reader chose, and a hull that competes with the node colours
-    // has taken the lens away from them.
-    var hullAnchors = [];
+  function hullOutline(ring) {
+    var gcx = 0, gcy = 0, hj;
+    for (hj = 0; hj < ring.length; hj++) { gcx += ring[hj].x; gcy += ring[hj].y; }
+    gcx /= ring.length; gcy /= ring.length;
+    var padw = HULL_PAD_PX/scale, ex = [], topY = Infinity, topX = 0;
+    for (hj = 0; hj < ring.length; hj++) {
+      var vx = ring[hj].x - gcx, vy = ring[hj].y - gcy, vd = Math.sqrt(vx*vx + vy*vy) || 1;
+      var pxw = ring[hj].x + vx/vd*padw, pyw = ring[hj].y + vy/vd*padw;
+      ex.push({ x: pxw, y: pyw });
+      if (pyw < topY) { topY = pyw; topX = pxw; }
+    }
+    return { ex: ex, topX: topX, topY: topY };
+  }
+
+  // THE PURITY TEST — see HULL_PURITY for the three lenses that made it necessary. If most of what
+  // this outline would enclose is NOT this module, the outline is not saying "these belong
+  // together", it is saying nothing over the top of everything else.
+  function hullIsPure(grp, ex) {
+    var bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (var hj = 0; hj < ex.length; hj++) {
+      if (ex[hj].x < bx0) bx0 = ex[hj].x;  if (ex[hj].x > bx1) bx1 = ex[hj].x;
+      if (ex[hj].y < by0) by0 = ex[hj].y;  if (ex[hj].y > by1) by1 = ex[hj].y;
+    }
+    var inside = 0;
+    for (var qi = 0; qi < N; qi++) {
+      var qn = nodes[qi];
+      if (qn.x >= bx0 && qn.x <= bx1 && qn.y >= by0 && qn.y <= by1) { inside++; }
+    }
+    return !(inside > 0 && grp.idx.length/inside < HULL_PURITY);
+  }
+
+  function strokeHullRegion(ex, hcol) {
+    ctx.beginPath();
+    ctx.moveTo((ex[ex.length-1].x + ex[0].x)/2, (ex[ex.length-1].y + ex[0].y)/2);
+    for (var hj = 0; hj < ex.length; hj++) {
+      var nxt = ex[(hj + 1) % ex.length];
+      ctx.quadraticCurveTo(ex[hj].x, ex[hj].y, (ex[hj].x + nxt.x)/2, (ex[hj].y + nxt.y)/2);
+    }
+    ctx.closePath();
+    ctx.fillStyle = hexRgba(hcol, 0.085);
+    ctx.fill();
+    ctx.strokeStyle = hexRgba(hcol, 0.42);
+    ctx.lineWidth = 1.4/scale;
+    ctx.stroke();
+  }
+
+  // Returns the name anchor for a drawn hull, or null when the group is dropped.
+  // The name is a module's TOP-RANKED MEMBER (MODULES[].name — the same string the overview card
+  // uses), so on a repository whose hubs are container primitives it can read as an ordinary symbol
+  // name, and the picture already has a node labelled exactly that a few pixels away. The member
+  // count is what makes the two legible as different KINDS of thing — "clone ·9" is a group of
+  // nine, "clone" is a symbol — and it is the number a reader wants from a region anyway.
+  function drawHull(grp) {
+    var ring = convexHull(hullGroupPoints(grp));
+    if (hullIsThin(ring)) { hullsThin++; return null; }
+    if (hullsDrawn >= MAX_HULLS) return null;
+    var shape = hullOutline(ring);
+    if (!hullIsPure(grp, shape.ex)) { hullsImpure++; return null; }
+    hullsDrawn++;
+    var hcol = hullColor[grp.comm % 12];
+    strokeHullRegion(shape.ex, hcol);
+    return { sx: shape.topX*scale + ox, sy: shape.topY*scale + oy - 6,
+             text: grp.name + ' ·' + grp.idx.length, color: hcol };
+  }
+
+  function drawHulls() {
+    var anchors = [];
     hullsDrawn = 0; hullsThin = 0; hullsImpure = 0;
     for (var gi = 0; gi < hullGroups.length; gi++) {
-      var grp = hullGroups[gi], gpts = [], mi;
-      for (mi = 0; mi < grp.idx.length; mi++) { gpts.push({ x: nodes[grp.idx[mi]].x, y: nodes[grp.idx[mi]].y }); }
-      var ring = convexHull(gpts);
-      // THE SHAPE TEST — see HULL_COMPACTNESS for the three streaks that made it necessary and for why
-      // 0.20. It runs FIRST because it is one O(ring) pass and the purity test below is O(N): a group
-      // that cannot be a region at all never costs a walk over every node in view. A ring of fewer than
-      // three points is the extreme case of the same defect — a fully collinear group, whose hull has no
-      // area whatsoever — and it lands in the same counted branch, where it used to be skipped silently.
-      var hullArea = 0, hullPerim = 0, hk;
-      for (hk = 0; hk < ring.length; hk++) {
-        var rb = ring[(hk + 1) % ring.length], rdx = rb.x - ring[hk].x, rdy = rb.y - ring[hk].y;
-        hullArea  += ring[hk].x*rb.y - rb.x*ring[hk].y;
-        hullPerim += Math.sqrt(rdx*rdx + rdy*rdy);
-      }
-      hullArea = Math.abs(hullArea)/2;
-      if (ring.length < 3 || !(hullPerim > 0) || 4*Math.PI*hullArea/(hullPerim*hullPerim) < HULL_COMPACTNESS) { hullsThin++; continue; }
-      if (hullsDrawn >= MAX_HULLS) { continue; }
-      var gcx = 0, gcy = 0, hj;
-      for (hj = 0; hj < ring.length; hj++) { gcx += ring[hj].x; gcy += ring[hj].y; }
-      gcx /= ring.length; gcy /= ring.length;
-      var padw = HULL_PAD_PX/scale, ex = [], topY = Infinity, topX = 0;
-      for (hj = 0; hj < ring.length; hj++) {
-        var vx = ring[hj].x - gcx, vy = ring[hj].y - gcy, vd = Math.sqrt(vx*vx + vy*vy) || 1;
-        var pxw = ring[hj].x + vx/vd*padw, pyw = ring[hj].y + vy/vd*padw;
-        ex.push({ x: pxw, y: pyw });
-        if (pyw < topY) { topY = pyw; topX = pxw; }
-      }
-      // THE PURITY TEST — see HULL_PURITY for the three lenses that made it necessary. If most of what
-      // this outline would enclose is NOT this module, the outline is not saying "these belong
-      // together", it is saying nothing over the top of everything else.
-      var bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
-      for (hj = 0; hj < ex.length; hj++) {
-        if (ex[hj].x < bx0) bx0 = ex[hj].x;  if (ex[hj].x > bx1) bx1 = ex[hj].x;
-        if (ex[hj].y < by0) by0 = ex[hj].y;  if (ex[hj].y > by1) by1 = ex[hj].y;
-      }
-      var inside = 0;
-      for (var qi = 0; qi < N; qi++) {
-        var qn = nodes[qi];
-        if (qn.x >= bx0 && qn.x <= bx1 && qn.y >= by0 && qn.y <= by1) { inside++; }
-      }
-      if (inside > 0 && grp.idx.length/inside < HULL_PURITY) { hullsImpure++; continue; }
-      hullsDrawn++;
-      ctx.beginPath();
-      ctx.moveTo((ex[ex.length-1].x + ex[0].x)/2, (ex[ex.length-1].y + ex[0].y)/2);
-      for (hj = 0; hj < ex.length; hj++) {
-        var nxt = ex[(hj + 1) % ex.length];
-        ctx.quadraticCurveTo(ex[hj].x, ex[hj].y, (ex[hj].x + nxt.x)/2, (ex[hj].y + nxt.y)/2);
-      }
-      ctx.closePath();
-      var hcol = hullColor[grp.comm % 12];
-      ctx.fillStyle = hexRgba(hcol, 0.085);
-      ctx.fill();
-      ctx.strokeStyle = hexRgba(hcol, 0.42);
-      ctx.lineWidth = 1.4/scale;
-      ctx.stroke();
-      // The name is a module's TOP-RANKED MEMBER (MODULES[].name — the same string the overview card
-      // uses), so on a repository whose hubs are container primitives it can read as an ordinary symbol
-      // name, and the picture already has a node labelled exactly that a few pixels away. The member
-      // count is what makes the two legible as different KINDS of thing — "clone ·9" is a group of
-      // nine, "clone" is a symbol — and it is the number a reader wants from a region anyway.
-      hullAnchors.push({ sx: topX*scale + ox, sy: topY*scale + oy - 6,
-                         text: grp.name + ' ·' + grp.idx.length, color: hcol });
+      var anchor = drawHull(hullGroups[gi]);
+      if (anchor) { anchors.push(anchor); }
     }
+    return anchors;
+  }
 
-    // ---- edges, WITH THEIR DIRECTION DRAWN.
-    //
-    // LINKS is a directed call graph and this loop used to render it as `moveTo(source) lineTo(target)`
-    // with nothing at either end, so a picture of a call graph could not answer "which of these two
-    // calls the other" — the single most basic question the graph exists to answer. It is a near-free
-    // thing to draw here because the direction is near-unambiguous in the data: mutual pairs are 1 of
-    // 243 on the default page, 5 of 4721 at --top-k=2000, 0 of 646 on another corpus, and self-calls
-    // (which loadSubset drops and the caption counts) are 0 everywhere. A head is therefore a true
-    // statement about 99.6-100% of the edges it is drawn on.
-    //
-    // THE HEAD IS A SCREEN QUANTITY, converted to world units here — the same rule node radii and label
-    // glyphs already follow, and for the same reason: the page auto-fits a settled map at scale ~0.10 to
-    // ~0.15, where a world-space head sized to look right at 1:1 is a third of a pixel and simply is not
-    // there. The tip is backed off the target's own radius so it points AT the node instead of being
-    // buried under it, and an edge whose VISIBLE shaft is shorter than MIN_ARROW_SHAFT_PX gets no head
-    // at all: on a dense cluster those are all head and no line, which reads as noise and costs a fill
-    // per edge to draw.
-    //
-    // Both passes are ONE path each rather than a beginPath/stroke per edge. Same pixels, and it is what
-    // makes a second pass over up to 13819 edges affordable at all.
-    // A SPLIT-ARM SHAFT IS DASHED. `a` is the per-edge bit writeHtml reads straight off Graph::outProv
-    // (3 = one arm of a k-way split the resolver could not choose between — the same fact the XML map
-    // spells prov="split"), so the picture and the data say the same thing about the same edge. It is
-    // drawn as a different KIND of line and not as a shade, because a faded solid line is
-    // indistinguishable from a distant one and a dashed line is not. Two passes because a dash pattern
-    // is canvas STATE and cannot vary inside one path; the alternative is a beginPath/stroke per edge,
-    // which is what this loop was before and what makes 13819 edges unaffordable. The pass order is
-    // fixed, so the picture is stable.
-    var ARROW_LEN_PX = 7.0, ARROW_HALF_PX = 3.2, MIN_ARROW_SHAFT_PX = 13.0;
-    var DASH_ON_PX = 4.0, DASH_OFF_PX = 3.5;
+  // ---- edges, WITH THEIR DIRECTION DRAWN.
+  //
+  // LINKS is a directed call graph and this loop used to render it as `moveTo(source) lineTo(target)`
+  // with nothing at either end, so a picture of a call graph could not answer "which of these two
+  // calls the other" — the single most basic question the graph exists to answer. It is a near-free
+  // thing to draw here because the direction is near-unambiguous in the data: mutual pairs are 1 of
+  // 243 on the default page, 5 of 4721 at --top-k=2000, 0 of 646 on another corpus, and self-calls
+  // (which loadSubset drops and the caption counts) are 0 everywhere. A head is therefore a true
+  // statement about 99.6-100% of the edges it is drawn on.
+  //
+  // THE HEAD IS A SCREEN QUANTITY, converted to world units here — the same rule node radii and label
+  // glyphs already follow, and for the same reason: the page auto-fits a settled map at scale ~0.10 to
+  // ~0.15, where a world-space head sized to look right at 1:1 is a third of a pixel and simply is not
+  // there. The tip is backed off the target's own radius so it points AT the node instead of being
+  // buried under it, and an edge whose VISIBLE shaft is shorter than MIN_ARROW_SHAFT_PX gets no head
+  // at all: on a dense cluster those are all head and no line, which reads as noise and costs a fill
+  // per edge to draw.
+  //
+  // Both passes are ONE path each rather than a beginPath/stroke per edge. Same pixels, and it is what
+  // makes a second pass over up to 13819 edges affordable at all.
+  // A SPLIT-ARM SHAFT IS DASHED. `a` is the per-edge bit writeHtml reads straight off Graph::outProv
+  // (3 = one arm of a k-way split the resolver could not choose between — the same fact the XML map
+  // spells prov="split"), so the picture and the data say the same thing about the same edge. It is
+  // drawn as a different KIND of line and not as a shade, because a faded solid line is
+  // indistinguishable from a distant one and a dashed line is not. Two passes because a dash pattern
+  // is canvas STATE and cannot vary inside one path; the alternative is a beginPath/stroke per edge,
+  // which is what this loop was before and what makes 13819 edges unaffordable. The pass order is
+  // fixed, so the picture is stable.
+  var ARROW_LEN_PX = 7.0, ARROW_HALF_PX = 3.2, MIN_ARROW_SHAFT_PX = 13.0;
+  var DASH_ON_PX = 4.0, DASH_OFF_PX = 3.5;
+
+  function edgeVisible(k, hl) {
+    return !hl || hl.has(links[k].s) || hl.has(links[k].t);
+  }
+
+  function strokeEdgePass(hl, dashed) {
+    ctx.setLineDash(dashed ? [DASH_ON_PX/scale, DASH_OFF_PX/scale] : []);
+    ctx.beginPath();
+    for (var k = 0; k < L; k++) {
+      if (!edgeVisible(k, hl)) continue;
+      if ((links[k].a === 1) !== dashed) continue;
+      ctx.moveTo(nodes[links[k].s].x, nodes[links[k].s].y);
+      ctx.lineTo(nodes[links[k].t].x, nodes[links[k].t].y);
+    }
+    ctx.stroke();
+  }
+
+  function arrowHeadPath(a, b, alen, ahalf) {
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var d = Math.sqrt(dx*dx + dy*dy);
+    if (!(d > 0)) return;
+    var rs = nodeRadiusPx(a)/scale, rt = nodeRadiusPx(b)/scale;
+    if ((d - rs - rt)*scale < MIN_ARROW_SHAFT_PX) return;
+    var ux = dx/d, uy = dy/d;
+    var tipX = b.x - ux*rt, tipY = b.y - uy*rt;
+    var baseX = tipX - ux*alen, baseY = tipY - uy*alen;
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(baseX - uy*ahalf, baseY + ux*ahalf);
+    ctx.lineTo(baseX + uy*ahalf, baseY - ux*ahalf);
+    ctx.closePath();
+  }
+
+  function drawEdges(hl) {
+    var alen = ARROW_LEN_PX/scale, ahalf = ARROW_HALF_PX/scale;
     ctx.strokeStyle = '#8a8f98';
     ctx.lineWidth = 0.8/scale;
     ctx.globalAlpha = 0.26;
-    for (var pass = 0; pass < 2; pass++) {
-      ctx.setLineDash(pass ? [DASH_ON_PX/scale, DASH_OFF_PX/scale] : []);
-      ctx.beginPath();
-      for (var k = 0; k < L; k++) {
-        var s = links[k].s, t = links[k].t;
-        if (hl && !hl.has(s) && !hl.has(t)) continue;
-        if ((links[k].a === 1) !== (pass === 1)) continue;
-        ctx.moveTo(nodes[s].x, nodes[s].y);
-        ctx.lineTo(nodes[t].x, nodes[t].y);
-      }
-      ctx.stroke();
-    }
+    strokeEdgePass(hl, false);
+    strokeEdgePass(hl, true);
     ctx.setLineDash([]);
-    var alen = ARROW_LEN_PX/scale, ahalf = ARROW_HALF_PX/scale;
     ctx.fillStyle = '#c3c9d2';
     ctx.globalAlpha = 0.62;
     ctx.beginPath();
-    for (var k2 = 0; k2 < L; k2++) {
-      var s2 = links[k2].s, t2 = links[k2].t;
-      if (hl && !hl.has(s2) && !hl.has(t2)) continue;
-      var a = nodes[s2], b = nodes[t2];
-      var dx = b.x - a.x, dy = b.y - a.y;
-      var d = Math.sqrt(dx*dx + dy*dy);
-      if (!(d > 0)) continue;
-      var rs = nodeRadiusPx(a)/scale, rt = nodeRadiusPx(b)/scale;
-      if ((d - rs - rt)*scale < MIN_ARROW_SHAFT_PX) continue;
-      var ux = dx/d, uy = dy/d;
-      var tipX = b.x - ux*rt, tipY = b.y - uy*rt;
-      var baseX = tipX - ux*alen, baseY = tipY - uy*alen;
-      ctx.moveTo(tipX, tipY);
-      ctx.lineTo(baseX - uy*ahalf, baseY + ux*ahalf);
-      ctx.lineTo(baseX + uy*ahalf, baseY - ux*ahalf);
-      ctx.closePath();
+    for (var k = 0; k < L; k++) {
+      if (edgeVisible(k, hl)) arrowHeadPath(nodes[links[k].s], nodes[links[k].t], alen, ahalf);
     }
     ctx.fill();
     ctx.globalAlpha = 1.0;
+  }
 
-    // Node size is a SCREEN quantity converted to world units here, exactly the way the labels already
-    // are — a hub has to look like a hub at every zoom, and it must never grow into a blob that swallows
-    // the labels around it. Two earlier shapes both failed on this cut and are worth naming: a per-node
-    // max against a 3.5-px-over-scale floor FLATTENED everything (at the 0.125 scale a 239-node view fits
-    // at, the floor term exceeded every radius, so all 239 nodes drew at the same 3.5 px and the degree
-    // signal was invisible in the one picture that needed it); a uniform per-frame multiplier fixed the
-    // small end and blew up the large one, turning degree-111 hubs into 36 px discs that occluded four
-    // labels. A screen-space band does both jobs and is zoom-invariant.
-    // nodes. In `tested` mode an UNTESTED node is drawn hollow with a dashed ring instead of a filled
-    // disc — the second, non-hue channel H5 is about. Every other mode fills as before.
+  // ---- nodes. Node size is a SCREEN quantity converted to world units here, exactly the way the labels
+  // already are — a hub has to look like a hub at every zoom, and it must never grow into a blob that
+  // swallows the labels around it. Two earlier shapes both failed on this cut and are worth naming: a
+  // per-node max against a 3.5-px-over-scale floor FLATTENED everything (at the 0.125 scale a 239-node
+  // view fits at, the floor term exceeded every radius, so all 239 nodes drew at the same 3.5 px and the
+  // degree signal was invisible in the one picture that needed it); a uniform per-frame multiplier fixed
+  // the small end and blew up the large one, turning degree-111 hubs into 36 px discs that occluded four
+  // labels. A screen-space band does both jobs and is zoom-invariant.
+  // In `tested` mode an UNTESTED node is drawn hollow with a dashed ring instead of a filled disc — the
+  // second, non-hue channel H5 is about. Every other mode fills as before.
+  function isDimmed(i, hl) {
+    return (hl && !hl.has(i)) || (searchSet && !searchSet.has(i));
+  }
+
+  function strokeHollowNode(n, r) {
+    ctx.fillStyle = CANVAS_BG; ctx.fill();
+    ctx.setLineDash([3/scale, 2.5/scale]);
+    ctx.strokeStyle = colorForNode(n); ctx.lineWidth = Math.max(1.4/scale, r*0.3); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawNode(i, hl, hollow) {
+    var n = nodes[i];
+    var r = nodeRadiusPx(n)/scale;   // screen px -> world units, inside the transformed draw
+    ctx.globalAlpha = isDimmed(i, hl) ? 0.18 : 1.0;
+    ctx.beginPath();
+    shapeFor(n).path(ctx, n.x, n.y, r);
+    if (hollow && testedStroke(n)) {
+      strokeHollowNode(n, r);
+    } else {
+      ctx.fillStyle = colorForNode(n);
+      ctx.fill();
+    }
+    if (i === selected || i === hovered || n.gid === centreGid) {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2/scale; ctx.stroke();
+    }
+  }
+
+  function drawNodes(hl) {
     var hollow = (mode === 'tested');
-    for (var i = 0; i < N; i++) {
-      var n = nodes[i];
-      var r = nodeRadiusPx(n)/scale;   // screen px -> world units, inside the transformed draw
-      var dim = (hl && !hl.has(i)) || (searchSet && !searchSet.has(i));
-      ctx.globalAlpha = dim ? 0.18 : 1.0;
-      ctx.beginPath();
-      shapeFor(n).path(ctx, n.x, n.y, r);
-      if (hollow && testedStroke(n)) {
-        ctx.fillStyle = CANVAS_BG; ctx.fill();
-        ctx.setLineDash([3/scale, 2.5/scale]);
-        ctx.strokeStyle = colorForNode(n); ctx.lineWidth = Math.max(1.4/scale, r*0.3); ctx.stroke();
-        ctx.setLineDash([]);
-      } else {
-        ctx.fillStyle = colorForNode(n);
-        ctx.fill();
-      }
-      if (i === selected || i === hovered || n.gid === centreGid) {
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2/scale; ctx.stroke();
-      }
-    }
+    for (var i = 0; i < N; i++) drawNode(i, hl, hollow);
+  }
 
-    ctx.globalAlpha = 1.0;
-    ctx.restore();
+  // ---- labels, decluttered by a greedy occupancy grid, drawn in SCREEN space.
+  //
+  // They used to be drawn in local-index order with no collision test at all, so two labels whose boxes
+  // overlapped simply printed on top of each other: `release`/`resize`/`size` came out as "reisleaze",
+  // `empty`/`end` as "eand". Text that is unreadable is worse than absent — it still costs the pixels and
+  // now also costs the reader's trust in the ones that ARE legible.
+  //
+  // The grid is a Set of "col:row" cells over SCREEN space (constant cell size, so the declutter behaves
+  // the same at every zoom). Placement is in descending importance — labelDegreeOrder first, then the
+  // always-shown hovered/selected/centre — so when two labels collide the more important one is the one
+  // that survives. A skipped label is not lost: hover, click or search brings any node's name back.
+  //
+  // THE TEXT IS DRAWN OUTSIDE THE WORLD TRANSFORM, and this is not a tidiness preference. It used to be
+  // drawn inside it at `(11/scale) px` with a `LABEL_HALO_PX/scale` halo — a screen-constant size
+  // expressed as a world quantity, which renders identically and costs whatever the zoom says. At the
+  // scale a settled 1000-node map fits at, fitView pins `scale` on its 0.05 floor, so those became 220 px
+  // glyphs stroked with a 60 px round-join pen, twenty-four of them per frame: the tab stopped responding
+  // and never came back. Bisected to this block (a build with the sim on and the labels skipped renders
+  // the same map instantly). Every coordinate below is the screen coordinate the occupancy grid was
+  // ALREADY computing, so the picture is unchanged pixel for pixel — the difference is that the cost no
+  // longer scales with 1/zoom. Node radii were converted to screen units for the same reason one commit
+  // earlier; the labels were the half that was left behind, and only a whole-map view was large enough
+  // to show it.
+  //
+  // CELL_H is the grid's row pitch; LABEL_H is how tall a drawn label actually is. They are different
+  // numbers and conflating them was a real bug: reserving only the row the BASELINE lands in leaves two
+  // labels 5 px apart claiming different rows either side of a 16 px boundary. Measured in a browser on
+  // the README cut, that still left 2 overprinting pairs after the grid went in — one of them over the
+  // centre symbol's own name. The box now spans every row the text touches, and its width is MEASURED
+  // rather than estimated from the character count (an estimate that runs short reserves less than it
+  // draws, which is the same collision by a second route).
+  var CELL_W = 8, CELL_H = 16;   // LABEL_H is hoisted — fitView reserves with the same number
 
-    // ---- labels, decluttered by a greedy occupancy grid, drawn in SCREEN space.
-    //
-    // They used to be drawn in local-index order with no collision test at all, so two labels whose boxes
-    // overlapped simply printed on top of each other: `release`/`resize`/`size` came out as "reisleaze",
-    // `empty`/`end` as "eand". Text that is unreadable is worse than absent — it still costs the pixels and
-    // now also costs the reader's trust in the ones that ARE legible.
-    //
-    // The grid is a Set of "col:row" cells over SCREEN space (constant cell size, so the declutter behaves
-    // the same at every zoom). Placement is in descending importance — labelDegreeOrder first, then the
-    // always-shown hovered/selected/centre — so when two labels collide the more important one is the one
-    // that survives. A skipped label is not lost: hover, click or search brings any node's name back.
-    //
-    // THE TEXT IS DRAWN OUTSIDE THE WORLD TRANSFORM, and this is not a tidiness preference. It used to be
-    // drawn inside it at `(11/scale) px` with a `LABEL_HALO_PX/scale` halo — a screen-constant size
-    // expressed as a world quantity, which renders identically and costs whatever the zoom says. At the
-    // scale a settled 1000-node map fits at, fitView pins `scale` on its 0.05 floor, so those became 220 px
-    // glyphs stroked with a 60 px round-join pen, twenty-four of them per frame: the tab stopped responding
-    // and never came back. Bisected to this block (a build with the sim on and the labels skipped renders
-    // the same map instantly). Every coordinate below is the screen coordinate the occupancy grid was
-    // ALREADY computing, so the picture is unchanged pixel for pixel — the difference is that the cost no
-    // longer scales with 1/zoom. Node radii were converted to screen units for the same reason one commit
-    // earlier; the labels were the half that was left behind, and only a whole-map view was large enough
-    // to show it.
-    ctx.font = '11px sans-serif';
-    // CELL_H is the grid's row pitch; LABEL_H is how tall a drawn label actually is. They are different
-    // numbers and conflating them was a real bug: reserving only the row the BASELINE lands in leaves two
-    // labels 5 px apart claiming different rows either side of a 16 px boundary. Measured in a browser on
-    // the README cut, that still left 2 overprinting pairs after the grid went in — one of them over the
-    // centre symbol's own name. The box now spans every row the text touches, and its width is MEASURED
-    // rather than estimated from the character count (an estimate that runs short reserves less than it
-    // draws, which is the same collision by a second route).
-    var labelCells = new Set();
-    var CELL_W = 8, CELL_H = 16;                          // LABEL_H is hoisted — fitView reserves with the same number
-    // placeTextAt is the whole placement rule — cull, reserve, halo, draw — with no idea what the text
-    // is FOR. It was placeLabel(i) and nothing else until the hulls needed names too; a second copy for
-    // hull labels would have been a second occupancy grid's worth of behaviour that could disagree with
-    // this one about what overlaps what, which is precisely the overprinting this grid exists to stop.
-    function placeTextAt(text, sx, sy, fill, alpha) {
-      var wpx = ctx.measureText(text).width;                // screen px directly — the font is screen px now
-      // Text anchored well off the canvas is not drawn — and this is a GUARD, not an optimisation.
-      // The cell walk below advances an integer counter held in a double, and above 2^53 `c++` stops
-      // advancing, so ONE label at an extreme coordinate turns `for (c = c0; c <= c1; c++)` into a loop
-      // that cannot terminate: no error, no console message, a permanently frozen tab. MAX_STEP stops
-      // the divergence that produced such coordinates; this makes the loop's termination unconditional
-      // rather than contingent on the sim staying well behaved. The `!(...)` form rejects NaN too.
-      if (!(sx > -LABEL_CULL_PX && sx < W + LABEL_CULL_PX && sy > -LABEL_CULL_PX && sy < H + LABEL_CULL_PX)) { return false; }
-      var c0 = Math.floor(sx/CELL_W), c1 = Math.floor((sx + wpx)/CELL_W);
-      var r0 = Math.floor((sy - LABEL_H)/CELL_H), r1 = Math.floor((sy + 2)/CELL_H);
-      if (c1 - c0 > 200) c1 = c0 + 200;                     // a pathological label cannot monopolise the grid
-      for (var rr = r0; rr <= r1; rr++) { for (var c = c0; c <= c1; c++) { if (labelCells.has(c + ':' + rr)) return false; } }
-      for (var rr2 = r0; rr2 <= r1; rr2++) { for (var c2 = c0; c2 <= c1; c2++) { labelCells.add(c2 + ':' + rr2); } }
-      ctx.globalAlpha = alpha;
-      // A HALO first. The occupancy grid stops labels colliding with each OTHER; it says nothing about
-      // what is underneath them, and in a dense view a name lands on top of a node disc — #d6d9de on a
-      // bright teal is barely readable, which is the same lost label by a different route. Stroking the
-      // glyphs in the canvas background before filling them makes every label legible over anything.
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = LABEL_HALO_PX;
-      ctx.strokeStyle = 'rgba(10,10,10,0.9)';
-      ctx.strokeText(text, sx, sy);
-      ctx.fillStyle = fill;
-      ctx.fillText(text, sx, sy);
-      return true;
-    }
-    function placeLabel(i) {
-      var n = nodes[i], rpx = nodeRadiusPx(n);              // rpx is already a SCREEN radius
-      return placeTextAt(n.label, n.x*scale + ox + rpx + LABEL_GAP_PX, n.y*scale + oy + LABEL_BASE_PX,
-                         '#e6e9ee', (hl && !hl.has(i)) ? 0.25 : 0.95);
-    }
-    // Hull names go in FIRST, through the same grid: a region's name outranks any single symbol's,
-    // because it is the only thing on the canvas that says what a whole cluster IS. Drawn in the hull's
-    // own colour so the name and the outline are visibly the same object.
+  function reserveLabelCells(cells, c0, c1, r0, r1) {
+    for (var rr = r0; rr <= r1; rr++) { for (var c = c0; c <= c1; c++) { if (cells.has(c + ':' + rr)) return false; } }
+    for (var rr2 = r0; rr2 <= r1; rr2++) { for (var c2 = c0; c2 <= c1; c2++) { cells.add(c2 + ':' + rr2); } }
+    return true;
+  }
+
+  // placeTextAt is the whole placement rule — cull, reserve, halo, draw — with no idea what the text
+  // is FOR. It was placeLabel(i) and nothing else until the hulls needed names too; a second copy for
+  // hull labels would have been a second occupancy grid's worth of behaviour that could disagree with
+  // this one about what overlaps what, which is precisely the overprinting this grid exists to stop.
+  function placeTextAt(cells, text, sx, sy, fill, alpha) {
+    var wpx = ctx.measureText(text).width;                // screen px directly — the font is screen px now
+    // Text anchored well off the canvas is not drawn — and this is a GUARD, not an optimisation.
+    // The cell walk below advances an integer counter held in a double, and above 2^53 `c++` stops
+    // advancing, so ONE label at an extreme coordinate turns `for (c = c0; c <= c1; c++)` into a loop
+    // that cannot terminate: no error, no console message, a permanently frozen tab. MAX_STEP stops
+    // the divergence that produced such coordinates; this makes the loop's termination unconditional
+    // rather than contingent on the sim staying well behaved. The `!(...)` form rejects NaN too.
+    if (!(sx > -LABEL_CULL_PX && sx < W + LABEL_CULL_PX && sy > -LABEL_CULL_PX && sy < H + LABEL_CULL_PX)) { return false; }
+    var c0 = Math.floor(sx/CELL_W), c1 = Math.floor((sx + wpx)/CELL_W);
+    var r0 = Math.floor((sy - LABEL_H)/CELL_H), r1 = Math.floor((sy + 2)/CELL_H);
+    if (c1 - c0 > 200) c1 = c0 + 200;                     // a pathological label cannot monopolise the grid
+    if (!reserveLabelCells(cells, c0, c1, r0, r1)) return false;
+    ctx.globalAlpha = alpha;
+    // A HALO first. The occupancy grid stops labels colliding with each OTHER; it says nothing about
+    // what is underneath them, and in a dense view a name lands on top of a node disc — #d6d9de on a
+    // bright teal is barely readable, which is the same lost label by a different route. Stroking the
+    // glyphs in the canvas background before filling them makes every label legible over anything.
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = LABEL_HALO_PX;
+    ctx.strokeStyle = 'rgba(10,10,10,0.9)';
+    ctx.strokeText(text, sx, sy);
+    ctx.fillStyle = fill;
+    ctx.fillText(text, sx, sy);
+    return true;
+  }
+
+  function placeNodeLabel(cells, i, hl) {
+    var n = nodes[i], rpx = nodeRadiusPx(n);              // rpx is already a SCREEN radius
+    return placeTextAt(cells, n.label, n.x*scale + ox + rpx + LABEL_GAP_PX, n.y*scale + oy + LABEL_BASE_PX,
+                       '#e6e9ee', (hl && !hl.has(i)) ? 0.25 : 0.95);
+  }
+
+  // Hull names go in FIRST, through the same grid: a region's name outranks any single symbol's,
+  // because it is the only thing on the canvas that says what a whole cluster IS. Drawn in the hull's
+  // own colour so the name and the outline are visibly the same object.
+  function placeHullNames(cells, hullAnchors) {
     ctx.font = '600 12px sans-serif';
     for (var ha = 0; ha < hullAnchors.length; ha++) {
-      placeTextAt(hullAnchors[ha].text, hullAnchors[ha].sx, hullAnchors[ha].sy, hullAnchors[ha].color, 0.95);
+      placeTextAt(cells, hullAnchors[ha].text, hullAnchors[ha].sx, hullAnchors[ha].sy, hullAnchors[ha].color, 0.95);
     }
     ctx.font = '11px sans-serif';
+  }
+
+  function forcedLabelNodes() {
     var forced = [];
     if (hovered  >= 0) forced.push(hovered);
     if (selected >= 0) forced.push(selected);
     for (var i = 0; i < N; i++) { if (nodes[i].gid === centreGid) { forced.push(i); break; } }
-    for (var fi = 0; fi < forced.length; fi++) placeLabel(forced[fi]);   // never decluttered away
+    return forced;
+  }
+
+  function placeNodeLabels(cells, hl) {
+    var forced = forcedLabelNodes();
+    for (var fi = 0; fi < forced.length; fi++) placeNodeLabel(cells, forced[fi], hl);   // never decluttered away
     if (searchSet) {
       // a live query REPLACES the standing set — matches are what you are looking for
       var shown = 0;
-      for (var i = 0; i < N && shown < 80; i++) { if (searchSet.has(i) && placeLabel(i)) shown++; }
+      for (var i = 0; i < N && shown < 80; i++) { if (searchSet.has(i) && placeNodeLabel(cells, i, hl)) shown++; }
     } else {
-      for (var li = 0; li < labelDegreeOrder.length; li++) placeLabel(labelDegreeOrder[li]);
+      for (var li = 0; li < labelDegreeOrder.length; li++) placeNodeLabel(cells, labelDegreeOrder[li], hl);
     }
+  }
+
+  function drawLabels(hl, hullAnchors) {
+    var cells = new Set();
+    ctx.font = '11px sans-serif';
+    placeHullNames(cells, hullAnchors);
+    placeNodeLabels(cells, hl);
     ctx.globalAlpha = 1.0;
+  }
 
-    // tooltip — now names the FILE. 13 label names covered 28 nodes on the README cut (three different
-    // `empty`, three `find`), and the page emitted a FILES array it never read, so the one question a
-    // duplicate name raises was the one question the UI could not answer.
-    if (hovered >= 0) {
-      var n = nodes[hovered];
-      var sx = n.x*scale+ox, sy = n.y*scale+oy;
-      var msg = n.label + ' [' + n.type + ']  ' + fileOf(n);
-      ctx.fillStyle = 'rgba(0,0,0,0.82)';
-      ctx.font = '12px ui-monospace,SFMono-Regular,Menlo,monospace';
-      var tw = ctx.measureText(msg).width;
-      ctx.fillRect(sx+8, sy-18, tw+10, 22);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(msg, sx+13, sy-2);
-    }
+  // tooltip — now names the FILE. 13 label names covered 28 nodes on the README cut (three different
+  // `empty`, three `find`), and the page emitted a FILES array it never read, so the one question a
+  // duplicate name raises was the one question the UI could not answer.
+  function drawTooltip() {
+    if (hovered < 0) return;
+    var n = nodes[hovered];
+    var sx = n.x*scale+ox, sy = n.y*scale+oy;
+    var msg = n.label + ' [' + n.type + ']  ' + fileOf(n);
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.font = '12px ui-monospace,SFMono-Regular,Menlo,monospace';
+    var tw = ctx.measureText(msg).width;
+    ctx.fillRect(sx+8, sy-18, tw+10, 22);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(msg, sx+13, sy-2);
+  }
 
-    // ---- WHAT THIS FRAME ACTUALLY CONTAINS, and re-caption if it moved.
-    //
-    // The caption's node and edge counts are the LOADED subset. The camera is free to sit anywhere
-    // inside it, and a picture exported after a zoom therefore stamped "120 nodes / 183 edges" across a
-    // frame holding fifteen — a bitmap overstating its own contents, in the one artifact the caption
-    // exists to travel in. (Found cutting the README's crop figures.) The count is of NODE CENTRES
-    // inside the canvas rect: a mark half off the edge is in frame, and counting it is the reading that
-    // errs toward the larger number rather than toward flattering the crop.
-    //
-    // The re-render is guarded on a CHANGE because the numbers renderProv states — this count and the
-    // three hull counts — are all computed here, one frame after the caption that reports them. On a
-    // settled page that is invisible; on an export taken straight after a zoom it is the previous view's
-    // numbers stamped onto the new one. Rebuilding the caption unconditionally would put an innerHTML
-    // write inside the settle loop at sixty frames a second, so it happens only when a stated number
-    // actually moved.
+  // ---- WHAT THIS FRAME ACTUALLY CONTAINS, and re-caption if it moved.
+  //
+  // The caption's node and edge counts are the LOADED subset. The camera is free to sit anywhere
+  // inside it, and a picture exported after a zoom therefore stamped "120 nodes / 183 edges" across a
+  // frame holding fifteen — a bitmap overstating its own contents, in the one artifact the caption
+  // exists to travel in. (Found cutting the README's crop figures.) The count is of NODE CENTRES
+  // inside the canvas rect: a mark half off the edge is in frame, and counting it is the reading that
+  // errs toward the larger number rather than toward flattering the crop.
+  //
+  // The re-render is guarded on a CHANGE because the numbers renderProv states — this count and the
+  // three hull counts — are all computed here, one frame after the caption that reports them. On a
+  // settled page that is invisible; on an export taken straight after a zoom it is the previous view's
+  // numbers stamped onto the new one. Rebuilding the caption unconditionally would put an innerHTML
+  // write inside the settle loop at sixty frames a second, so it happens only when a stated number
+  // actually moved.
+  function updateFrameCaption() {
     nodesInFrame = 0;
     for (var fi = 0; fi < N; fi++) {
       var fsx = nodes[fi].x*scale + ox, fsy = nodes[fi].y*scale + oy;
@@ -1207,6 +1345,21 @@
     }
     var provNow = nodesInFrame + ':' + hullsDrawn + ':' + hullsThin + ':' + hullsImpure;
     if (provNow !== provStamp) { provStamp = provNow; renderProv(); }
+  }
+
+  function draw() {
+    paintBackdrop();
+    ctx.save();
+    ctx.translate(ox, oy); ctx.scale(scale, scale);
+    var hl = highlightSet();
+    var hullAnchors = drawHulls();
+    drawEdges(hl);
+    drawNodes(hl);
+    ctx.globalAlpha = 1.0;
+    ctx.restore();
+    drawLabels(hl, hullAnchors);
+    drawTooltip();
+    updateFrameCaption();
   }
 
   // FILES[n.file] — the path, or an honest blank when the payload has no entry for it. FILES was emitted
@@ -1412,121 +1565,147 @@
   // channel whose rule moved into it. A trimmed bitmap that said nothing about the trim would be a
   // picture drawing arrowheads, dashes, shapes and outlines with no way to read any of them — the quiet
   // omission this whole block was added to prevent, re-introduced by the fix for it.
-  function renderProv() {
-    var el = document.getElementById('prov');
-    if (!el) return;
-    function k(t) { return '<span class="k">' + t + '</span> '; }
-    var metric = { lang: 'language', community: 'module (community)', cx: 'cyclomatic complexity',
-                   churn: 'commits (' + (CHURN_WINDOW || 'window not recorded') + ')', tested: 'has a test' }[mode] || mode;
+  function provKey(t) { return '<span class="k">' + t + '</span> '; }
+
+  function provMetric() {
+    return { lang: 'language', community: 'module (community)', cx: 'cyclomatic complexity',
+             churn: 'commits (' + (CHURN_WINDOW || 'window not recorded') + ')', tested: 'has a test' }[mode] || mode;
+  }
+
+  function provViewName() {
+    if (currentView === 'overview') return MODULES.length + ' modules';
+    if (currentView === 'graph') return 'whole map';
+    if (currentView === 'module') return 'module subgraph';
+    return 'depth-' + egoDepth + ' neighbourhood';
+  }
+
+  // R-R/PRIV: the caption shows the TAIL of the root, not the whole path -- and by the time it runs,
+  // the home pair is already gone, stripped in C++ by stripHomePair() before `const ROOT` was written
+  // (see the emit site for why the file, not just the pixels, is the boundary). This function is the
+  // PRESENTATION half: it shortens a long root to '…/a/b' so the caption fits. It re-applies the same
+  // structural strip anyway, because it is cheap, it is a no-op on stripped input, and it keeps this
+  // half correct on its own terms rather than correct-because-of-something-upstream.
+  //
+  // The caption matters because stampProvenance burns it into every exported PNG, and a PNG is the
+  // thing people share. Shipping the absolute path there published the operator's filesystem layout,
+  // and their home directory often carries their real name. Verified on this repo's own README
+  // figures, which went to a public branch stamped with the operator's own absolute home path;
+  // `strings` finds nothing, because it is rendered as pixels, so no secret scanner would ever have
+  // flagged it. Taking the last two segments alone is not enough:
+  // for `~/myproject` -- probably the most common layout there is -- the home directory IS one of
+  // those two, so the caption published the username anyway. Measured on the first version (written
+  // here in the Linux spelling; the macOS one differs only in the leading segment, which is why the
+  // check below is on `users` OR `home` and is case-folded first):
+  //     /home/jane.doe/src/myproject  -> …/src/myproject   clean
+  //     /home/jane.doe/myproject      -> …/jane.doe/…      LEAKED
+  //     /home/jane.doe                -> whole path        LEAKED  (the <=2 guard passed it through)
+  //     C:\Users\Bob.Jones\code       -> whole path        LEAKED  (split was on '/' only)
+  // The leaking segment is always the one after that home root, and its position is knowable, so
+  // remove it by structure rather than hoping the tail misses it.
+  function provRootShort(r) {
+    if (!r) { return ROOT_NAME || '.'; }
+    var parts = r.replace(/[\/\\]+$/, '').split(/[\/\\]+/).filter(function(x){ return x.length && x !== '.'; });
+    if (parts.length && /^[A-Za-z]:$/.test(parts[0])) { parts.shift(); }
+    var lead = (parts[0] || '').toLowerCase();
+    if ((lead === 'users' || lead === 'home') && parts.length >= 2) { parts.splice(0, 2); }
+    else if (lead === 'root') { parts.splice(0, 1); }
+    if (!parts.length) { return ROOT_NAME || '.'; }   // the name, never '~': a tilde reads as the home directory
+    return (parts.length > 2 ? '…/' : '') + parts.slice(-2).join('/');
+  }
+
+  function provIdentityLine() {
     var pct = SYM_TOTAL ? Math.round(1000*NODE_TOTAL/SYM_TOTAL)/10 : 0;
-    var viewName = currentView === 'overview' ? MODULES.length + ' modules'
-                 : currentView === 'graph'    ? 'whole map'
-                 : currentView === 'module'   ? 'module subgraph'
-                 : 'depth-' + egoDepth + ' neighbourhood';
-    var isGraph = ( currentView !== 'overview' && N > 0 );
+    return provKey('root') + '<b>' + escHtml(provRootShort(ROOT)) + '</b>  ' +
+           provKey('ranker') + '<b>' + escHtml(RANKER) + '</b>  ' +
+           provKey('top-k') + '<b>' + TOPK + '</b> of ' + SYM_TOTAL + ' symbols (' + pct + '%)  ' +
+           provKey('map') + '<b>' + NODE_TOTAL + '</b> nodes / <b>' + EDGE_TOTAL + '</b> call edges' +
+           (AT ? '  ' + provKey('commit') + '<b>' + escHtml(AT) + '</b>' : '') +
+           (AT.indexOf('+shallow') >= 0 ? ' <b>(shallow clone: churn counts only the commits present)</b>' : '') +
+           '  ' + provKey('ripwire') + '<b>' + escHtml(VERSION) + '</b>';
+  }
+
+  function provSettleClause() {
+    if (settleTimedOut) return '  <b>settling…</b> (layout over the ' + SETTLE_BUDGET_MS + ' ms budget, still converging)';
+    if (layoutStopped) return '  <b>layout stopped at step ' + SIM_STEPS + ' of ' + MAX_SIM + '</b> (the ' + LAYOUT_BUDGET_MS +
+                              ' ms layout budget is spent — positions are under-converged, drag to adjust)';
+    return '';
+  }
+
+  // ...and how much of that the CAMERA is on. Absent when the camera frames the whole view, which is
+  // the auto-fit default and the case where the counts above already describe the frame; present the
+  // moment a zoom or a pan makes them describe more than the picture does (see draw()'s closing block).
+  function provViewLine(isGraph) {
     // Self-calls are counted in EDGE_TOTAL and cannot be drawn (loadSubset says why). This clause is
     // method-shaped but it stays with the FACTS, because it RECONCILES two counts that are both on the
     // bitmap: in the whole-map view EDGE_TOTAL and L sit on the same screen over the same node set, and
     // an unexplained difference between them is precisely the silent inconsistency this block prevents.
     var drops = ( isGraph && selfEdgesDropped > 0 )
               ? ' (' + selfEdgesDropped + ' self-call' + (selfEdgesDropped === 1 ? '' : 's') + ' not drawn)' : '';
-
-    // ---- CAPTION FACTS. stampProvenance burns THIS half, and only this half, into the exported PNG.
-    var factLines = [];
-    // R-R/PRIV: the caption shows the TAIL of the root, not the whole path -- and by the time it runs,
-    // the home pair is already gone, stripped in C++ by stripHomePair() before `const ROOT` was written
-    // (see the emit site for why the file, not just the pixels, is the boundary). This function is the
-    // PRESENTATION half: it shortens a long root to '…/a/b' so the caption fits. It re-applies the same
-    // structural strip anyway, because it is cheap, it is a no-op on stripped input, and it keeps this
-    // half correct on its own terms rather than correct-because-of-something-upstream.
-    //
-    // The caption matters because stampProvenance burns it into every exported PNG, and a PNG is the
-    // thing people share. Shipping the absolute path there published the operator's filesystem layout,
-    // and their home directory often carries their real name. Verified on this repo's own README
-    // figures, which went to a public branch stamped with the operator's own absolute home path;
-    // `strings` finds nothing, because it is rendered as pixels, so no secret scanner would ever have
-    // flagged it. Taking the last two segments alone is not enough:
-    // for `~/myproject` -- probably the most common layout there is -- the home directory IS one of
-    // those two, so the caption published the username anyway. Measured on the first version (written
-    // here in the Linux spelling; the macOS one differs only in the leading segment, which is why the
-    // check below is on `users` OR `home` and is case-folded first):
-    //     /home/jane.doe/src/myproject  -> …/src/myproject   clean
-    //     /home/jane.doe/myproject      -> …/jane.doe/…      LEAKED
-    //     /home/jane.doe                -> whole path        LEAKED  (the <=2 guard passed it through)
-    //     C:\Users\Bob.Jones\code       -> whole path        LEAKED  (split was on '/' only)
-    // The leaking segment is always the one after that home root, and its position is knowable, so
-    // remove it by structure rather than hoping the tail misses it.
-    var rootShort = function(r) {
-      if (!r) { return ROOT_NAME || '.'; }
-      var parts = r.replace(/[\/\\]+$/, '').split(/[\/\\]+/).filter(function(x){ return x.length && x !== '.'; });
-      if (parts.length && /^[A-Za-z]:$/.test(parts[0])) { parts.shift(); }
-      var lead = (parts[0] || '').toLowerCase();
-      if ((lead === 'users' || lead === 'home') && parts.length >= 2) { parts.splice(0, 2); }
-      else if (lead === 'root') { parts.splice(0, 1); }
-      if (!parts.length) { return ROOT_NAME || '.'; }   // the name, never '~': a tilde reads as the home directory
-      return (parts.length > 2 ? '…/' : '') + parts.slice(-2).join('/');
-    };
-    factLines.push( k('root') + '<b>' + escHtml(rootShort(ROOT)) + '</b>  ' +
-                    k('ranker') + '<b>' + escHtml(RANKER) + '</b>  ' +
-                    k('top-k') + '<b>' + TOPK + '</b> of ' + SYM_TOTAL + ' symbols (' + pct + '%)  ' +
-                    k('map') + '<b>' + NODE_TOTAL + '</b> nodes / <b>' + EDGE_TOTAL + '</b> call edges' +
-                    (AT ? '  ' + k('commit') + '<b>' + escHtml(AT) + '</b>' : '') +
-                    (AT.indexOf('+shallow') >= 0 ? ' <b>(shallow clone: churn counts only the commits present)</b>' : '') +
-                    '  ' + k('ripwire') + '<b>' + escHtml(VERSION) + '</b>' );
-    // ...and how much of that the CAMERA is on. Absent when the camera frames the whole view, which is
-    // the auto-fit default and the case where the counts above already describe the frame; present the
-    // moment a zoom or a pan makes them describe more than the picture does (see draw()'s closing block).
     var framing = ( isGraph && nodesInFrame < N ) ? ', camera framing <b>' + nodesInFrame + '</b>' : '';
-    factLines.push( k('view') + '<b>' + viewName + '</b>' + (currentView === 'overview' ? '' : ': ' + N + ' nodes / ' + L + ' edges' + drops + framing) + '  ' +
-                    k('colour') + '<b>' + escHtml(metric) + '</b>' + (mode === 'churn' && !CHURN_OK ? ' <b>unavailable (no git history)</b>' : '') +
-                    (settleTimedOut ? '  <b>settling…</b> (layout over the ' + SETTLE_BUDGET_MS + ' ms budget, still converging)'
-                     : layoutStopped ? '  <b>layout stopped at step ' + SIM_STEPS + ' of ' + MAX_SIM + '</b> (the ' + LAYOUT_BUDGET_MS +
-                                       ' ms layout budget is spent — positions are under-converged, drag to adjust)'
-                     : '') );
-    if (isGraph) {
-      factLines.push( k('method') + 'arrow, dash, label, shape and module-outline rules → <b>' + escHtml(exportBase()) +
-                      '.txt</b> (saved with this image)' );
-    }
+    return provKey('view') + '<b>' + provViewName() + '</b>' + (currentView === 'overview' ? '' : ': ' + N + ' nodes / ' + L + ' edges' + drops + framing) + '  ' +
+           provKey('colour') + '<b>' + escHtml(provMetric()) + '</b>' + (mode === 'churn' && !CHURN_OK ? ' <b>unavailable (no git history)</b>' : '') +
+           provSettleClause();
+  }
 
-    // ---- CAPTION METHOD. Rendered on the page and written to the companion .txt; NOT stamped.
-    var methodClauses = [];
+  // ---- CAPTION FACTS. stampProvenance burns THIS half, and only this half, into the exported PNG.
+  function provFactLines(isGraph) {
+    var lines = [provIdentityLine(), provViewLine(isGraph)];
     if (isGraph) {
-      // "caller → callee" is stated for the same reason every other clause here is: the picture draws a
-      // direction, and a reader must not have to guess which end of an arrow is the one doing the calling.
-      methodClauses.push( 'arrow points caller → callee' );
-      // The dashed shafts need a key, and it has to name WHAT the resolver could not do: "some of these
-      // edges are uncertain" is not a disclosure, it is a mood. Stated as a count so a reader can weigh
-      // it — and stated at zero too, because a zero here means the resolver pinned every drawn call to
-      // exactly one definition, which is a result.
-      //
-      // THIS COUNT IS THE VIEW'S, and the legend's AMB_LINKS is the MAP'S. They are two scopes of the
-      // same fact and they differ in every ego and module view, so each says which set it is counting;
-      // one number reported twice under two scopes would be the silent inconsistency this block exists
-      // to prevent.
-      methodClauses.push( '<b>' + ambEdges + '</b> of ' + L + ' shafts dashed in this view = the resolver could not choose'
-                          + ' between same-name definitions and split the call over all of them' );
-      // rule 2 of loadSubset deliberately shows one label per name; a reader must not infer that from the picture
-      methodClauses.push( 'labels top ' + MAX_LABELS + ' by in-view degree, one per name' );
-      // The shape key is built from SYM_SHAPES, the identical lookup draw() marks a node with, so it
-      // cannot name a shape the picture does not draw; and it lists only the kinds actually IN THIS
-      // VIEW, because a fixed roster would print marks a reader can hunt for and never find.
-      methodClauses.push( 'shapes ' + shapeKey() );
-      // EVERY HULL TRUNCATION, EACH WITH ITS OWN COUNT AND ITS OWN REASON. There are three and they are
-      // different failures: the cap (26 overlapping regions is the hairball again in a second channel),
-      // the SHAPE test (a near-collinear group draws a streak, not a region — see HULL_COMPACTNESS), and
-      // the PURITY test (an outline enclosing mostly other modules says nothing). Pooling them into one
-      // number would tell a reader that outlines are missing without telling them why, and a reader
-      // counting outlines against the module count is exactly who this line is for.
-      if (hullsTotal > 0) {
-        var hullWhy = [];
-        if (hullsThin > 0)   { hullWhy.push(hullsThin + ' dropped as too thin to read as a region'); }
-        if (hullsImpure > 0) { hullWhy.push(hullsImpure + ' dropped as enclosing mostly other modules'); }
-        methodClauses.push( 'module outlines <b>' + hullsDrawn + '</b> of ' + hullsTotal + ' modules with ' + MIN_HULL_MEMBERS +
-                            '+ nodes in view (cap ' + MAX_HULLS + (hullWhy.length ? '; ' + hullWhy.join('; ') : '') + ')' );
-      }
+      lines.push( provKey('method') + 'arrow, dash, label, shape and module-outline rules → <b>' + escHtml(exportBase()) +
+                  '.txt</b> (saved with this image)' );
     }
-    el.innerHTML = '<div id="provfacts">' + factLines.join('<br>') + '</div>' +
-                   ( methodClauses.length ? '<div id="provmethod">' + k('how to read') +
+    return lines;
+  }
+
+  function provHullClause() {
+    // EVERY HULL TRUNCATION, EACH WITH ITS OWN COUNT AND ITS OWN REASON. There are three and they are
+    // different failures: the cap (26 overlapping regions is the hairball again in a second channel),
+    // the SHAPE test (a near-collinear group draws a streak, not a region — see HULL_COMPACTNESS), and
+    // the PURITY test (an outline enclosing mostly other modules says nothing). Pooling them into one
+    // number would tell a reader that outlines are missing without telling them why, and a reader
+    // counting outlines against the module count is exactly who this line is for.
+    var hullWhy = [];
+    if (hullsThin > 0)   { hullWhy.push(hullsThin + ' dropped as too thin to read as a region'); }
+    if (hullsImpure > 0) { hullWhy.push(hullsImpure + ' dropped as enclosing mostly other modules'); }
+    return 'module outlines <b>' + hullsDrawn + '</b> of ' + hullsTotal + ' modules with ' + MIN_HULL_MEMBERS +
+           '+ nodes in view (cap ' + MAX_HULLS + (hullWhy.length ? '; ' + hullWhy.join('; ') : '') + ')';
+  }
+
+  // ---- CAPTION METHOD. Rendered on the page and written to the companion .txt; NOT stamped.
+  function provMethodClauses(isGraph) {
+    var clauses = [];
+    if (!isGraph) return clauses;
+    // "caller → callee" is stated for the same reason every other clause here is: the picture draws a
+    // direction, and a reader must not have to guess which end of an arrow is the one doing the calling.
+    clauses.push( 'arrow points caller → callee' );
+    // The dashed shafts need a key, and it has to name WHAT the resolver could not do: "some of these
+    // edges are uncertain" is not a disclosure, it is a mood. Stated as a count so a reader can weigh
+    // it — and stated at zero too, because a zero here means the resolver pinned every drawn call to
+    // exactly one definition, which is a result.
+    //
+    // THIS COUNT IS THE VIEW'S, and the legend's AMB_LINKS is the MAP'S. They are two scopes of the
+    // same fact and they differ in every ego and module view, so each says which set it is counting;
+    // one number reported twice under two scopes would be the silent inconsistency this block exists
+    // to prevent.
+    clauses.push( '<b>' + ambEdges + '</b> of ' + L + ' shafts dashed in this view = the resolver could not choose'
+                  + ' between same-name definitions and split the call over all of them' );
+    // rule 2 of loadSubset deliberately shows one label per name; a reader must not infer that from the picture
+    clauses.push( 'labels top ' + MAX_LABELS + ' by in-view degree, one per name' );
+    // The shape key is built from SYM_SHAPES, the identical lookup draw() marks a node with, so it
+    // cannot name a shape the picture does not draw; and it lists only the kinds actually IN THIS
+    // VIEW, because a fixed roster would print marks a reader can hunt for and never find.
+    clauses.push( 'shapes ' + shapeKey() );
+    if (hullsTotal > 0) clauses.push( provHullClause() );
+    return clauses;
+  }
+
+  function renderProv() {
+    var el = document.getElementById('prov');
+    if (!el) return;
+    var isGraph = ( currentView !== 'overview' && N > 0 );
+    var methodClauses = provMethodClauses(isGraph);
+    el.innerHTML = '<div id="provfacts">' + provFactLines(isGraph).join('<br>') + '</div>' +
+                   ( methodClauses.length ? '<div id="provmethod">' + provKey('how to read') +
                      '<span class="mc">' + methodClauses.join('</span> · <span class="mc">') + '</span></div>' : '' );
   }
 
@@ -1548,25 +1727,32 @@
 
   // the module cards, optionally filtered to modules whose name or any MEMBER matches `q` (the overview
   // half of the search fix — a card list that ignores the query would be the same inert control again)
+  function moduleMatches(mod, q) {
+    if (mod.name.toLowerCase().indexOf(q) >= 0) { return true; }
+    for (var j = 0; j < mod.members.length; j++) {
+      if (NODES[mod.members[j]].label.toLowerCase().indexOf(q) >= 0) { return true; }
+    }
+    return false;
+  }
+
+  function moduleCardHtml(mod, m) {
+    var html = '<div class="card module-card" data-module-card="1" data-mid="' + m + '">';
+    html += '<h2>' + escHtml(mod.name) + '</h2>';
+    html += '<div class="meta">' + mod.fileCount + ' files · ' + mod.symCount + ' symbols · in ' + mod.inCross + ' / out ' + mod.outCross + '</div>';
+    html += '<ul>';
+    for (var i = 0; i < mod.top.length; i++) {
+      var nd = NODES[mod.top[i]];
+      html += '<li>' + escHtml(nd.label) + ' <span style="color:#666">[' + nd.type + ']</span></li>';
+    }
+    return html + '</ul></div>';
+  }
+
   function renderOverviewCards(q) {
     var html = '', kept = 0;
     for (var m = 0; m < MODULES.length; m++) {
-      var mod = MODULES[m];
-      if (q) {
-        var hit = mod.name.toLowerCase().indexOf(q) >= 0;
-        for (var j = 0; !hit && j < mod.members.length; j++) { if (NODES[mod.members[j]].label.toLowerCase().indexOf(q) >= 0) hit = true; }
-        if (!hit) continue;
-      }
+      if (q && !moduleMatches(MODULES[m], q)) { continue; }
       kept++;
-      html += '<div class="card module-card" data-module-card="1" data-mid="' + m + '">';
-      html += '<h2>' + escHtml(mod.name) + '</h2>';
-      html += '<div class="meta">' + mod.fileCount + ' files · ' + mod.symCount + ' symbols · in ' + mod.inCross + ' / out ' + mod.outCross + '</div>';
-      html += '<ul>';
-      for (var i = 0; i < mod.top.length; i++) {
-        var nd = NODES[mod.top[i]];
-        html += '<li>' + escHtml(nd.label) + ' <span style="color:#666">[' + nd.type + ']</span></li>';
-      }
-      html += '</ul></div>';
+      html += moduleCardHtml(MODULES[m], m);
     }
     if (MODULES.length === 0) html = '<div style="color:#999;padding:20px">No multi-symbol modules detected — the graph is too small or too sparse for community grouping.</div>';
     else if (q && kept === 0) html = '<div style="color:#999;padding:20px">No module contains a symbol matching "' + escHtml(q) + '".</div>';
@@ -1632,8 +1818,7 @@
     if (!mod) { loadSubset([], []); return; }
     var ids = mod.members.slice().sort(function(a,b){ return a-b; });
     var idSet = new Set(ids);
-    var edges = [];
-    for (var k = 0; k < GL; k++) if (idSet.has(LINKS[k].s) && idSet.has(LINKS[k].t)) edges.push(LINKS[k]);
+    var edges = egoEdges(idSet);
     loadSubset(ids, edges);
     // entry points: members with an in-edge from OUTSIDE this module (high outside in-degree first)
     var entryCount = new Map();

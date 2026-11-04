@@ -103,69 +103,63 @@ fn format_cogroup_row(g: &crate::git::cochange::CoGroup) -> String {
     )
 }
 
-pub fn print_cochange_pairs_paged<W: Write>(
+fn write_cochange_paged<W: Write, T>(
+    root: &str,
+    tag: &str,
+    attrs: &str,
+    rows: &[T],
+    page: crate::serialize::PageRequest,
+    format_row: fn(&T) -> String,
+    out: &mut W,
+) -> io::Result<()> {
+    use crate::serialize::{GitStampExt, Paged};
+    let at_attr = root.git_at_xml_attr();
+    let rendered: Vec<String> = rows.iter().map(format_row).collect();
+    let paged = Paged::new(&rendered, page, |row| row.len());
+    let page_attrs = paged.window.xml_attrs();
+    writeln!(out, "<{tag} {attrs}{page_attrs} root=\"{root}\"{at_attr}>")?;
+    for row in paged.rows() {
+        writeln!(out, "{row}")?;
+    }
+    writeln!(out, "</{tag}>")
+}
+
+fn write_repo_cochange<W: Write>(
     root: &str,
     pairs: &[crate::git::cochange::CoPair],
-    page: crate::serialize::PageRequest,
+    flags: CochangeOptions<'_>,
     out: &mut W,
 ) -> io::Result<()> {
-    use crate::serialize::{GitStampExt, Paged};
-    let at_attr = root.git_at_xml_attr();
-    let total = pairs.len();
-    let rows: Vec<String> = pairs.iter().map(format_copair_row).collect();
-    let paged = Paged::new(&rows, page, |row| row.len());
-    let pw = paged.window;
-    let page_attrs = pw.xml_attrs();
-    writeln!(
-        out,
-        "<cochange schema=\"ripwire-rs.cochange/v1\" pairs=\"{total}\" window=\"18mo@HEAD\" sub_windows=\"3\"{page_attrs} root=\"{root}\"{at_attr}>",
-    )?;
-    for row in paged.rows() {
-        writeln!(out, "{row}")?;
+    if flags.cochange_groups {
+        let groups = crate::git::cochange::cluster_cochange_groups(pairs);
+        let attrs = format!(
+            "schema=\"ripwire-rs.cochange-groups/v1\" groups=\"{}\" window=\"18mo@HEAD\"",
+            groups.len()
+        );
+        write_cochange_paged(
+            root,
+            "cochange-groups",
+            &attrs,
+            &groups,
+            flags.page,
+            format_cogroup_row,
+            out,
+        )
+    } else {
+        let attrs = format!(
+            "schema=\"ripwire-rs.cochange/v1\" pairs=\"{}\" window=\"18mo@HEAD\" sub_windows=\"3\"",
+            pairs.len()
+        );
+        write_cochange_paged(
+            root,
+            "cochange",
+            &attrs,
+            pairs,
+            flags.page,
+            format_copair_row,
+            out,
+        )
     }
-    writeln!(out, "</cochange>")
-}
-
-pub fn print_cochange_groups_paged<W: Write>(
-    root: &str,
-    groups: &[crate::git::cochange::CoGroup],
-    page: crate::serialize::PageRequest,
-    out: &mut W,
-) -> io::Result<()> {
-    use crate::serialize::{GitStampExt, Paged};
-    let at_attr = root.git_at_xml_attr();
-    let total = groups.len();
-    let rows: Vec<String> = groups.iter().map(format_cogroup_row).collect();
-    let paged = Paged::new(&rows, page, |row| row.len());
-    let pw = paged.window;
-    let page_attrs = pw.xml_attrs();
-    writeln!(
-        out,
-        "<cochange-groups schema=\"ripwire-rs.cochange-groups/v1\" groups=\"{total}\" window=\"18mo@HEAD\"{page_attrs} root=\"{root}\"{at_attr}>",
-    )?;
-    for row in paged.rows() {
-        writeln!(out, "{row}")?;
-    }
-    writeln!(out, "</cochange-groups>")
-}
-
-pub fn execute_cochange_with<W: Write>(
-    probed_file: Option<&str>,
-    since_str: Option<&str>,
-    commits: &[crate::git::history::CommitInfo],
-    state: &SafetyContext<'_>,
-    out: &mut W,
-) -> io::Result<()> {
-    execute_cochange_with_options(
-        probed_file,
-        CochangeOptions {
-            since: since_str,
-            ..Default::default()
-        },
-        commits,
-        state,
-        out,
-    )
 }
 
 pub fn execute_cochange_with_options<W: Write>(
@@ -220,12 +214,7 @@ pub fn execute_cochange_with_options<W: Write>(
         if let Some(mr) = flags.cochange_recur {
             pairs.retain(|p| p.recur >= mr);
         }
-        if flags.cochange_groups {
-            let groups = crate::git::cochange::cluster_cochange_groups(&pairs);
-            print_cochange_groups_paged(state.root, &groups, flags.page, out)
-        } else {
-            print_cochange_pairs_paged(state.root, &pairs, flags.page, out)
-        }
+        write_repo_cochange(state.root, &pairs, flags, out)
     }
 }
 

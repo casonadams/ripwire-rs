@@ -5,8 +5,7 @@ use ripwire_rs::languages::c::flags::{
 use ripwire_rs::languages::common::flags::FlagFact;
 use ripwire_rs::query::doc_tools::{
     WhereisFacts, call_owners, collect_file_wanted_tokens, filter_present_in_sources_drift,
-    mentions_from_sources, scan_doc_text_for_drift, whereis_from_sources,
-    whereis_from_sources_with_facts,
+    mentions_from_sources, scan_doc_text_for_drift, whereis_from_sources_with_facts,
 };
 use ripwire_rs::{
     FileInfo, IngestResult, Interner, Lang, SymKind, Symbol, serialize_doc_drift_xml,
@@ -223,7 +222,13 @@ fn test_whereis_reports_indexed_definition() {
     ingest.symbols.push(sym);
 
     let sources = [("src/main.rs", b"fn main() {}\n".as_slice())];
-    let whereis_res = whereis_from_sources(&sources, &ingest, &interner, "main");
+    let whereis_res = whereis_from_sources_with_facts(
+        &sources,
+        &ingest,
+        &interner,
+        "main",
+        &WhereisFacts::default(),
+    );
     assert_eq!(whereis_res["git"], false);
     assert!(whereis_res["on_head"].is_null());
     assert_eq!(whereis_res["hits"][0]["kind"], "def");
@@ -251,7 +256,13 @@ fn test_whereis_outside_git_discloses_no_git_and_omits_head_claims() {
         1,
     ));
     let sources = [("src/main.rs", b"fn main() {}\n".as_slice())];
-    let val = whereis_from_sources(&sources, &ingest, &interner, "main");
+    let val = whereis_from_sources_with_facts(
+        &sources,
+        &ingest,
+        &interner,
+        "main",
+        &WhereisFacts::default(),
+    );
     let mut out = Vec::new();
     ripwire_rs::serialize::serialize_whereis_xml(&val, &mut out).unwrap();
     let xml = String::from_utf8(out).unwrap();

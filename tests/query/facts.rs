@@ -260,11 +260,12 @@ mod doc_tests {
         assert!(missing.contains(&"removed_api"));
         assert!(!missing.contains(&"hidden_token"));
         assert!(!missing.contains(&"historical_api"));
-        let locations = ripwire_rs::query::branch_tools::whereis_from_sources(
+        let locations = ripwire_rs::query::branch_tools::whereis_from_sources_with_facts(
             sources,
             &ingest,
             &interner,
             "current_api",
+            &ripwire_rs::query::branch_tools::WhereisFacts::default(),
         );
         assert_eq!(locations["git"], false);
         assert!(locations["on_head"].is_null());

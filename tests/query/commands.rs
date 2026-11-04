@@ -306,11 +306,12 @@ fn whereis_catalogue_advertises_selectors_and_renderer_exposes_refs() {
             )
             .is_err()
         );
-        let mut report = ripwire_rs::query::doc_tools::whereis_from_sources(
+        let mut report = ripwire_rs::query::doc_tools::whereis_from_sources_with_facts(
             context.sources,
             context.ingest,
             context.interner,
             "target",
+            &ripwire_rs::query::doc_tools::WhereisFacts::default(),
         );
         report["listing"] = "refs".into();
         report["full_text"] = true.into();

@@ -1,10 +1,10 @@
 use ripwire_rs::navigate::{
-    VerifyContext, evaluate_verify_claim, execute_graph_query_expr, execute_graph_query_expr_paged,
-    execute_pack_task, execute_pack_task_partitioned, truncate_body_to_budget,
+    VerifyContext, evaluate_verify_claim, execute_graph_query_expr_paged, execute_pack_task,
+    execute_pack_task_partitioned, truncate_body_to_budget,
 };
 use ripwire_rs::query::commands::QueryContext;
 use ripwire_rs::rank::PageRankConfig;
-use ripwire_rs::serialize::PathLayerExt;
+use ripwire_rs::serialize::{PageRequest, PathLayerExt};
 use ripwire_rs::{
     FileInfo, Graph, IngestResult, Interner, Lang, RefRole, Reference, SymKind, Symbol,
 };
@@ -46,12 +46,13 @@ fn test_graph_query_execution() {
 
     let graph = Graph::build(&ingest, &interner);
     let mut out = Vec::new();
-    execute_graph_query_expr(
+    execute_graph_query_expr_paged(
         "callers(name(\"bar\"))",
         ".",
         &ingest,
         &graph,
         &interner,
+        PageRequest::default(),
         &mut out,
     )
     .unwrap();
@@ -61,36 +62,39 @@ fn test_graph_query_execution() {
     assert!(out_str.contains("n=\"foo\""));
 
     let mut out = Vec::new();
-    execute_graph_query_expr(
+    execute_graph_query_expr_paged(
         "callees(name(\"foo\"))",
         ".",
         &ingest,
         &graph,
         &interner,
+        PageRequest::default(),
         &mut out,
     )
     .unwrap();
     assert!(String::from_utf8(out).unwrap().contains("n=\"bar\""));
 
     let mut out = Vec::new();
-    execute_graph_query_expr(
+    execute_graph_query_expr_paged(
         "and(kind(all, fn), file(all, test), fanin(all, 1), cx(all, 10))",
         ".",
         &ingest,
         &graph,
         &interner,
+        PageRequest::default(),
         &mut out,
     )
     .unwrap();
     assert!(String::from_utf8(out).unwrap().contains("n=\"bar\""));
 
     let mut out = Vec::new();
-    execute_graph_query_expr(
+    execute_graph_query_expr_paged(
         "or(not(name(\"foo\")), callers(\"bar\", 1))",
         ".",
         &ingest,
         &graph,
         &interner,
+        PageRequest::default(),
         &mut out,
     )
     .unwrap();
@@ -182,12 +186,13 @@ fn test_graph_query_execution() {
         "unknown",
     ] {
         let mut k_out = Vec::new();
-        execute_graph_query_expr(
+        execute_graph_query_expr_paged(
             &format!("kind(all, {tag})"),
             ".",
             &ingest,
             &graph,
             &interner,
+            PageRequest::default(),
             &mut k_out,
         )
         .unwrap();
@@ -198,12 +203,13 @@ fn test_graph_query_execution() {
     assert_eq!("packages/ai/src/usage.ts".builtin_layer(), Some("ai"));
     assert_eq!("src/lib.rs".builtin_layer(), None);
     let mut l_out = Vec::new();
-    execute_graph_query_expr(
+    execute_graph_query_expr_paged(
         "layer(all, \"test\")",
         ".",
         &ingest,
         &graph,
         &interner,
+        PageRequest::default(),
         &mut l_out,
     )
     .unwrap();

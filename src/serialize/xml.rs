@@ -455,13 +455,9 @@ fn write_inv_entries<W: Write>(
     page: PageRequest,
 ) -> io::Result<()> {
     let entries = inv_entry_symbols(ctx);
-    let shown = Paged::new(&entries, page, |sym| {
-        row_bytes(|mut w| write_inv_entry(&mut w, ctx, sym))
-    });
-    for sym in shown.rows() {
-        write_inv_entry(w, ctx, sym)?;
-    }
-    Ok(())
+    crate::serialize::write_paged_rows(w, &entries, page, |mut w, sym| {
+        write_inv_entry(&mut w, ctx, sym)
+    })
 }
 
 fn collect_inv_dir_map<'a>(
@@ -802,8 +798,5 @@ pub fn serialize_xml_to_string(
     interner: &Interner,
     options: &SerializeOptions,
 ) -> String {
-    let mut out = Vec::new();
-    serialize_xml(ingest, graph, pr, interner, &mut out, options)
-        .expect("in-memory serialization should never fail");
-    String::from_utf8(out).expect("valid utf-8 xml")
+    super::render_string(|out| serialize_xml(ingest, graph, pr, interner, out, options))
 }

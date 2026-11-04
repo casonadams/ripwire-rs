@@ -1,3 +1,6 @@
+#[path = "support/nav.rs"]
+mod nav_support;
+
 mod resolve {
     mod callables;
     mod imported_std_names;

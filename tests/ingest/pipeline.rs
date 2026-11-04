@@ -1,16 +1,32 @@
 use ripwire_rs::commands::around::{AroundConfig, execute_around_query};
 use ripwire_rs::commands::common::safety_queries::execute_safe_delete_query;
+use ripwire_rs::domain::CorpusView;
 use ripwire_rs::gate::contract::{ContractStatus, SignatureContract, is_symbol_name_public};
 use ripwire_rs::gate::edit_check::check_symbol_contract;
 use ripwire_rs::ingest::{Capture, classify_capture, parse_file_content};
-use ripwire_rs::query::graph::{call_path_between, call_uses, execute_connect_query};
-use ripwire_rs::query::navigation::{NavMode, execute_nav_symbol_query};
-use ripwire_rs::query::retrieval::{ForTaskOptions, call_for_task_with_options, call_lego};
-use ripwire_rs::{
-    Graph, Interner, Lang, LanguageRegistry, PageRankConfig, SliceContext, SliceFlowDir,
-    SliceRequest, SymKind, ingest_in_memory_files, navigate_1hop, query_slice, serialize_lego_xml,
-    serialize_uses_xml,
+use ripwire_rs::query::graph::{
+    DEFAULT_CONNECT_RADIUS, call_path_between, execute_connect_query_with_radius,
 };
+use ripwire_rs::query::navigation::{NavContext, NavMode, execute_nav_symbol_query_in_root};
+use ripwire_rs::query::retrieval::{ForTaskOptions, call_for_task_with_options, call_lego};
+use ripwire_rs::serialize::PageRequest;
+use ripwire_rs::{
+    Graph, IngestResult, Interner, Lang, LanguageRegistry, PageRankConfig, SliceContext,
+    SliceFlowDir, SliceRequest, SymKind, ingest_in_memory_files, navigate_1hop, query_slice,
+    serialize_lego_xml, serialize_uses_xml,
+};
+use serde_json::{Value, json};
+
+fn uses_json(ingest: &IngestResult, interner: &Interner, symbol: &str) -> Value {
+    let sites: Vec<Value> = (ingest, interner)
+        .collect_symbol_uses(symbol)
+        .into_iter()
+        .map(|(role, file, line, enclosing)| {
+            json!({"role": role, "file": file, "line": line, "enclosing": enclosing})
+        })
+        .collect();
+    json!({"symbol": symbol, "count": sites.len(), "uses": sites})
+}
 
 #[test]
 fn test_classify_captures() {
@@ -173,7 +189,7 @@ class WorkerService {
     assert!(lego_str.contains("implementors=\"5\""));
     assert!(lego_str.contains("p=\"src/domain/outcomes.dart:"));
 
-    let uses = call_uses(&ingest, &interner, "TaskOutcome");
+    let uses = uses_json(&ingest, &interner, "TaskOutcome");
     assert_eq!(uses["count"], 5);
 
     let path_val = call_path_between(
@@ -248,8 +264,10 @@ class WorkerService {
     assert!(for_val["count"].as_u64().unwrap_or(0) > 0);
 
     let mut conn_buf = Vec::new();
-    execute_connect_query(
+    execute_connect_query_with_radius(
+        ".",
         "executeAction,normalizeInput",
+        DEFAULT_CONNECT_RADIUS,
         &ingest,
         &graph,
         &interner,
@@ -367,7 +385,7 @@ class MobileSwapService {
     let graph = Graph::build(&ingest, &interner);
     let ranks = vec![1.0; ingest.symbols.len()];
 
-    let uses_val = call_uses(&ingest, &interner, "user_records");
+    let uses_val = uses_json(&ingest, &interner, "user_records");
     assert_eq!(uses_val["count"], 3);
     let sites = uses_val["uses"].as_array().unwrap();
     assert!(
@@ -405,13 +423,20 @@ class MobileSwapService {
     assert_eq!(purge_nav.callers[0].name, "runMaintenance");
 
     let mut callers_buf = Vec::new();
-    execute_nav_symbol_query(
+    let ctx = NavContext {
+        ingest: &ingest,
+        graph: &graph,
+        ranks: &ranks,
+        interner: &interner,
+        page: PageRequest::default(),
+        max_depth: None,
+        pr_iters: None,
+    };
+    execute_nav_symbol_query_in_root(
+        ".",
         "AccountRepository",
         NavMode::Callers,
-        &ingest,
-        &graph,
-        &ranks,
-        &interner,
+        &ctx,
         &mut callers_buf,
     )
     .unwrap();

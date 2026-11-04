@@ -1,4 +1,5 @@
-use ripwire_rs::query::navigation::{NavMode, execute_nav_symbol_query};
+use ripwire_rs::query::navigation::{NavContext, NavMode, execute_nav_symbol_query_in_root};
+use ripwire_rs::serialize::PageRequest;
 use ripwire_rs::{
     Graph, IngestResult, Interner, Lang, LanguageRegistry, MODULE_SCOPE_NAME, NO_NODE,
     PageRankConfig, SymKind, find_affected_tests, ingest_in_memory_files, navigate_1hop,
@@ -49,16 +50,16 @@ fn top_level_calls_get_a_file_scope_caller() {
         assert_eq!(ingest.symbol_count(), ingest.symbols.len() - 1, "{path}");
 
         let mut xml = Vec::new();
-        execute_nav_symbol_query(
-            "check",
-            NavMode::Callers,
-            &ingest,
-            &graph,
-            &ranks,
-            &interner,
-            &mut xml,
-        )
-        .unwrap();
+        let ctx = NavContext {
+            ingest: &ingest,
+            graph: &graph,
+            ranks: &ranks,
+            interner: &interner,
+            page: PageRequest::default(),
+            max_depth: None,
+            pr_iters: None,
+        };
+        execute_nav_symbol_query_in_root(".", "check", NavMode::Callers, &ctx, &mut xml).unwrap();
         let xml = String::from_utf8(xml).unwrap();
         assert!(
             xml.contains(&format!(

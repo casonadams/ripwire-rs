@@ -1,7 +1,7 @@
-use ripwire_rs::query::graph::call_uses;
+use ripwire_rs::domain::CorpusView;
 use ripwire_rs::query::grep::{TierCounts, enclosing_metadata, tier_attrs};
 use ripwire_rs::serialize::serialize_grep_xml;
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
+use ripwire_rs::{Graph, IngestResult, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
 use serde_json::{Value, json};
 
 fn counts(code: usize, comment: usize, literal: usize) -> TierCounts {
@@ -44,6 +44,17 @@ fn test_no_tier_disclosure_when_every_hit_is_served_as_is() {
     assert!(tier_attrs(counts(4, 3, 3), 2, true).is_empty());
 }
 
+fn uses_json(ingest: &IngestResult, interner: &Interner, symbol: &str) -> Value {
+    let sites: Vec<Value> = (ingest, interner)
+        .collect_symbol_uses(symbol)
+        .into_iter()
+        .map(|(role, file, line, enclosing)| {
+            json!({"role": role, "file": file, "line": line, "enclosing": enclosing})
+        })
+        .collect();
+    json!({"symbol": symbol, "count": sites.len(), "uses": sites})
+}
+
 fn semantic_read_report(path: &str, lang: Lang, source: &[u8]) -> (Value, String) {
     let registry = LanguageRegistry::new().unwrap();
     let interner = Interner::new();
@@ -68,7 +79,7 @@ fn semantic_read_report(path: &str, lang: Lang, source: &[u8]) -> (Value, String
     )
     .unwrap();
     (
-        call_uses(&ingest, &interner, "LIMIT"),
+        uses_json(&ingest, &interner, "LIMIT"),
         String::from_utf8(xml).unwrap(),
     )
 }
@@ -172,7 +183,7 @@ fn test_callable_values_do_not_add_call_edges() {
         .find(|symbol| interner.resolve(&symbol.name) == "helper")
         .unwrap();
     assert_eq!(graph.callers(helper.id).count(), 1);
-    let uses = call_uses(&ingest, &interner, "helper");
+    let uses = uses_json(&ingest, &interner, "helper");
     let sites = uses["uses"].as_array().unwrap();
     assert_eq!(sites.len(), 2, "{uses}");
     assert_eq!(sites[0]["role"], "read");

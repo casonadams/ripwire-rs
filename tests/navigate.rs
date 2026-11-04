@@ -1,3 +1,6 @@
+#[path = "support/nav.rs"]
+mod nav_support;
+
 mod navigate {
     mod impact;
     mod neighborhood;

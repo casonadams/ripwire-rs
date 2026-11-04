@@ -1,6 +1,6 @@
-use crate::domain::{IngestResult, Interner, Lang, NodeId};
+use crate::domain::{IngestResult, Interner, NodeId};
 use crate::graph::Graph;
-use crate::serialize::{PageRequest, Paged, text_bytes};
+use crate::serialize::{PageRequest, Paged, render_string, text_bytes};
 use std::collections::HashMap;
 use std::io::{self, Write};
 
@@ -69,27 +69,6 @@ pub const COMMUNITY_COLORS: &[&str] = &[
     "#5c6bc0", "#8d6e63", "#26c6da", "#d4e157",
 ];
 
-/// Language fill colors.
-#[must_use]
-pub fn lang_color(lang: Lang) -> &'static str {
-    lang.semantics().display_color()
-}
-
-#[must_use]
-pub fn cx_color(cx: u32) -> &'static str {
-    if cx <= 5 {
-        "#4caf50"
-    } else if cx <= 10 {
-        "#8bc34a"
-    } else if cx <= 15 {
-        "#ffeb3b"
-    } else if cx <= 25 {
-        "#ff9800"
-    } else {
-        "#f44336"
-    }
-}
-
 struct HtmlNodeData {
     id: NodeId,
     file_id: u32,
@@ -145,40 +124,17 @@ fn build_html_nodes(
     (nodes, id_to_slot)
 }
 
-/// Generate a self-contained interactive call graph HTML string.
-#[must_use]
-pub fn generate_call_graph_html(
-    ingest: &IngestResult,
+/// A JSON array element separator: every row but the last ends with a comma.
+const fn row_comma(more: bool) -> &'static str {
+    if more { "," } else { "" }
+}
+
+/// Caller-to-callee edges between shown nodes, as `(source slot, target slot, ambiguous)`.
+fn collect_links(
     graph: &Graph,
-    ranks: &[f64],
-    interner: &Interner,
-    initial_color_by: ColorBy,
-    page: PageRequest,
-) -> String {
-    let comms = graph.communities();
-    let (nodes, id_to_slot) = build_html_nodes(ingest, ranks, interner, &comms, page);
-    let mut files_json = String::from("const FILES = [\n");
-    for (i, f) in ingest.files.iter().enumerate() {
-        let p = interner.resolve(&f.path);
-        files_json.push_str(&format!(
-            "  {:?}{}\n",
-            p,
-            if i + 1 < ingest.files.len() { "," } else { "" }
-        ));
-    }
-    files_json.push_str("];\n");
-
-    let mut nodes_json = String::from("const NODES = [\n");
-    for (k, n) in nodes.iter().enumerate() {
-        nodes_json.push_str(&format!(
-            "  {{\"id\":{},\"label\":{:?},\"type\":\"fn\",\"lang\":{:?},\"rank\":{:.4},\"file\":{},\"comm\":{},\"cx\":{},\"ts\":0}}{}\n",
-            k, n.name, n.lang, n.rank, n.file_id, n.comm, n.cx,
-            if k + 1 < nodes.len() { "," } else { "" }
-        ));
-    }
-    nodes_json.push_str("];\n");
-
-    let mut links_json = String::from("const LINKS = [\n");
+    nodes: &[HtmlNodeData],
+    id_to_slot: &HashMap<NodeId, usize>,
+) -> Vec<(usize, usize, bool)> {
     let mut edges = Vec::new();
     for &src_slot in id_to_slot.values() {
         let src_node = &nodes[src_slot];
@@ -191,45 +147,128 @@ pub fn generate_call_graph_html(
     }
     edges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
     edges.dedup();
-    for (i, (s, t, amb)) in edges.iter().enumerate() {
-        links_json.push_str(&format!(
-            "  {{\"s\":{},\"t\":{}{}}}{}\n",
-            s,
-            t,
-            if *amb { ",\"a\":1" } else { "" },
-            if i + 1 < edges.len() { "," } else { "" }
-        ));
-    }
-    links_json.push_str("];\n");
+    edges
+}
 
-    let mut modules_json = String::from("const MODULES = [\n");
+/// Shown symbols grouped by community: largest group first, ties by community id.
+fn community_groups(nodes: &[HtmlNodeData]) -> Vec<(u32, Vec<usize>)> {
     let mut comm_members: HashMap<u32, Vec<usize>> = HashMap::new();
     for (k, n) in nodes.iter().enumerate() {
         comm_members.entry(n.comm).or_default().push(k);
     }
     let mut comm_list: Vec<(u32, Vec<usize>)> = comm_members.into_iter().collect();
     comm_list.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
-    for (disp, (comm_id, members)) in comm_list.iter().enumerate() {
+    comm_list
+}
+
+fn write_files_json<W: Write>(
+    out: &mut W,
+    ingest: &IngestResult,
+    interner: &Interner,
+) -> io::Result<()> {
+    out.write_all(b"const FILES = [\n")?;
+    let count = ingest.files.len();
+    for (i, f) in ingest.files.iter().enumerate() {
+        let p = interner.resolve(&f.path);
+        writeln!(out, "  {:?}{}", p, row_comma(i + 1 < count))?;
+    }
+    out.write_all(b"];\n")
+}
+
+fn write_nodes_json<W: Write>(out: &mut W, nodes: &[HtmlNodeData]) -> io::Result<()> {
+    out.write_all(b"const NODES = [\n")?;
+    for (k, n) in nodes.iter().enumerate() {
+        writeln!(
+            out,
+            "  {{\"id\":{},\"label\":{:?},\"type\":\"fn\",\"lang\":{:?},\"rank\":{:.4},\"file\":{},\"comm\":{},\"cx\":{},\"ts\":0}}{}",
+            k,
+            n.name,
+            n.lang,
+            n.rank,
+            n.file_id,
+            n.comm,
+            n.cx,
+            row_comma(k + 1 < nodes.len())
+        )?;
+    }
+    out.write_all(b"];\n")
+}
+
+fn write_links_json<W: Write>(out: &mut W, edges: &[(usize, usize, bool)]) -> io::Result<()> {
+    out.write_all(b"const LINKS = [\n")?;
+    for (i, (s, t, amb)) in edges.iter().enumerate() {
+        let ambiguous = if *amb { ",\"a\":1" } else { "" };
+        writeln!(
+            out,
+            "  {{\"s\":{},\"t\":{}{}}}{}",
+            s,
+            t,
+            ambiguous,
+            row_comma(i + 1 < edges.len())
+        )?;
+    }
+    out.write_all(b"];\n")
+}
+
+fn write_modules_json<W: Write>(
+    out: &mut W,
+    nodes: &[HtmlNodeData],
+    page: PageRequest,
+) -> io::Result<()> {
+    out.write_all(b"const MODULES = [\n")?;
+    let groups = community_groups(nodes);
+    for (disp, (comm_id, members)) in groups.iter().enumerate() {
         let first_file = members.first().map(|&idx| nodes[idx].file_id).unwrap_or(0);
         let top_m = Paged::new(members, page.nested(), |&idx| {
             let slot = idx.to_string();
             text_bytes(&[slot.as_str()])
         });
-        modules_json.push_str(&format!(
-            "  {{\"id\":{},\"name\":{:?},\"symCount\":{},\"fileCount\":1,\"files\":[{}],\"members\":{:?},\"top\":{:?},\"inCross\":0,\"outCross\":0,\"neigh\":[]}}{}\n",
-            disp, format!("module_{}", comm_id), members.len(), first_file, members, top_m.rows(),
-            if disp + 1 < comm_list.len() { "," } else { "" }
-        ));
+        writeln!(
+            out,
+            "  {{\"id\":{},\"name\":\"module_{}\",\"symCount\":{},\"fileCount\":1,\"files\":[{}],\"members\":{:?},\"top\":{:?},\"inCross\":0,\"outCross\":0,\"neigh\":[]}}{}",
+            disp,
+            comm_id,
+            members.len(),
+            first_file,
+            members,
+            top_m.rows(),
+            row_comma(disp + 1 < groups.len())
+        )?;
     }
-    modules_json.push_str("];\n");
+    out.write_all(b"];\n")
+}
 
-    const HTML_VIS_JS: &str = include_str!("html_vis.js");
-    let lang_colors = crate::languages::ALL_LANGS
-        .iter()
-        .map(|lang| format!("{:?}: {:?}", lang.tag(), lang.semantics().display_color()))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
+/// `"<language tag>": "<display color>"` pairs for every language, comma separated.
+struct LangColors;
+
+impl std::fmt::Display for LangColors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, lang) in crate::languages::ALL_LANGS.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            write!(
+                f,
+                "{:?}: {:?}",
+                lang.tag(),
+                lang.semantics().display_color()
+            )?;
+        }
+        Ok(())
+    }
+}
+
+const HTML_VIS_JS: &str = include_str!("html_vis.js");
+
+/// Write the page up to the data section: the head, styles, and scalar constants.
+fn write_page_head<W: Write>(
+    out: &mut W,
+    node_count: usize,
+    edge_count: usize,
+    color_by: ColorBy,
+) -> io::Result<()> {
+    write!(
+        out,
         r##"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -281,29 +320,17 @@ const LANG_COLORS = {{ {} }};
 const SHAPES = {{}};
 const CHURN_MAP = [];
 const HAS_CHURN = false;
-{}
-{}
-{}
-{}
-{}
-</script>
-</body>
-</html>"##,
-        nodes.len(),
-        nodes.len(),
-        edges.len(),
-        nodes.len(),
-        initial_color_by.mode_name(),
-        lang_colors,
-        files_json,
-        nodes_json,
-        links_json,
-        modules_json,
-        HTML_VIS_JS
+"##,
+        node_count,
+        node_count,
+        edge_count,
+        node_count,
+        color_by.mode_name(),
+        LangColors
     )
 }
 
-/// Write call graph HTML directly to a stream.
+/// Write a self-contained interactive call graph HTML page to a stream.
 pub fn write_call_graph_html<W: Write>(
     out: &mut W,
     ingest: &IngestResult,
@@ -313,6 +340,34 @@ pub fn write_call_graph_html<W: Write>(
     color_by: ColorBy,
     page: PageRequest,
 ) -> io::Result<()> {
-    let html = generate_call_graph_html(ingest, graph, ranks, interner, color_by, page);
-    out.write_all(html.as_bytes())
+    let comms = graph.communities();
+    let (nodes, id_to_slot) = build_html_nodes(ingest, ranks, interner, &comms, page);
+    let edges = collect_links(graph, &nodes, &id_to_slot);
+
+    write_page_head(out, nodes.len(), edges.len(), color_by)?;
+    write_files_json(out, ingest, interner)?;
+    out.write_all(b"\n")?;
+    write_nodes_json(out, &nodes)?;
+    out.write_all(b"\n")?;
+    write_links_json(out, &edges)?;
+    out.write_all(b"\n")?;
+    write_modules_json(out, &nodes, page)?;
+    out.write_all(b"\n")?;
+    out.write_all(HTML_VIS_JS.as_bytes())?;
+    out.write_all(b"\n</script>\n</body>\n</html>")
+}
+
+/// Generate a self-contained interactive call graph HTML string.
+#[must_use]
+pub fn generate_call_graph_html(
+    ingest: &IngestResult,
+    graph: &Graph,
+    ranks: &[f64],
+    interner: &Interner,
+    initial_color_by: ColorBy,
+    page: PageRequest,
+) -> String {
+    render_string(|out| {
+        write_call_graph_html(out, ingest, graph, ranks, interner, initial_color_by, page)
+    })
 }

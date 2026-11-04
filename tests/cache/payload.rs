@@ -1,5 +1,5 @@
 use ripwire_rs::cache::{
-    CACHE_VERSION, CachePayload, auto_cache_path, compute_cache_key, load_cached_payload,
+    CACHE_VERSION, CachePayload, auto_cache_path, compute_cache_key, load_cached_payload_slice,
 };
 use ripwire_rs::{Graph, IngestResult, Interner, PageRankResult};
 
@@ -32,11 +32,11 @@ fn test_cache_payload_roundtrip() {
 }
 
 #[test]
-fn test_load_cached_payload_in_memory() {
+fn test_load_cached_payload_slice_validates_key() {
     let payload = make_payload("valid_key", Vec::new(), 1, Vec::new());
     let json = serde_json::to_string(&payload).unwrap();
-    assert!(load_cached_payload(std::io::Cursor::new(json.as_bytes()), "valid_key").is_some());
-    assert!(load_cached_payload(std::io::Cursor::new(json.as_bytes()), "wrong_key").is_none());
+    assert!(load_cached_payload_slice(json.as_bytes(), "valid_key").is_some());
+    assert!(load_cached_payload_slice(json.as_bytes(), "wrong_key").is_none());
 }
 
 #[test]

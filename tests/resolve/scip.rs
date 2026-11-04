@@ -1,9 +1,9 @@
 use protobuf::Message;
-use ripwire_rs::query::navigation::{
-    NavContext, NavMode, execute_nav_symbol_query, execute_nav_symbol_query_in_root,
-};
+use ripwire_rs::query::navigation::{NavContext, NavMode, execute_nav_symbol_query_in_root};
 use ripwire_rs::resolve::scip_sites;
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, PageRankConfig, ingest_in_memory_files};
+use ripwire_rs::{
+    Graph, IngestResult, Interner, Lang, LanguageRegistry, PageRankConfig, ingest_in_memory_files,
+};
 use scip::types::{Document, Index, Occurrence, SymbolRole};
 
 const SOURCES: &[(&str, Lang, &[u8])] = &[
@@ -66,26 +66,7 @@ fn index_bytes() -> Vec<u8> {
 }
 
 fn callees(sym: &str, scip: Option<&[u8]>) -> String {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let mut ingest = ingest_in_memory_files(SOURCES, &registry, &interner);
-    if let Some(bytes) = scip {
-        ingest.scip_sites = scip_sites(bytes, &ingest, &interner).unwrap();
-    }
-    let graph = Graph::build(&ingest, &interner);
-    let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
-    let mut out = Vec::new();
-    execute_nav_symbol_query(
-        sym,
-        NavMode::Callees,
-        &ingest,
-        &graph,
-        &ranks,
-        &interner,
-        &mut out,
-    )
-    .unwrap();
-    String::from_utf8(out).unwrap()
+    crate::nav_support::nav_xml(SOURCES, scip, sym, NavMode::Callees).unwrap()
 }
 
 #[test]
@@ -118,6 +99,23 @@ fn non_scip_bytes_are_rejected() {
     assert!(scip_sites(b"\xff\xff\xff\xff", &ingest, &interner).is_err());
 }
 
+fn scip_ingest(
+    sources: &[(&str, Lang, &[u8])],
+    documents: Vec<Document>,
+) -> (IngestResult, Interner) {
+    let registry = LanguageRegistry::new().unwrap();
+    let interner = Interner::new();
+    let mut ingest = ingest_in_memory_files(sources, &registry, &interner);
+    let bytes = Index {
+        documents,
+        ..Index::default()
+    }
+    .write_to_bytes()
+    .unwrap();
+    ingest.scip_sites = scip_sites(&bytes, &ingest, &interner).unwrap();
+    (ingest, interner)
+}
+
 #[test]
 fn multiline_member_calls_use_identifier_lines_without_moving_reported_sites() {
     let sources: &[(&str, Lang, &[u8])] = &[
@@ -129,33 +127,18 @@ fn multiline_member_calls_use_identifier_lines_without_moving_reported_sites() {
             b"def go(o):\n    return (o\n        .run())\n",
         ),
     ];
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let mut ingest = ingest_in_memory_files(sources, &registry, &interner);
-    let bytes = Index {
-        documents: vec![
+    let (ingest, interner) = scip_ingest(
+        sources,
+        vec![
             document("b/y.py", vec![occurrence(Y_RUN, 1, true)]),
             document("c/use.py", vec![occurrence(Y_RUN, 2, false)]),
         ],
-        ..Index::default()
-    }
-    .write_to_bytes()
-    .unwrap();
-    ingest.scip_sites = scip_sites(&bytes, &ingest, &interner).unwrap();
+    );
     let graph = Graph::build(&ingest, &interner);
     let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
-    let mut out = Vec::new();
-    execute_nav_symbol_query(
-        "run",
-        NavMode::Callers,
-        &ingest,
-        &graph,
-        &ranks,
-        &interner,
-        &mut out,
-    )
-    .unwrap();
-    let xml = String::from_utf8(out).unwrap();
+    let xml =
+        crate::nav_support::nav_report(&ingest, &graph, &ranks, &interner, "run", NavMode::Callers)
+            .unwrap();
     assert!(
         xml.contains("n=\"go\" p=\"c/use.py:1\" of_def=\"2\" sites_at=\"c/use.py:2\""),
         "{xml}"
@@ -179,20 +162,14 @@ fn shared_navigation_reports_keep_scip_groups_and_unbound_sites_with_paging() {
             b"def go(o):\n    return o.run()\n\ndef unpinned(o):\n    return o.run()\n",
         ),
     ];
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let mut ingest = ingest_in_memory_files(sources, &registry, &interner);
-    let bytes = Index {
-        documents: vec![
+    let (ingest, interner) = scip_ingest(
+        sources,
+        vec![
             document("a/x.py", vec![occurrence(X_RUN, 1, true)]),
             document("b/y.py", vec![occurrence(Y_RUN, 1, true)]),
             document("c/use.py", vec![occurrence(Y_RUN, 1, false)]),
         ],
-        ..Index::default()
-    }
-    .write_to_bytes()
-    .unwrap();
-    ingest.scip_sites = scip_sites(&bytes, &ingest, &interner).unwrap();
+    );
     let graph = Graph::build(&ingest, &interner);
     let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
     let mut ctx = NavContext {

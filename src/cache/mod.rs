@@ -148,16 +148,6 @@ pub fn load_cached_payload_slice(
     Some((payload.ingest, payload.graph, payload.pr, interner))
 }
 
-/// Load and validate cached payload from any reader (in-memory testable).
-pub fn load_cached_payload<R: std::io::Read>(
-    mut reader: R,
-    expected_key: &str,
-) -> Option<(IngestResult, Graph, PageRankResult, Interner)> {
-    let mut bytes = Vec::new();
-    reader.read_to_end(&mut bytes).ok()?;
-    load_cached_payload_slice(&bytes, expected_key)
-}
-
 /// Save repository analysis to cache file atomically.
 pub fn save_cached_analysis(
     root: &str,

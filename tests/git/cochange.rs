@@ -7,10 +7,7 @@ use ripwire_rs::git::cochange::{
 };
 use ripwire_rs::git::history::CommitInfo;
 use ripwire_rs::graph::Graph;
-use ripwire_rs::query::safety::{
-    SafetyContext, execute_cochange_with, execute_cochange_with_options,
-};
-use std::io::Cursor;
+use ripwire_rs::query::safety::{SafetyContext, execute_cochange_with_options};
 
 fn create_test_ingest(interner: &Interner) -> IngestResult {
     let mut ingest = IngestResult::new();
@@ -320,39 +317,32 @@ fn test_cochange_query_xml_and_recurrence_filter() {
     let interner = Interner::new();
     let ingest = create_test_ingest(&interner);
     let graph = Graph::build(&ingest, &interner);
-    let state = SafetyContext {
+    let ctx = SafetyContext {
         root: ":memory:",
         ingest: &ingest,
         graph: &graph,
         interner: &interner,
     };
 
-    let commits = vec![
-        CommitInfo {
-            id: "c1".to_string(),
-            timestamp: 100,
-            author: "dev@example.com".to_string(),
-            changed_files: vec!["src/caller.rs".to_string(), "src/unrelated.rs".to_string()],
-        },
-        CommitInfo {
-            id: "c2".to_string(),
-            timestamp: 200,
-            author: "dev@example.com".to_string(),
-            changed_files: vec!["src/caller.rs".to_string(), "src/unrelated.rs".to_string()],
-        },
-        CommitInfo {
-            id: "c3".to_string(),
-            timestamp: 300,
-            author: "dev@example.com".to_string(),
-            changed_files: vec!["src/caller.rs".to_string(), "src/unrelated.rs".to_string()],
-        },
-    ];
+    let commit = |id: &str, timestamp: i64| CommitInfo {
+        id: id.to_string(),
+        timestamp,
+        author: "dev@example.com".to_string(),
+        changed_files: vec!["src/caller.rs".to_string(), "src/unrelated.rs".to_string()],
+    };
+    let log = vec![commit("c1", 100), commit("c2", 200), commit("c3", 300)];
 
-    let mut buf = Cursor::new(Vec::new());
-    execute_cochange_with(Some("src/caller.rs"), None, &commits, &state, &mut buf)
-        .expect("execute cochange");
+    let mut buf = Vec::new();
+    execute_cochange_with_options(
+        Some("src/caller.rs"),
+        Default::default(),
+        &log,
+        &ctx,
+        &mut buf,
+    )
+    .expect("execute cochange");
 
-    let xml = String::from_utf8(buf.into_inner()).unwrap();
+    let xml = String::from_utf8(buf).unwrap();
     assert!(xml.contains("<f path=\"src/caller.rs\""));
     assert!(xml.contains("<partner path=\"src/unrelated.rs\" together=\"3\""));
     assert!(xml.contains("surprising=\"1\""));
@@ -363,8 +353,8 @@ fn test_cochange_query_xml_and_recurrence_filter() {
             cochange_recur: Some(4),
             ..Default::default()
         },
-        &commits,
-        &state,
+        &log,
+        &ctx,
         &mut filtered,
     )
     .expect("filter cochange partners by recurrence");

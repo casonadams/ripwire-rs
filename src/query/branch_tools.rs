@@ -455,21 +455,6 @@ pub fn whereis_from_sources_with_facts(
     )
 }
 
-pub fn whereis_from_sources(
-    sources: &(impl SourceReader + ?Sized),
-    ingest: &IngestResult,
-    interner: &Interner,
-    symbol_name: &str,
-) -> Value {
-    whereis_from_sources_with_facts(
-        sources,
-        ingest,
-        interner,
-        symbol_name,
-        &WhereisFacts::default(),
-    )
-}
-
 pub fn whereis_with_sources_and_history(
     req: WhereisRequest<'_>,
     sources: &(impl SourceReader + ?Sized),
