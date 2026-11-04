@@ -105,13 +105,20 @@ pub fn load_repo_analysis_for_cli(
 ) -> io::Result<(crate::domain::IngestResult, Graph, PageRankResult, Interner)> {
     let cache_path = cli.modifiers.cache.as_deref().map(Path::new);
     let opts = crawler_options_for_cli(cli);
-    load_repo_analysis_with_options(
+    let analysis = load_repo_analysis_with_options(
         root,
         cache_path,
         cli.modifiers.no_cache || force_uncached,
         &opts,
         cli.scip.as_deref().map(Path::new),
-    )
+    )?;
+    if analysis.0.unreadable > 0 {
+        eprintln!(
+            "ripwire-rs: {} crawled file(s) could not be read; answers omit them",
+            analysis.0.unreadable
+        );
+    }
+    Ok(analysis)
 }
 
 pub fn split_csv_patterns(raw: &str) -> Vec<&str> {
