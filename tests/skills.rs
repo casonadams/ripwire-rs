@@ -1,3 +1,1 @@
-mod skills {
-    mod install;
-}
+mod install;

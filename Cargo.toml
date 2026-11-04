@@ -12,6 +12,7 @@ documentation = "https://docs.rs/ripwire-rs"
 keywords = ["static-analysis", "code-intelligence", "call-graph", "mcp", "coding-agents"]
 categories = ["development-tools", "command-line-utilities"]
 default-run = "ripwire-rs"
+autotests = false
 include = [
     "src/**/*",
     "vendor/grammars/**/*.c",
@@ -39,6 +40,10 @@ path = "src/bin/rw.rs"
 [[bench]]
 name = "bench_pipeline"
 harness = false
+
+[[test]]
+name = "it"
+path = "tests/it.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -92,6 +97,13 @@ lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+[profile.dev]
+# Line tables keep panic and backtrace line numbers; full DWARF inflates target/ several-fold.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.{ archive-format }"

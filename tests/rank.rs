@@ -1,4 +1,2 @@
-mod rank {
-    mod hits;
-    mod pagerank;
-}
+mod hits;
+mod pagerank;

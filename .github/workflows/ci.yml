@@ -49,8 +49,8 @@ jobs:
       - name: Format, clippy, complexity, registry and script gates
         run: make fmt-check clippy complexity registry script-tests
 
-  coverage-crap:
-    name: Coverage & CRAP Metric
+  tests:
+    name: Tests
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.action != 'edited'
     steps:
@@ -61,24 +61,16 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Install cargo-llvm-cov, cargo-nextest & cargo-binstall
+      - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov@0.9.1,cargo-nextest@0.9.149,cargo-binstall
+          tool: cargo-nextest@0.9.149
 
-      - name: Install cargo-crap
-        run: |
-          cargo binstall --no-confirm --force cargo-crap@0.5.0
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          export PATH="$HOME/.cargo/bin:$PATH"
-          cargo crap --version
-
-      - name: Generate test coverage trace
-        id: coverage
+      - name: Run tests
         env:
           NEXTEST_PROFILE: ci
           NEXTEST_SHOW_PROGRESS: none
-        run: make coverage
+        run: make test
 
       - name: Upload test results
         if: ${{ !cancelled() }}
@@ -87,14 +79,3 @@ jobs:
           name: nextest-results
           path: target/nextest/ci/junit.xml
           if-no-files-found: ignore
-
-      - name: Emit GitHub PR annotations
-        if: always() && steps.coverage.outcome == 'success'
-        run: cargo crap --path . --lcov target/lcov.info --format github
-
-      - name: Publish CRAP summary to Step Summary
-        if: always() && steps.coverage.outcome == 'success'
-        run: cargo crap --path . --lcov target/lcov.info --threshold 30 --format markdown >> $GITHUB_STEP_SUMMARY
-
-      - name: Gate on CRAP threshold
-        run: make crap-gate

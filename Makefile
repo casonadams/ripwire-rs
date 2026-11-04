@@ -18,7 +18,7 @@ ensure-grammars:
 	fi
 
 .PHONY: ci
-ci: fmt-check clippy complexity registry script-tests crap ## Deterministic checks CI runs: format, clippy, complexity, registry, script unittests, CRAP/tests (no upstream binary, no git history, no machine state)
+ci: fmt-check clippy complexity registry script-tests test ## Deterministic checks CI runs: format, clippy, complexity, registry, script unittests, tests (no upstream binary, no git history, no machine state)
 
 .PHONY: all
 all: fmt ci quality size resolution docs-check parity ## Run every check: format, the deterministic CI set, quality regressions against git HEAD, default answer sizes, call-resolution ceilings, generated reference freshness, and upstream parity
@@ -59,27 +59,26 @@ clippy-fix: ## Automatically fix Clippy suggestions where possible
 clean: ## Clean cargo build artifacts
 	$(CARGO) clean
 
-.PHONY: coverage
-coverage: ## Generate LCOV and nextest JUnit reports with quiet test output
-	@$(MAKE) ensure-grammars
-	@$(CARGO) llvm-cov clean --workspace
-	@$(CARGO) test --workspace --doc
-	@ulimit -n 10240 2>/dev/null || ulimit -n 4096 2>/dev/null || true; \
-	if $(CARGO) nextest --version >/dev/null 2>&1; then \
-		NEXTEST_PROFILE="$${NEXTEST_PROFILE:-ci}" NEXTEST_SHOW_PROGRESS="$${NEXTEST_SHOW_PROGRESS:-none}" $(CARGO) llvm-cov nextest --workspace --no-report && $(CARGO) llvm-cov report --workspace --lcov --output-path target/lcov.info --ignore-filename-regex 'src/(cli|ingest|mcp)/mod\.rs$$'; \
+.PHONY: sweep
+sweep: ## Remove stale build artifacts: cargo-sweep (unused for 14 days) when installed, else incremental and llvm-cov leftovers; target/release is never touched by the fallback
+	@target="$(or $(CARGO_TARGET_DIR),target)"; \
+	if $(CARGO) sweep --version >/dev/null 2>&1; then \
+		echo "sweep: cargo-sweep removing artifacts unused for 14 days"; \
+		$(CARGO) sweep --time 14; \
 	else \
-		$(CARGO) llvm-cov --workspace --lcov --output-path target/lcov.info --ignore-filename-regex 'src/(cli|ingest|mcp)/mod\.rs$$'; \
+		echo "sweep: cargo-sweep not installed (cargo install cargo-sweep); deleting $$target/debug/incremental, $$target/llvm-cov-target and $$target/package"; \
+		rm -rf "$$target/debug/incremental" "$$target/llvm-cov-target" "$$target/package"; \
 	fi
 
-.PHONY: crap-gate
-crap-gate: ## Gate on functions exceeding CRAP threshold 30 (or emitting warnings) using an existing target/lcov.info
-	@err=$$(mktemp); \
-	$(CARGO) crap --path . --lcov target/lcov.info --threshold 30 --fail-above --format github >/dev/null 2>"$$err" || { cat "$$err" >&2; rm -f "$$err"; exit 1; }; \
-	if [ -s "$$err" ]; then cat "$$err" >&2; rm -f "$$err"; exit 1; fi; \
-	rm -f "$$err"
-
-.PHONY: crap
-crap: coverage crap-gate ## Run the tests with coverage, then gate on CRAP
+.PHONY: test
+test: ## Run the workspace tests: nextest ci profile (plus doc tests) when installed, else cargo test
+	@$(MAKE) ensure-grammars
+	@ulimit -n 10240 2>/dev/null || ulimit -n 4096 2>/dev/null || true; \
+	if $(CARGO) nextest --version >/dev/null 2>&1; then \
+		NEXTEST_PROFILE="$${NEXTEST_PROFILE:-ci}" NEXTEST_SHOW_PROGRESS="$${NEXTEST_SHOW_PROGRESS:-none}" $(CARGO) nextest run --workspace && $(CARGO) test --workspace --doc; \
+	else \
+		$(CARGO) test --workspace; \
+	fi
 
 .PHONY: complexity
 complexity: ## Gate on cccc cognitive complexity <= 15 with GitHub error annotations

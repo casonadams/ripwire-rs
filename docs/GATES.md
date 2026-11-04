@@ -7,7 +7,7 @@ settings, including SCIP overlays, cache/crawl options, JSON, and legend removal
 For example: `ripwire-rs --json gate . --quality-delta` or
 `ripwire-rs --legend=none --scip=index.scip gate . --edit-check=compute`.
 
-CI runs `make ci`, the deterministic set: format check, clippy, the cccc complexity gate, the plugin registry check, and the tests with the CRAP gate. Every input is pinned (Rust toolchain in `rust-toolchain.toml`, vendored grammars by commit in each `grammar.txt`, tool versions in the workflow) and no check reads git history, another branch, a downloaded binary, or machine state. `make all` runs everything in `make ci` plus the checks that depend on the environment: `quality` (regressions against git `HEAD`) and `parity` (the comparison with an upstream `ripwire` binary on this repository). Run `make all` before pushing.
+CI runs `make ci`, the deterministic set: format check, clippy, the cccc complexity gate, the plugin registry check, and the tests (`make test`). Every input is pinned (Rust toolchain in `rust-toolchain.toml`, vendored grammars by commit in each `grammar.txt`, tool versions in the workflow) and no check reads git history, another branch, a downloaded binary, or machine state. `make all` runs everything in `make ci` plus the checks that depend on the environment: `quality` (regressions against git `HEAD`) and `parity` (the comparison with an upstream `ripwire` binary on this repository). Run `make all` before pushing.
 
 ---
 

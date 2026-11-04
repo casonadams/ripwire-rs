@@ -1,3 +1,1 @@
-mod domain {
-    mod corpus;
-}
+mod corpus;

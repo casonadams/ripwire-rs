@@ -1,4 +1,2 @@
-mod graph {
-    mod community;
-    mod csr;
-}
+mod community;
+mod csr;

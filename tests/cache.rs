@@ -1,4 +1,2 @@
-mod cache {
-    mod key;
-    mod payload;
-}
+mod key;
+mod payload;

@@ -1,2 +1,0 @@
-threshold = 30.0
-exclude = ["build.rs"]

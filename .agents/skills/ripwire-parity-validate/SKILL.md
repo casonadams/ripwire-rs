@@ -20,7 +20,7 @@ Before running cross-repository comparisons or editing serializers:
 <instructions>
 ## Step 1: Run the Local Quality Gate (`make all`)
 
-Always start by running `make all` (`fmt-check`, `clippy`, `cccc` cognitive complexity <= 15 on all functions and closures, `quality` delta vs `HEAD`, and `cargo crap` <= 30 under workspace test coverage). This guarantees that internal invariants hold before benchmarking external repositories.
+Always start by running `make all` (`fmt-check`, `clippy`, `cccc` cognitive complexity <= 15 on all functions and closures, `quality` delta vs `HEAD`, and the workspace tests via `make test`). This guarantees that internal invariants hold before benchmarking external repositories.
 
 ## Step 2: Run the 66-Command DOM & Invariant Matrix (`make validate`)
 
@@ -61,7 +61,7 @@ Report validation results using this structure:
 ### 1. Parity & Quality Gate Summary
 | Check / Target Repository | Commands Verified | Status | Notes |
 | :--- | :--- | :--- | :--- |
-| `make all` (`.`) | `fmt`, `clippy`, `cccc <= 15`, `quality`, `crap <= 30` | PASS / FAIL | Test count & max complexity |
+| `make all` (`.`) | `fmt`, `clippy`, `cccc <= 15`, `quality`, `tests` | PASS / FAIL | Test count & max complexity |
 | `make validate REPO=.` | 66 / 66 commands | PASS / FAIL | Seed file & symbols |
 | `make validate REPO=<ext>` | 66 / 66 commands | PASS / FAIL | Seed file & symbols |
 

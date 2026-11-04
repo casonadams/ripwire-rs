@@ -102,7 +102,8 @@ more correct, or more honest.
 - **No lint suppressions**: Never add Clippy `allow` / `expect` attributes or
   CLI exclusions; remove any encountered in touched code and refactor instead.
 - **Fast, in-memory public-API tests**: Place all tests in `tests/<mod>/<file>.rs`
-  (rooted by `tests/<mod>.rs`), never inline `#[cfg(test)]` in `src/`. Never
+  (each `tests/<mod>.rs` is a module of the single integration binary `tests/it.rs`; run one area with
+  `cargo test --test it <mod>::`), never inline `#[cfg(test)]` in `src/`. Never
   perform disk I/O or network calls in tests; use in-memory slices (`< 500ms`
   per test, `< 15s` full suite).
 - **Generic names only**: Findings from other codebases must reach tests,
@@ -117,8 +118,10 @@ more correct, or more honest.
 - **Required gate**: Run `make all` before finishing (enforces `clippy`,
   cognitive complexity `<= 15`, `--quality-delta` vs `git HEAD`, default answer
   size ceilings (`make size`), call-resolution ceilings (`make resolution`),
-  generated reference freshness (`make docs-check`), test coverage CRAP `<= 30`,
-  upstream parity, and `fmt` as the final step).
+  generated reference freshness (`make docs-check`), tests (`make test`), upstream parity, and `fmt` as
+  the final step). There is no line-coverage or CRAP gate: cognitive complexity bounds each function, and
+  `ripwire-rs --test-gate` / `--affected` check that changed code is reached by tests through the call graph
+  (reachability, not executed lines).
 - **Gate hygiene**: Run `make all` on a clean, committed tree after `ripwire-rs . --quality-baseline`;
   a dirty tree or a stale baseline gives false parity and quality failures. Parity probe symbols are pinned in
   `scripts/validate-parity.py` (`PINNED_TARGETS`) because the ledger is measured on them; a ranking change
@@ -126,3 +129,5 @@ more correct, or more honest.
   skips loudly without it.
 - **Parallel work uses git worktrees**, each with its own CARGO_TARGET_DIR, and every edit path under its
   own worktree. Merge on `main`, rebuild, and run `make all` once. Never edit the main tree from a worktree.
+  Each worktree needs its own `CARGO_TARGET_DIR`; run `cargo clean` on it before removing the worktree, and
+  `make sweep` prunes stale artifacts.

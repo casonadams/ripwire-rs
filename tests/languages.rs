@@ -1,43 +1,35 @@
-#[path = "support/a_callees.rs"]
-mod a_callees;
-
-#[path = "support/corpus.rs"]
-mod corpus_support;
-
-mod languages {
-    mod bash;
-    mod c;
-    mod cobol;
-    mod contract;
-    mod cpp;
-    mod dart;
-    mod elixir;
-    mod erlang;
-    mod fortran;
-    mod gdscript;
-    mod go;
-    mod graph_protocol;
-    mod graphql;
-    mod harness;
-    mod java;
-    mod javascript;
-    mod lua;
-    mod objc;
-    mod php;
-    mod proto;
-    mod python;
-    mod ruby;
-    mod rust;
-    mod scala;
-    mod solidity;
-    mod sql;
-    mod swift;
-    mod type_definitions;
-    mod typed_receivers;
-    mod typescript;
-    mod typescript_bindings;
-    mod typescript_dispatch;
-    mod typescript_extraction;
-    mod typescript_spans;
-    mod zig;
-}
+mod bash;
+mod c;
+mod cobol;
+mod contract;
+mod cpp;
+mod dart;
+mod elixir;
+mod erlang;
+mod fortran;
+mod gdscript;
+mod go;
+mod graph_protocol;
+mod graphql;
+mod harness;
+mod java;
+mod javascript;
+mod lua;
+mod objc;
+mod php;
+mod proto;
+mod python;
+mod ruby;
+mod rust;
+mod scala;
+mod solidity;
+mod sql;
+mod swift;
+mod type_definitions;
+mod typed_receivers;
+mod typescript;
+mod typescript_bindings;
+mod typescript_dispatch;
+mod typescript_extraction;
+mod typescript_spans;
+mod zig;

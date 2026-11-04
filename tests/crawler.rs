@@ -1,3 +1,1 @@
-mod crawler {
-    mod walk;
-}
+mod walk;

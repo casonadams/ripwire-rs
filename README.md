@@ -115,20 +115,20 @@ First-class Tree-Sitter AST queries extract definitions, signatures, imports, an
 ## Development
 
 ```bash
-# Run all quality checks (clippy, complexity <= 15, quality delta, crap <= 30, fmt)
+# Run all quality checks (clippy, complexity <= 15, quality delta, tests, fmt)
 make all
 
-# Run test suite under coverage
-make crap
+# Run the test suite
+make test
 
 # Format code
 make fmt
 ```
 
-`make all`, `make crap`, and `make coverage` use the nextest `ci` profile
-when nextest is installed: passing tests stay quiet, failure output appears
-once at the end, and all tests run even after a failure. Doc tests run
-separately within `make coverage`. Without nextest, coverage uses cargo test.
+`make all` and `make test` use the nextest `ci` profile when nextest is
+installed: passing tests stay quiet, failure output appears once at the end,
+and all tests run even after a failure. Doc tests run separately after nextest.
+Without nextest, `make test` uses cargo test.
 
 Agents can parse `target/nextest/ci/junit.xml` for test names, results,
 durations, and captured failure output. GitHub Actions uploads this report
@@ -136,5 +136,12 @@ as the `nextest-results` artifact when available. Console output is concise
 text, not a machine-readable stream.
 
 Override `NEXTEST_PROFILE` or `NEXTEST_SHOW_PROGRESS` to select different
-reporting, for example `NEXTEST_PROFILE=default make coverage` for per-test
+reporting, for example `NEXTEST_PROFILE=default make test` for per-test
 status lines.
+
+There is no line-coverage or CRAP gate. cccc bounds each function's cognitive
+complexity, and `ripwire-rs --test-gate` / `--affected` check that changed code
+is reached by tests through the call graph (reachability, not executed lines).
+
+Parallel worktrees need their own `CARGO_TARGET_DIR`; remove it with `cargo clean`
+before removing the worktree. `make sweep` prunes stale build artifacts.
