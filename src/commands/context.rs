@@ -12,7 +12,7 @@ pub trait Paginated {
     fn limit_opt(&self) -> Option<usize>;
     fn offset_opt(&self) -> Option<usize>;
 
-    /// The byte budget default row caps are computed from (`--token-budget`, `--pack-budget`, `--max-tokens`).
+    /// The byte budget default row caps are computed from (`--token-budget`, `--pack-budget`).
     fn budget_opt(&self) -> Option<usize> {
         None
     }

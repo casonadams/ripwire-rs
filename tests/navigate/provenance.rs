@@ -5,6 +5,22 @@ fn nav_xml(fixtures: &[(&str, Lang, &[u8])], sym: &str, mode: NavMode) -> std::i
     crate::nav_support::nav_xml(fixtures, None, sym, mode)
 }
 
+fn check_nav(
+    fixtures: &[(&str, Lang, &[u8])],
+    sym: &str,
+    mode: NavMode,
+    has: &[&str],
+    lacks: &[&str],
+) {
+    let xml = nav_xml(fixtures, sym, mode).unwrap();
+    for needle in has {
+        assert!(xml.contains(needle), "{sym}: missing {needle} in {xml}");
+    }
+    for needle in lacks {
+        assert!(!xml.contains(needle), "{sym}: unexpected {needle} in {xml}");
+    }
+}
+
 const AMBIGUOUS: &[(&str, Lang, &[u8])] = &[
     (
         "a/alpha.dart",
@@ -130,57 +146,6 @@ fn ambiguous_call_arms_are_labelled_split() {
 }
 
 #[test]
-fn callee_rows_label_how_each_edge_bound() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[
-        (
-            "pkg/util.py",
-            Lang::Python,
-            b"def helper():\n    return 1\n",
-        ),
-        (
-            "other/util.py",
-            Lang::Python,
-            b"def helper():\n    return 2\n",
-        ),
-        (
-            "app.py",
-            Lang::Python,
-            b"import pkg.util as u\n\ndef main():\n    return u.helper() + solo()\n",
-        ),
-        ("lib/solo.py", Lang::Python, b"def solo():\n    return 3\n"),
-        (
-            "a/x.dart",
-            Lang::Dart,
-            b"class X { static int cols() => 1; }\n",
-        ),
-        (
-            "a/y.dart",
-            Lang::Dart,
-            b"class Y { static int cols() => 2; }\n",
-        ),
-        (
-            "b/load.dart",
-            Lang::Dart,
-            b"int load() {\n  return X.cols();\n}\n",
-        ),
-    ];
-    let py = nav_xml(fixtures, "main", NavMode::Callees).unwrap();
-    assert!(
-        py.contains("n=\"helper\" p=\"pkg/util.py:1\" prov=\"import\"/>"),
-        "{py}"
-    );
-    assert!(
-        py.contains("n=\"solo\" p=\"lib/solo.py:1\" via=\"name\"/>"),
-        "{py}"
-    );
-    let dart = nav_xml(fixtures, "load", NavMode::Callees).unwrap();
-    assert!(
-        dart.contains("n=\"cols\" p=\"a/x.dart:1\" prov=\"final-segment\"/>"),
-        "{dart}"
-    );
-}
-
-#[test]
 fn caller_rows_mark_name_only_bindings_with_tilde_n() {
     let fixtures: &[(&str, Lang, &[u8])] = &[
         (
@@ -237,31 +202,6 @@ PYBIND11_MODULE(native, m) {
 ";
 
 #[test]
-fn python_calls_bind_to_pybind11_exports() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[
-        ("bind.cpp", Lang::Cpp, PYBIND),
-        (
-            "use.py",
-            Lang::Python,
-            b"import native\n\ndef free_call():\n    return native.add(1, 2)\n\ndef method_call(p):\n    return p.speak()\n\ndef unexported():\n    return native.plain_fn(1)\n",
-        ),
-    ];
-    let free = nav_xml(fixtures, "free_call", NavMode::Callees).unwrap();
-    assert!(
-        free.contains("<s t=\"fn\" n=\"add_impl\" p=\"bind.cpp:3\" prov=\"binding\"/>"),
-        "{free}"
-    );
-    assert!(!free.contains("n=\"add\" "), "{free}");
-    let method = nav_xml(fixtures, "method_call", NavMode::Callees).unwrap();
-    assert!(
-        method.contains("n=\"bark\"") && method.contains("prov=\"binding\""),
-        "{method}"
-    );
-    let unexported = nav_xml(fixtures, "unexported", NavMode::Callees).unwrap();
-    assert!(unexported.contains("count=\"0\""), "{unexported}");
-}
-
-#[test]
 fn same_language_definition_wins_over_a_binding_and_no_module_means_no_export() {
     let fixtures: &[(&str, Lang, &[u8])] = &[
         ("bind.cpp", Lang::Cpp, PYBIND),
@@ -285,88 +225,7 @@ fn same_language_definition_wins_over_a_binding_and_no_module_means_no_export() 
 }
 
 #[test]
-fn prototypes_and_overload_signatures_group_with_their_definition() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[
-        ("inc/shape.h", Lang::C, b"int area(int w, int h);\n"),
-        ("inc/old.h", Lang::C, b"int area(int w);\n"),
-        (
-            "src/shape.c",
-            Lang::C,
-            b"int area(int w, int h) { return w * h; }\nint total() { return area(1, 2); }\n",
-        ),
-        (
-            "src/ov.ts",
-            Lang::TypeScript,
-            b"export function fmt(x: string): string;\nexport function fmt(x: number): string;\nexport function fmt(x: any): string { return String(x); }\nexport function callFmt() { return fmt(1); }\n",
-        ),
-    ];
-    let area = nav_xml(fixtures, "area", NavMode::Callers).unwrap();
-    assert!(area.contains("defs=\"3\""), "{area}");
-    assert!(
-        area.contains("<def ix=\"1\" t=\"fn\" p=\"inc/old.h:1\" bodyless=\"1\"/><def ix=\"2\" t=\"fn\" p=\"src/shape.c:1\"/>"),
-        "{area}"
-    );
-    assert!(!area.contains("inc/shape.h"), "{area}");
-    assert!(
-        area.contains("n=\"total\" p=\"src/shape.c:2\" of_def=\"2\""),
-        "{area}"
-    );
-    let fmt = nav_xml(fixtures, "callFmt", NavMode::Callees).unwrap();
-    assert!(
-        fmt.contains("<s t=\"fn\" n=\"fmt\" p=\"src/ov.ts:3\"/>"),
-        "{fmt}"
-    );
-    assert!(!fmt.contains("prov=\"split\""), "{fmt}");
-    let found = nav_xml(fixtures, "area", NavMode::FindSymbol).unwrap();
-    assert!(found.contains("defs=\"3\" groups=\"2\""), "{found}");
-    assert!(
-        found.contains("<def ix=\"1\" t=\"fn\" p=\"inc/old.h:1\" bodyless=\"1\"/><def ix=\"2\" t=\"fn\" p=\"src/shape.c:1\"/>"),
-        "{found}"
-    );
-    assert!(
-        found.contains("n=\"total\" p=\"src/shape.c:2\" of_def=\"2\""),
-        "{found}"
-    );
-}
-
-#[test]
-fn primary_template_binds_over_its_specialization_with_tilde_t() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[(
-        "box.cpp",
-        Lang::Cpp,
-        b"template <typename T> struct Box { T get() { return T(); } };\ntemplate <> struct Box<int> { int get() { return 7; } };\nint use_box() { Box<int> b; return b.get(); }\n",
-    )];
-    for mode in [NavMode::Callers, NavMode::FindSymbol] {
-        let xml = nav_xml(fixtures, "get", mode).unwrap();
-        assert!(
-            xml.contains("<def ix=\"2\" t=\"method\" sc=\"Box&lt;int&gt;\""),
-            "{xml}"
-        );
-        assert!(
-            xml.contains("n=\"use_box\" p=\"box.cpp:3\" of_def=\"1~t\""),
-            "{xml}"
-        );
-    }
-}
-
-#[test]
-fn macro_callees_carry_role_macro() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[(
-        "mac.c",
-        Lang::C,
-        b"#define SQ(x) ((x)*(x))\nint use_sq() { return SQ(3); }\n",
-    )];
-    for mode in [NavMode::Callees, NavMode::FindSymbol] {
-        let xml = nav_xml(fixtures, "use_sq", mode).unwrap();
-        assert!(
-            xml.contains("<s t=\"macro\" n=\"SQ\" p=\"mac.c:1\" role=\"macro\"/>"),
-            "{xml}"
-        );
-    }
-}
-
-#[test]
-fn find_symbol_preserves_the_definition_group_owning_each_callee() {
+fn callees_preserve_the_definition_group_owning_each_callee() {
     let fixtures: &[(&str, Lang, &[u8])] = &[
         (
             "a/core.py",
@@ -379,8 +238,8 @@ fn find_symbol_preserves_the_definition_group_owning_each_callee() {
             b"def process():\n    return beta()\n\ndef beta():\n    return 2\n",
         ),
     ];
-    let xml = nav_xml(fixtures, "process", NavMode::FindSymbol).unwrap();
-    assert!(xml.contains("defs=\"2\" groups=\"2\""), "{xml}");
+    let xml = nav_xml(fixtures, "process", NavMode::Callees).unwrap();
+    assert!(xml.contains("defs=\"2\""), "{xml}");
     assert!(
         xml.contains("<def ix=\"1\" t=\"fn\" p=\"a/core.py:1\"/>"),
         "{xml}"
@@ -403,13 +262,174 @@ fn find_symbol_preserves_the_definition_group_owning_each_callee() {
 }
 
 #[test]
-fn find_symbol_keeps_the_uncapped_default_neighborhood() {
+fn callers_keep_the_uncapped_default_neighborhood() {
     let mut source = String::from("def target():\n    return 0\n");
     for ix in 0..45 {
         source.push_str(&format!("\ndef caller_{ix}():\n    return target()\n"));
     }
     let fixtures = [("many.py", Lang::Python, source.as_bytes())];
-    let xml = nav_xml(&fixtures, "target", NavMode::FindSymbol).unwrap();
-    assert!(xml.contains("callers=\"45\""), "{xml}");
+    let xml = nav_xml(&fixtures, "target", NavMode::Callers).unwrap();
+    assert!(xml.contains("count=\"45\""), "{xml}");
     assert_eq!(xml.matches("<s ").count(), 45, "{xml}");
+}
+
+#[test]
+fn template_and_macro_rows_keep_their_binding_markers() {
+    let template: &[(&str, Lang, &[u8])] = &[(
+        "box.cpp",
+        Lang::Cpp,
+        b"template <typename T> struct Box { T get() { return T(); } };\ntemplate <> struct Box<int> { int get() { return 7; } };\nint use_box() { Box<int> b; return b.get(); }\n",
+    )];
+    let mac: &[(&str, Lang, &[u8])] = &[(
+        "mac.c",
+        Lang::C,
+        b"#define SQ(x) ((x)*(x))\nint use_sq() { return SQ(3); }\n",
+    )];
+    let cases = [
+        (
+            template,
+            "get",
+            NavMode::Callers,
+            "<def ix=\"2\" t=\"method\" sc=\"Box&lt;int&gt;\"",
+        ),
+        (
+            template,
+            "get",
+            NavMode::Callers,
+            "n=\"use_box\" p=\"box.cpp:3\" of_def=\"1~t\"",
+        ),
+        (
+            mac,
+            "use_sq",
+            NavMode::Callees,
+            "<s t=\"macro\" n=\"SQ\" p=\"mac.c:1\" role=\"macro\"/>",
+        ),
+    ];
+    for (fixtures, symbol, mode, needle) in cases {
+        let xml = nav_xml(fixtures, symbol, mode).unwrap();
+        assert!(xml.contains(needle), "{xml}");
+    }
+}
+
+#[test]
+fn bound_edges_carry_their_provenance_in_each_language() {
+    {
+        let fixtures: &[(&str, Lang, &[u8])] = &[
+            (
+                "pkg/util.py",
+                Lang::Python,
+                b"def helper():\n    return 1\n",
+            ),
+            (
+                "other/util.py",
+                Lang::Python,
+                b"def helper():\n    return 2\n",
+            ),
+            (
+                "app.py",
+                Lang::Python,
+                b"import pkg.util as u\n\ndef main():\n    return u.helper() + solo()\n",
+            ),
+            ("lib/solo.py", Lang::Python, b"def solo():\n    return 3\n"),
+            (
+                "a/x.dart",
+                Lang::Dart,
+                b"class X { static int cols() => 1; }\n",
+            ),
+            (
+                "a/y.dart",
+                Lang::Dart,
+                b"class Y { static int cols() => 2; }\n",
+            ),
+            (
+                "b/load.dart",
+                Lang::Dart,
+                b"int load() {\n  return X.cols();\n}\n",
+            ),
+        ];
+        check_nav(
+            fixtures,
+            "main",
+            NavMode::Callees,
+            &[
+                "n=\"helper\" p=\"pkg/util.py:1\" prov=\"import\"/>",
+                "n=\"solo\" p=\"lib/solo.py:1\" via=\"name\"/>",
+            ],
+            &[],
+        );
+        check_nav(
+            fixtures,
+            "load",
+            NavMode::Callees,
+            &["n=\"cols\" p=\"a/x.dart:1\" prov=\"final-segment\"/>"],
+            &[],
+        );
+    }
+    {
+        let fixtures: &[(&str, Lang, &[u8])] = &[
+        ("inc/shape.h", Lang::C, b"int area(int w, int h);\n"),
+        ("inc/old.h", Lang::C, b"int area(int w);\n"),
+        (
+            "src/shape.c",
+            Lang::C,
+            b"int area(int w, int h) { return w * h; }\nint total() { return area(1, 2); }\n",
+        ),
+        (
+            "src/ov.ts",
+            Lang::TypeScript,
+            b"export function fmt(x: string): string;\nexport function fmt(x: number): string;\nexport function fmt(x: any): string { return String(x); }\nexport function callFmt() { return fmt(1); }\n",
+        ),
+    ];
+        let defs = "<def ix=\"1\" t=\"fn\" p=\"inc/old.h:1\" bodyless=\"1\"/><def ix=\"2\" t=\"fn\" p=\"src/shape.c:1\"/>";
+        check_nav(
+            fixtures,
+            "area",
+            NavMode::Callers,
+            &[
+                "defs=\"3\"",
+                defs,
+                "n=\"total\" p=\"src/shape.c:2\" of_def=\"2\"",
+            ],
+            &["inc/shape.h"],
+        );
+        check_nav(
+            fixtures,
+            "callFmt",
+            NavMode::Callees,
+            &["<s t=\"fn\" n=\"fmt\" p=\"src/ov.ts:3\"/>"],
+            &["prov=\"split\""],
+        );
+        check_nav(fixtures, "area", NavMode::Callees, &[defs], &[]);
+    }
+    {
+        let fixtures: &[(&str, Lang, &[u8])] = &[
+        ("bind.cpp", Lang::Cpp, PYBIND),
+        (
+            "use.py",
+            Lang::Python,
+            b"import native\n\ndef free_call():\n    return native.add(1, 2)\n\ndef method_call(p):\n    return p.speak()\n\ndef unexported():\n    return native.plain_fn(1)\n",
+        ),
+    ];
+        check_nav(
+            fixtures,
+            "free_call",
+            NavMode::Callees,
+            &["<s t=\"fn\" n=\"add_impl\" p=\"bind.cpp:3\" prov=\"binding\"/>"],
+            &["n=\"add\" "],
+        );
+        check_nav(
+            fixtures,
+            "method_call",
+            NavMode::Callees,
+            &["n=\"bark\"", "prov=\"binding\""],
+            &[],
+        );
+        check_nav(
+            fixtures,
+            "unexported",
+            NavMode::Callees,
+            &["count=\"0\""],
+            &[],
+        );
+    }
 }

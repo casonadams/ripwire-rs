@@ -20,7 +20,7 @@ const DEFAULT_REPORT_BYTES: usize = 16 * 1024;
 pub fn render(ctx: &ExecutionContext<'_>, out: &mut XmlWriter<'_, impl Write>) -> io::Result<()> {
     let cli = ctx.cli;
     let mut page = cli.page_request();
-    if cli.token_budget.is_none() && cli.max_tokens.is_none() && cli.pack_budget.is_none() {
+    if cli.token_budget.is_none() && cli.pack_budget.is_none() {
         page.budget = Some(DEFAULT_REPORT_BYTES);
     }
     crate::metrics::serialize_executive_report_md(&context_of(ctx), &ctx.pr.ranks, page, out)

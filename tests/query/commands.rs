@@ -51,7 +51,7 @@ fn map_top_k_selects_the_most_connected_definition() {
     let context = workspace.query_context(&sources);
     let result = dispatch(
         &context,
-        "analyze",
+        "explore",
         &json!({"rank_by": "degree", "top_k": 1}),
     )
     .unwrap();
@@ -72,13 +72,25 @@ fn dispatch_rejects_invalid_arguments_and_returns_indexed_symbol() {
             json!({"symbol": 7}),
             json!({"symbol": "target", "limit": -1}),
         ] {
-            assert!(dispatch(context, "find_symbol", &arguments).is_err());
+            assert!(dispatch(context, "callers", &arguments).is_err());
         }
         assert!(dispatch(context, "not_a_command", &json!({})).is_err());
-        let result = dispatch(context, "find_symbol", &json!({"symbol": "target"})).unwrap();
+        let result = dispatch(context, "callers", &json!({"symbol": "target"})).unwrap();
         let xml = result.as_str().unwrap();
         assert!(xml.contains("target"));
         assert!(xml.contains("virtual.rs"));
+    });
+}
+
+#[test]
+fn insert_symbol_needs_a_before_or_after_position() {
+    with_context(|context| {
+        for arguments in [
+            json!({"symbol": "target", "text": "x"}),
+            json!({"symbol": "target", "text": "x", "position": "sideways"}),
+        ] {
+            assert!(dispatch(context, "insert_symbol", &arguments).is_err());
+        }
     });
 }
 
@@ -88,7 +100,7 @@ fn batch_retains_successes_and_isolates_rejected_queries() {
         let tools = ripwire_rs::commands::tools();
         let queries = parse_batch_content(
             tools,
-            "# indexed reads\nfind_symbol:target\nfind_symbol:{}\nreplace_symbol_body:{\"symbol\":\"target\",\"new_body\":\"fn target() {}\"}\nbatch:{}\nquality_delta:{\"ack_only\":true}\nfind_symbol:caller\n",
+            "# indexed reads\ncallers:target\ncallers:{}\nreplace_symbol_body:{\"symbol\":\"target\",\"new_body\":\"fn target() {}\"}\nbatch:{}\nquality_delta:{\"ack_only\":true}\ncallers:caller\n",
         );
         let results = execute_batch(context, tools, &queries).unwrap();
         assert_eq!(results.len(), 6);
@@ -107,66 +119,59 @@ fn batch_enforces_sixteen_query_boundary() {
         let tools = ripwire_rs::commands::tools();
         let mut queries: Vec<_> = (0..16)
             .map(|_| BatchQuery {
-                name: "find_symbol".into(),
+                name: "callers".into(),
                 arguments: json!({"symbol": "target"}),
             })
             .collect();
         assert_eq!(execute_batch(context, tools, &queries).unwrap().len(), 16);
         queries.push(BatchQuery {
-            name: "find_symbol".into(),
+            name: "callers".into(),
             arguments: json!({"symbol": "target"}),
         });
         assert!(execute_batch(context, tools, &queries).is_err());
     });
 }
 
+fn batch_items(queries: serde_json::Value) -> Vec<serde_json::Value> {
+    let mut items = Vec::new();
+    with_context(|context| {
+        let result = dispatch(context, "batch", &json!({ "queries": queries })).unwrap();
+        items = result.as_array().unwrap().clone();
+    });
+    items
+}
+
 #[test]
 fn batch_malformed_items_preserve_order_and_structured_errors() {
-    with_context(|context| {
-        let result = dispatch(
-            context,
-            "batch",
-            &json!({"queries": [
-                {"name": "find_symbol", "arguments": {"symbol": "target"}},
-                {"name": 7}, null,
-                {"name": "find_symbol", "arguments": []},
-                {"name": "unknown"},
-                {"name": "find_symbol", "arguments": {"symbol": "caller"}}
-            ]}),
-        )
-        .unwrap();
-        let items = result.as_array().unwrap();
-        assert_eq!(items.len(), 6);
-        assert!(items[0]["result"].as_str().unwrap().contains("target"));
-        for item in &items[1..5] {
-            assert!(item["error"].is_string());
-        }
-        assert!(items[5]["result"].as_str().unwrap().contains("caller"));
-        assert_eq!(items[0]["kind"], "xml");
-    });
+    let items = batch_items(json!([
+        {"name": "callers", "arguments": {"symbol": "target"}},
+        {"name": 7}, null,
+        {"name": "callers", "arguments": []},
+        {"name": "unknown"},
+        {"name": "callers", "arguments": {"symbol": "caller"}}
+    ]));
+    assert_eq!(items.len(), 6);
+    assert!(items[0]["result"].as_str().unwrap().contains("target"));
+    for item in &items[1..5] {
+        assert!(item["error"].is_string());
+    }
+    assert!(items[5]["result"].as_str().unwrap().contains("caller"));
+    assert_eq!(items[0]["kind"], "xml");
 }
 
 #[test]
 fn batch_accepts_arguments_alongside_the_tool_name() {
-    with_context(|context| {
-        let result = dispatch(
-            context,
-            "batch",
-            &json!({"queries": [
-                {"tool": "find_symbol", "symbol": "target"},
-                {"name": "find_symbol", "symbol": "caller"},
-                {"name": "find_symbol", "arguments": {"symbol": "target"}, "limit": 1},
-                {"symbol": "target"}
-            ]}),
-        )
-        .unwrap();
-        let items = result.as_array().unwrap();
-        assert!(items[0]["result"].as_str().unwrap().contains("target"));
-        assert!(items[1]["result"].as_str().unwrap().contains("caller"));
-        for item in &items[2..] {
-            assert!(item["error"].as_str().unwrap().contains(r#"{"name": TOOL"#));
-        }
-    });
+    let items = batch_items(json!([
+        {"tool": "callers", "symbol": "target"},
+        {"name": "callers", "symbol": "caller"},
+        {"name": "callers", "arguments": {"symbol": "target"}, "limit": 1},
+        {"symbol": "target"}
+    ]));
+    assert!(items[0]["result"].as_str().unwrap().contains("target"));
+    assert!(items[1]["result"].as_str().unwrap().contains("caller"));
+    for item in &items[2..] {
+        assert!(item["error"].as_str().unwrap().contains(r#"{"name": TOOL"#));
+    }
 }
 
 #[test]
@@ -174,7 +179,7 @@ fn batch_xml_escapes_text_and_json_without_escaping_xml_reports() {
     let results = [
         json!({"tool": "memory_recall", "kind": "text", "result": "A & B <example/>"}),
         json!({"tool": "json", "kind": "json", "result": {"note": "<&"}}),
-        json!({"tool": "find_symbol", "kind": "xml", "result": "<symbols/>"}),
+        json!({"tool": "callers", "kind": "xml", "result": "<symbols/>"}),
         json!({"tool": "unknown", "error": "unknown & rejected"}),
     ];
     let mut output = Vec::new();
@@ -193,7 +198,7 @@ fn batch_xml_escapes_text_and_json_without_escaping_xml_reports() {
     );
 
     let mut esc_out = Vec::new();
-    let sample = [json!({"tool": "find_symbol", "kind": "xml", "result": "<symbols/>"})];
+    let sample = [json!({"tool": "callers", "kind": "xml", "result": "<symbols/>"})];
     ripwire_rs::commands::batch::write_batch_results("root&path", &sample, &mut esc_out).unwrap();
     assert!(
         String::from_utf8(esc_out)
@@ -363,7 +368,7 @@ fn edit_check_pages_preserve_flagged_callers_and_offset_unflagged_rows() {
 #[test]
 fn dispatch_accepts_envelope_arguments_and_honors_legend() {
     with_context(|context| {
-        let compact = dispatch(context, "find_symbol", &json!({"symbol": "target"})).unwrap();
+        let compact = dispatch(context, "callers", &json!({"symbol": "target"})).unwrap();
         assert!(compact.as_str().unwrap().starts_with("<!--"));
         let with_envelope = json!({
             "symbol": "target",
@@ -371,7 +376,7 @@ fn dispatch_accepts_envelope_arguments_and_honors_legend() {
             "paths": ["src"],
             "legend": "none",
         });
-        let none = dispatch(context, "find_symbol", &with_envelope).unwrap();
+        let none = dispatch(context, "callers", &with_envelope).unwrap();
         let xml = none.as_str().unwrap();
         assert!(!xml.contains("<!--"));
         assert!(xml.contains("target"));
@@ -380,7 +385,7 @@ fn dispatch_accepts_envelope_arguments_and_honors_legend() {
             json!({"symbol": "target", "paths": "src"}),
             json!({"symbol": "target", "bogus": 1}),
         ] {
-            assert!(dispatch(context, "find_symbol", &bad).is_err());
+            assert!(dispatch(context, "callers", &bad).is_err());
         }
     });
 }

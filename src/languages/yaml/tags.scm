@@ -24,7 +24,7 @@
 ; (dropGatedCapture's definition.yamlkey arm — the same in-C++ home as every other predicate a
 ; tags pattern cannot express; tags-pass #eq?/#match? predicates never run in ripwire).
 ;
-; ── THE TABLE OF DECISIONS (each from measured frequency — PLAN 2026-08-10 / docs/EVALS.md) ──
+; ── THE TABLE OF DECISIONS (each from measured frequency — PLAN 2026-08-10) ──
 ;   mapping key           → a symbol IF its mapping-depth <= 2, sequences not counted (ingest
 ;                           enforces; the pair node is the def, so --expand yields the subtree).
 ;                           Block and flow style are ONE rule: `{a: 1}` is the same mapping node

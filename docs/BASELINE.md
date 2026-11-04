@@ -115,12 +115,12 @@ the tokens because the one-hop, doc and tree sections are budgeted from the rows
 tokenizes the answers that disclose a price and fails outside 0.8 to 1.2 of the real count (needs `uv`; it
 skips loudly without).
 
-| `--max-tokens=N` map, real tokens / N | 500 | 1000 | 2000 | 4000 | 8000 |
+| `--token-budget=N` map, real tokens / N | 500 | 1000 | 2000 | 4000 | 8000 |
 |---|---|---|---|---|---|
 | before | 0.68 | 0.50 | 0.64 | 0.72 | 1.07 |
 | after | 1.00 | 1.00 | 1.06 | 1.08 | 1.12 |
 
-`--for` at its default 4000 tokens: 14422 bytes (5362 real tokens) to 11301 bytes (4138); at `--max-tokens=2000`
+`--for` at its default 4000 tokens: 14422 bytes (5362 real tokens) to 11301 bytes (4138); at `--token-budget=2000`
 real/asked 1.2 to 1.02; `--pack-task` 23943 to 16496 bytes (6000-token budget, 5641 real). Retrieval at budget
 2000 is unchanged in quality (top1 0.52, mrr 0.604) at 6008 median bytes instead of 6599.
 

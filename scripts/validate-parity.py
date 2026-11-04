@@ -251,7 +251,7 @@ CHANGED_SETS = (
 GATE_SYMBOLS = ("resolve_changed_or_spec_files", "build_handoff_verified_rows", "execute_test_gate_query_paged")
 # Ranked lists: rows are compared by position, so a shape mismatch at any rank fails.
 # Row identity order is not gated here; ranking differs from upstream and is reported, not ledgered.
-RANKED_FLAGS = ("", "--top-k", "--max-tokens", "--rank-by", "--biggest-first", "--hotspots", "--affected")
+RANKED_FLAGS = ("", "--top-k", "--token-budget", "--rank-by", "--biggest-first", "--hotspots", "--affected")
 
 
 def build_command_list(target_file, target_sym, second_sym):
@@ -260,8 +260,8 @@ def build_command_list(target_file, target_sym, second_sym):
         ("--top-k=50", "Top 50 symbols"),
         ("--top-k=100", "Top 100 symbols"),
         ("--top-k=20", "Top 20 symbols"),
-        ("--max-tokens=2000", "2000 token budget"),
-        ("--max-tokens=4000", "4000 token budget"),
+        ("--token-budget=2000", "2000 token budget"),
+        ("--token-budget=4000", "4000 token budget"),
         ("--rank-by=authority", "Authority ranking"),
         ("--rank-by=hub", "Hub ranking"),
         ("--legend=compact", "Compact legend"),
@@ -506,7 +506,7 @@ def root_attr_error(root_rw, root_rip, allow_extra_root):
 
 
 def budget_error(cmd, out_rw, out_rip):
-    if "--max-tokens=2000" in cmd and len(out_rw) > max(len(out_rip) * 3, 10000):
+    if "--token-budget=2000" in cmd and len(out_rw) > max(len(out_rip) * 3, 10000):
         return f"budget overrun: rw={len(out_rw)}B vs rip={len(out_rip)}B"
     return None
 
@@ -603,7 +603,7 @@ def full_window_outputs(rw_bin, rip_bin, repo, cmd, out_rw, out_rip):
     command keeps its own windows, and any failure to run the full set keeps the default outputs.
     """
     root, err = parse_xml_dom(out_rw)
-    if err or not is_paged(root) or FULL_ROWS_FLAG in cmd or "--max-tokens" in cmd or "--token-budget" in cmd:
+    if err or not is_paged(root) or FULL_ROWS_FLAG in cmd or "--token-budget" in cmd:
         return out_rw, out_rip
     args = shlex.split(cmd) + [FULL_ROWS_FLAG]
     try:
@@ -616,11 +616,15 @@ def full_window_outputs(rw_bin, rip_bin, repo, cmd, out_rw, out_rip):
     return full_rw.stdout, full_rip.stdout
 
 
+def upstream_argv(cmd):
+    """Upstream ripwire spells the token budget `--max-tokens`; every other flag is shared."""
+    return [arg.replace("--token-budget", "--max-tokens", 1) for arg in shlex.split(cmd)]
+
+
 def command_argv(rw_bin, rip_bin, repo, cmd):
     if cmd == "-v":
         return [rw_bin, "-v"], [rip_bin, "-v"]
-    args = shlex.split(cmd)
-    return [rw_bin, repo] + args, [rip_bin, repo] + args
+    return [rw_bin, repo] + shlex.split(cmd), [rip_bin, repo] + upstream_argv(cmd)
 
 
 def timeout_outcome(cmd, text, p_rw):
@@ -845,7 +849,7 @@ def run_full_rows(rw_bin, rip_bin, repo, cmd):
         [rw_bin, repo] + shlex.split(cmd) + [FULL_ROWS_FLAG], capture_output=True, text=True, timeout=20
     )
     full_rip = subprocess.run(
-        [rip_bin, repo] + shlex.split(cmd) + [FULL_ROWS_FLAG], capture_output=True, text=True, timeout=FULL_TIMEOUT
+        [rip_bin, repo] + upstream_argv(cmd) + [FULL_ROWS_FLAG], capture_output=True, text=True, timeout=FULL_TIMEOUT
     )
     return full_rw.stdout, full_rip.stdout
 

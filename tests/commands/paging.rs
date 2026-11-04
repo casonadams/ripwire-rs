@@ -124,33 +124,9 @@ const CASES: &[Case] = &[
         render: |w, c| mcp(w, c, "callers", &json!({"symbol": "target", "limit": 1})),
     },
     Case {
-        command: "callers",
-        tool: Some("find_referencing_symbols"),
-        render: |w, c| {
-            mcp(
-                w,
-                c,
-                "find_referencing_symbols",
-                &json!({"symbol": "target", "limit": 1}),
-            )
-        },
-    },
-    Case {
         command: "callees",
         tool: Some("callees"),
         render: |w, c| mcp(w, c, "callees", &json!({"symbol": "hub", "limit": 1})),
-    },
-    Case {
-        command: "find-symbol",
-        tool: Some("find_symbol"),
-        render: |w, c| {
-            mcp(
-                w,
-                c,
-                "find_symbol",
-                &json!({"symbol": "target", "limit": 1}),
-            )
-        },
     },
     Case {
         command: "uses",

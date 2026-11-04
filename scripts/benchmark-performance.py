@@ -66,7 +66,7 @@ def build_bench_suite(primary_sym, secondary_sym):
         ("For Task", [f"--for=explore and inspect {primary_sym}"]),
         ("Grep", [f"--grep={primary_sym}"]),
         ("Connect", [f"--connect={primary_sym},{secondary_sym}"]),
-        ("Path", [f"--path={primary_sym},{secondary_sym}"]),
+        ("Path", [f"--path-between={primary_sym},{secondary_sym}"]),
         ("Whereis", [f"--whereis={primary_sym}"]),
         ("Doc Drift", ["--doc-drift"]),
         ("Flags", ["--flags"]),

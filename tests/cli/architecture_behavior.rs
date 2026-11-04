@@ -364,8 +364,13 @@ fn navigation_reports_direct_neighbors_and_transitive_impact_without_reversing_e
         page: Default::default(),
         max_depth: None,
     };
+    let bare = NavigateArgs {
+        symbol: Some("middle".to_string()),
+        ..Default::default()
+    };
+    let mut out = Vec::new();
+    assert!(execute_navigate_with(".", &bare, &ctx, &mut out).is_err());
     for (callers, callees, impact, target, expected) in [
-        (false, false, false, "middle", vec!["entry", "leaf"]),
         (true, false, false, "middle", vec!["entry"]),
         (false, true, false, "middle", vec!["leaf"]),
         (false, false, true, "leaf", vec!["entry", "middle"]),

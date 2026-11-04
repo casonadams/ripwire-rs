@@ -16,7 +16,7 @@ Run `--quality-delta` first (ripwire-rs-quality-bar): did the code get worse? Th
 
 ## The evidence bundle
 
-`ripwire-rs <dir> --pr-context[=BASEREF] --legend=compact [--max-tokens=8000]`: per changed file, the symbols owning changed lines, caller files, affected tests with `run=` commands, co-change partners outside the diff, and owners.
+`ripwire-rs <dir> --pr-context[=BASEREF] --legend=compact [--token-budget=8000]`: per changed file, the symbols owning changed lines, caller files, affected tests with `run=` commands, co-change partners outside the diff, and owners.
 
 The header carries `at="<sha>[+dirty]"`. Quote it in any review. `+dirty` means uncommitted numbers: re-run after committing before treating them as evidence. `--situ`, `--cochange` and `--owners` carry no stamp; record the sha yourself.
 

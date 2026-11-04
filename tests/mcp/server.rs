@@ -62,7 +62,7 @@ fn root_argument_must_name_a_directory_and_keeps_the_loaded_workspace() {
     let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
     let call = |state: &mut Option<Workspace>, arguments: Value| -> Value {
         let request = json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
-            "params":{"name":"find_symbol","arguments":arguments}});
+            "params":{"name":"callers","arguments":arguments}});
         serde_json::from_str(&dispatch_json_rpc(&request.to_string(), state, ":memory:").unwrap())
             .unwrap()
     };
@@ -92,7 +92,7 @@ fn root_argument_must_name_a_directory_and_keeps_the_loaded_workspace() {
 fn call_batch_with_root(state: &mut Option<Workspace>) -> String {
     let request = json!({"jsonrpc":"2.0","id":2,"method":"tools/call",
         "params":{"name":"batch","arguments":{"queries":[
-            {"tool":"find_symbol","symbol":"alpha","root":"/tmp"}]}}});
+            {"tool":"callers","symbol":"alpha","root":"/tmp"}]}}});
     dispatch_json_rpc(&request.to_string(), state, ":memory:").unwrap()
 }
 
@@ -186,12 +186,12 @@ fn arguments_that_name_no_servable_request_are_refused_with_their_cause() {
     let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
     let cases = [
         (
-            "find_symbol",
+            "callers",
             json!({"symbol":"alpha","path":"/other/repo"}),
             "root argument",
         ),
         (
-            "find_symbol",
+            "callers",
             json!({"symbol":"alpha","paths":["/other/repo"]}),
             "root argument",
         ),
@@ -213,7 +213,7 @@ fn relative_path_scopes_and_explore_task_are_served() {
     let mut state = workspace(&[("src/lib.rs", Lang::Rust, b"pub fn alpha() {}\n")]);
     let scoped = call_tool(
         &mut state,
-        "find_symbol",
+        "callers",
         json!({"symbol":"alpha","path":"src"}),
     );
     assert!(text_of(&scoped).contains("alpha"));

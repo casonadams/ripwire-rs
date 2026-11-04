@@ -1,40 +1,18 @@
-//! `--refetch HANDLE`: expands a compact handle from `--handles` into the symbol's source.
-//! A bare `--refetch` clones a remote URL root fresh instead.
+//! `--refetch`: clones a remote URL root fresh instead of reusing the cached clone.
 use super::common::mcp::mcp_tool;
-use super::common::retrieval::report_query;
-use super::{Command, Run, SharedOption};
+use super::{Command, SharedOption};
 use crate::cli::Cli;
 use crate::query::commands::{CommandDescriptor, QueryContext, render_xml};
 use crate::serialize::JsonValueExt;
 use clap::{Args, Command as ClapCommand};
 use serde_json::Value;
-use std::io::{self, Write};
 
 /// `--refetch`.
 #[derive(Args, Debug, Clone, Default, PartialEq)]
 pub struct RefetchArgs {
-    /// Expand a compact handle returned by --handles; bare, clone a remote URL root fresh
-    #[arg(long = "refetch", value_name = "HANDLE", num_args = 0..=1, default_missing_value = "")]
-    pub refetch: Option<String>,
-}
-
-impl RefetchArgs {
-    fn handle(&self) -> Option<&str> {
-        self.refetch.as_deref().filter(|handle| !handle.is_empty())
-    }
-}
-
-pub fn execute<W: Write>(query: &QueryContext<'_>, handle: &str, out: &mut W) -> io::Result<()> {
-    let request = crate::query::detail::BodyRequest {
-        root: query.root,
-        symbols: handle,
-        path_hint: None,
-        start_line: None,
-        end_line: None,
-        outline: false,
-        compress: false,
-    };
-    crate::query::detail::execute_body_query(&request, query.ingest, query.interner, query.sources, out)
+    /// Clone a remote URL root fresh instead of reusing the cached clone
+    #[arg(long = "refetch")]
+    pub refetch: bool,
 }
 
 pub struct Refetch;
@@ -53,14 +31,6 @@ impl Command for Refetch {
         RefetchArgs::augment_args(cmd)
     }
 
-    fn run(&self, cli: &Cli, root: &str) -> Option<io::Result<()>> {
-        let args = cli.plugins.decode::<RefetchArgs>()?;
-        let handle = args.handle()?;
-        Some(report_query(&Run::new(cli, root, &[]), |query, out| {
-            execute(query, handle, out)
-        }))
-    }
-
     fn tools(&self) -> &'static [&'static CommandDescriptor] {
         TOOLS
     }
@@ -68,7 +38,7 @@ impl Command for Refetch {
     fn refreshes_remote_checkout(&self, cli: &Cli) -> bool {
         cli.plugins
             .decode::<RefetchArgs>()
-            .is_some_and(|args| args.refetch.as_deref() == Some(""))
+            .is_some_and(|args| args.refetch)
     }
 }
 

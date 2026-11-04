@@ -76,7 +76,7 @@ fn write_recall_footer<W: Write>(out: &mut W, val: &Value) -> io::Result<()> {
         let budget = val.u64_or("budget_bytes", 0);
         write!(
             out,
-            "raise --max-tokens/budget_tokens or narrow the query for {by_budget} more (~{budget}-byte budget)"
+            "raise --token-budget/budget_tokens or narrow the query for {by_budget} more (~{budget}-byte budget)"
         )?;
     }
     out.write_all(b")\n")

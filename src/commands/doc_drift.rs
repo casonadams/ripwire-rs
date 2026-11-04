@@ -15,9 +15,6 @@ pub struct DocDriftArgs {
     /// Detect stale doc references
     #[arg(long = "doc-drift")]
     pub doc_drift: bool,
-    /// Gateability check for doc-drift
-    #[arg(long = "gateability")]
-    pub gateability: bool,
 }
 
 pub static DOC_DRIFT: Plugin<DocDriftArgs> = Plugin {

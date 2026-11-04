@@ -218,7 +218,7 @@ fn test_budget_omits_docs_that_cannot_get_a_slice() {
     assert_eq!(out.omitted_budget, 1);
     let text = render(&inputs, "zebra", opts);
     assert!(text.contains(
-        "(capped: 1 of 2 relevant document files omitted — raise --max-tokens/budget_tokens or narrow the query for 1 more (~375-byte budget))"
+        "(capped: 1 of 2 relevant document files omitted — raise --token-budget/budget_tokens or narrow the query for 1 more (~375-byte budget))"
     ));
 }
 

@@ -1,5 +1,4 @@
-//! MCP and LSP servers: `--mcp`, `--lsp`, `--listen`, `--mcp-token`, `--mcp-tools` and the `mcp`
-//! subcommand. `--listen`, `--mcp-token` and `--mcp-tools` are parsed only.
+//! MCP and LSP servers: `--mcp`, `--lsp` and the `mcp` subcommand.
 use super::{Command, SharedOption, decode_subcommand};
 use crate::cli::Cli;
 use clap::{Args, Command as ClapCommand};
@@ -15,15 +14,6 @@ pub struct McpFlags {
     /// Enable LSP server bridge
     #[arg(long = "lsp")]
     pub lsp: bool,
-    /// Run daemon listener
-    #[arg(long = "listen")]
-    pub listen: bool,
-    /// Require authentication token for MCP transport
-    #[arg(long = "mcp-token", value_name = "TOKEN")]
-    pub mcp_token: Option<String>,
-    /// Restrict exposed MCP tools to comma-separated list or profile (core|full)
-    #[arg(long = "mcp-tools", value_name = "LIST")]
-    pub mcp_tools: Option<String>,
 }
 
 /// `mcp` subcommand: serve MCP over stdio, optionally pinning a workspace root.

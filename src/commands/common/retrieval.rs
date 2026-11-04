@@ -30,7 +30,7 @@ pub fn report_query(
     })
 }
 
-/// The `--token-budget` / `--max-tokens` ceiling for task bundles.
+/// The `--token-budget` ceiling for task bundles.
 pub fn token_budget(cli: &Cli) -> Option<usize> {
-    cli.token_budget.or(cli.max_tokens)
+    cli.token_budget
 }

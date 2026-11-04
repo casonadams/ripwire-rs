@@ -68,22 +68,8 @@ fn call_orient(state: &QueryContext<'_>, args: &Value) -> Result<Value, String> 
 }
 pub(super) static TOOLS: &[&CommandDescriptor] = &[
     mcp_tool!(
-        "analyze",
-        "Architecture map for a directory: top symbols, signatures, and direct callees",
-        &[
-            ("top_k", "integer", "Maximum symbols"),
-            (
-                "rank_by",
-                "string",
-                "pagerank, authority, hub, degree, ccx, stable"
-            ),
-        ],
-        &[],
-        call_explore
-    ),
-    mcp_tool!(
         "explore",
-        "ONE-call task orientation: ranked symbols, files, and architecture map",
+        "ONE-call orientation: ranked symbols, files, and architecture map by rank_by and top_k; with task, the task bundle",
         &[
             ("task", "string", "Task to orient on; omitted returns the ranked map"),
             ("partition", "integer", "2..16 community slices of the task bundle; needs task"),
@@ -96,19 +82,5 @@ pub(super) static TOOLS: &[&CommandDescriptor] = &[
         ],
         &[],
         call_orient
-    ),
-    mcp_tool!(
-        "rank_by",
-        "Architecture map ranked by the same signals as CLI --rank-by",
-        &[
-            (
-                "rank_by",
-                "string",
-                "pagerank, authority, hub, degree, ccx, stable"
-            ),
-            ("top_k", "integer", "Maximum symbols"),
-        ],
-        &["rank_by"],
-        call_explore
     ),
 ];

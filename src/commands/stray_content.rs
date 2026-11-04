@@ -12,9 +12,6 @@ pub struct StrayContentArgs {
     /// Divergent branch content tracking
     #[arg(long = "stray-content")]
     pub stray_content: bool,
-    /// Check ABI byte layout across branches in stray-content
-    #[arg(long = "abi")]
-    pub abi: bool,
     /// Generate landing plan in stray-content
     #[arg(long = "plan")]
     pub plan: bool,

@@ -12,18 +12,14 @@ fn test_gate_modifiers_refused_without_their_verb() {
 
 #[test]
 fn test_compute_effective_budget() {
-    assert_eq!(compute_effective_budget(Some(1024), None, None), Some(1024));
+    assert_eq!(compute_effective_budget(Some(1024), None), Some(1024));
     let tokens = ripwire_rs::query::map::token_budget_bytes(100);
     assert_eq!(
-        compute_effective_budget(Some(1024), Some(100), None),
+        compute_effective_budget(Some(1024), Some(100)),
         Some(tokens)
     );
     assert_eq!(
-        compute_effective_budget(None, None, Some(100)),
-        Some(tokens)
-    );
-    assert_eq!(
-        compute_effective_budget(None, None, None),
+        compute_effective_budget(None, None),
         Some(DEFAULT_PACK_BUDGET_BYTES)
     );
     assert_eq!(split_endpoint_pair("a,b"), ("a", "b"));

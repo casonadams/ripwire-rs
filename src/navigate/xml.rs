@@ -1,4 +1,4 @@
-use super::{DeclinedCall, ImpactDef, ImpactNode, NavNeighborhood, ReachFile, SymbolNavInfo};
+use super::{DeclinedCall, ImpactDef, ImpactNode, ReachFile, SymbolNavInfo};
 use crate::domain::{IngestResult, Interner, SymKind};
 use crate::serialize::{Paged, XmlEscapeExt, row_bytes};
 use std::io::{self, Write};
@@ -435,78 +435,6 @@ impl crate::serialize::XmlReport for ImpactReport<'_> {
         }
         for dc in self.declined().rows() {
             write_declined_row(out, dc, None, "")?;
-        }
-        Ok(())
-    }
-}
-
-/// Definition groups and their incoming/outgoing neighborhoods under one query root.
-pub struct FindSymbolReport<'a> {
-    pub root: &'a str,
-    pub of: &'a str,
-    pub defs: usize,
-    pub def_rows: &'a [ImpactDef<'a>],
-    pub nav: &'a NavNeighborhood,
-    pub callers_declined: &'a [DeclinedCall<'a>],
-    pub callees_declined: &'a [DeclinedCall<'a>],
-    pub page: crate::serialize::PageRequest,
-}
-
-impl FindSymbolReport<'_> {
-    fn neighbors(&self, dir: NavDir) -> NavItemsReport<'_> {
-        let (items, declined) = match dir {
-            NavDir::Callers => (&self.nav.callers, self.callers_declined),
-            NavDir::Callees => (&self.nav.callees, self.callees_declined),
-        };
-        NavItemsReport {
-            dir,
-            root: self.root,
-            of: self.of,
-            defs: self.defs,
-            def_rows: self.def_rows,
-            items,
-            declined,
-            gauge_attrs: &self.nav.gauge_attrs,
-            page: self.page,
-        }
-    }
-}
-
-impl crate::serialize::XmlReport for FindSymbolReport<'_> {
-    crate::xml_report_meta!(
-        "find-symbol",
-        "ripwire-rs.find-symbol/v1",
-        root: true,
-        comment: "ripwire-rs find-symbol: all matching definition groups and their unioned neighborhoods. p= is the primary match; <def ix= t= sc= p= bodyless=1> lists every group, including tied declarations. Inside callers, of_def= identifies the called groups; inside callees, it identifies the calling groups. ~s|~t|~n retain split/template/name binding provenance. prov= and role= describe callee bindings and macros. Each neighborhood has its own count/page and declined sites, which are not edges."
-    );
-    fn root_path(&self) -> &str {
-        self.root
-    }
-    fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        write!(
-            out,
-            " of=\"{}\" p=\"{}:{}\" defs=\"{}\" groups=\"{}\" callers=\"{}\" callees=\"{}\" {}",
-            self.of.xml_escaped(),
-            self.nav.target.path.xml_escaped(),
-            self.nav.target.line,
-            self.defs,
-            self.def_rows.len(),
-            self.nav.callers.len(),
-            self.nav.callees.len(),
-            self.nav.gauge_attrs,
-        )
-    }
-    fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        write_def_rows(out, self.def_rows)?;
-        for dir in [NavDir::Callers, NavDir::Callees] {
-            let report = self.neighbors(dir);
-            let items = report.paged_items();
-            let tag = dir.tag();
-            write!(out, "<{tag}")?;
-            report.write_attrs(&items, out)?;
-            writeln!(out, ">")?;
-            report.write_rows(&items, out)?;
-            writeln!(out, "</{tag}>")?;
         }
         Ok(())
     }

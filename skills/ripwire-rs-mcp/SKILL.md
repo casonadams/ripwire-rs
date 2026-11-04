@@ -40,11 +40,11 @@ Navigation returns lean reports. Fetch a body only when you will reason about it
 
 ## Edit verbs
 
-`replace_symbol_body`, `insert_before_symbol` and `insert_after_symbol` splice text at a symbol's byte span. The receipt carries `edit_check` and `tests_to_run`; do not re-run them. A failed edit leaves the file unchanged. Prefer the CLI (`--replace-symbol-body=SYM --edit-payload=FILE`) unless the server is already warm.
+`replace_symbol_body` and `insert_symbol` (`position`: `before` or `after`) splice text at a symbol's byte span. The receipt carries `edit_check` and `tests_to_run`; do not re-run them. A failed edit leaves the file unchanged. Prefer the CLI (`--replace-symbol-body=SYM --edit-payload=FILE`) unless the server is already warm.
 
 ## Editors: `--lsp`
 
-`ripwire-rs --lsp` is a read-only navigation LSP server for editors (definition, references, document symbols, workspace symbols, hover), on the same warm index. Saved-state answers only; counts are floors. It cannot combine with `--mcp` or `--listen`.
+`ripwire-rs --lsp` is a read-only navigation LSP server for editors (definition, references, document symbols, workspace symbols, hover), on the same warm index. Saved-state answers only; counts are floors. It cannot combine with `--mcp`.
 
 <output_format>
 ### MCP Configuration

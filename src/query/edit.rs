@@ -21,8 +21,8 @@ impl std::str::FromStr for EditOp {
     fn from_str(op_str: &str) -> Result<Self, Self::Err> {
         match op_str {
             "replace" | "replace_body" | "replace_symbol_body" => Ok(Self::ReplaceBody),
-            "insert_before" | "insert_before_symbol" | "before" => Ok(Self::InsertBefore),
-            "insert_after" | "insert_after_symbol" | "after" => Ok(Self::InsertAfter),
+            "insert_before" | "before" => Ok(Self::InsertBefore),
+            "insert_after" | "after" => Ok(Self::InsertAfter),
             other => Err(format!("unsupported edit op '{other}'")),
         }
     }

@@ -18,7 +18,7 @@ You trace code structure with ripwire and never present an unverified edge as fa
 - **Is it safe to change or delete X** - run `--impact=SYM` (transitive reach) and `--uses=SYM` (call/read/write/import sites). `--callers` alone misses both non-call references and depth. Rows carry `tested="1"`; the root gives `radius_tested=` and `radius_untested=`.
 - **Body and callee signatures** - `--expand=SYM` or `--expand=path:name`.
 - **Several definitions share a name** - `--defs=A,B` returns a `sel=` that pins one. Any selector also takes `@FILE:LINE`; `--at=FILE:LINE` gives the enclosing chain.
-- **How does A reach B** - `--path=A,B` (directed). For N>2 symbols, or a pair `--path` calls unreachable, use `--connect=A,B,C` (undirected; finds shared callers).
+- **How does A reach B** - `--path-between=A,B` (directed). For N>2 symbols, or a pair `--path-between` calls unreachable, use `--connect=A,B,C` (undirected; finds shared callers).
 - **Literal** - `--grep=STR`, with `--grep-context=N`. Config and string hits need `--grep-in=any`. Narrow with `--and=B` / `--not=C`.
 - **Verify a claim** - `--verify='calls(A,B)'` (also `uses`, `unused`, `contains`, `defines`, `reaches`). `not-established` means the index cannot prove it, not that it is false.
 - **Variable in one function** - `--slice=SYM:VAR`; add `--slice-flow=back|fwd` for transitive flow.
@@ -32,7 +32,7 @@ Pick the branch that matches what you know.
 - **Symptom, no location** - `--for="<symptom>"`, preferring high-`cx`, high-`in` hits. Then `--hotspots`; a symbol in both lists is the prime suspect. Then `--impact` on the top 2-3.
 - **Known subsystem** - note the recurring `p=` directories in `--for`, then `--grep="ERROR_TEXT"` for the emit site and `--callers` upward.
 - **Regression** - `--situ` (or `--situ=a.c,b.h`) gives blast radius, tests, and co-change partners missing from the diff. Then `--callers=SYM` and `--cochange=FILE` (`surprising="1"` = no static link).
-- **Stack trace, sanitizer, compiler error** - `--from-trace=FILE` (or `-` for stdin). Frames map innermost-first; read rank 1. `--run-trace="make -j"` runs the command and maps its failure output; the exit code is disclosed.
+- **Stack trace, sanitizer, compiler error** - `--from-trace=FILE` (or `-` for stdin). Frames map innermost-first; read rank 1.
 - **Wrong value** - `--slice=SYM:VAR --slice-flow=back`, then read the statements it names.
 
 Stop once source confirms one candidate. Slices and graphs are name-based and stop at the function boundary: use them to focus reading, not as proof. Pin the root cause with `--note-add="SYM: what went wrong"`.

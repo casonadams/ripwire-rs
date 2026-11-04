@@ -1,5 +1,4 @@
-//! Default repository map: printed when no other command is selected. Owns `--map-diff`, `--stable`,
-//! `--no-stable`, `--order` and `--no-inventory`.
+//! Default repository map: printed when no other command is selected. Owns `--map-diff` and `--no-inventory`.
 
 use super::{Command, SharedOption};
 use crate::cli::Cli;
@@ -17,15 +16,6 @@ pub struct MapArgs {
     /// Re-rank map toward git-changed files so recent work floats up
     #[arg(long = "map-diff")]
     pub map_diff: bool,
-    /// Emit deterministic path-ordered map without volatile rank scores
-    #[arg(long = "stable", overrides_with = "stable")]
-    pub stable: bool,
-    /// Disable the stable dependency violation section in --deps
-    #[arg(long = "no-stable", overrides_with = "no_stable")]
-    pub no_stable: bool,
-    /// Emit ordering: important-first (default), important-last, or stable
-    #[arg(long, default_value = "important-first")]
-    pub order: String,
     /// Drop unranked <inv> file inventory tier from map and metrics output
     #[arg(long = "no-inventory", overrides_with = "no_inventory")]
     pub no_inventory: bool,
@@ -45,11 +35,6 @@ pub fn dispatch_default_run(cli: &Cli, root: &str) -> io::Result<()> {
     let (ingest, graph, pr, interner) = load_repo_analysis_for_cli(cli, root, false)?;
     let mut stdout_lock = io::stdout().lock();
     let mut stdout = cli.wrap_xml_writer(&mut stdout_lock, false);
-    let rank_by = if flags.stable || flags.order.eq_ignore_ascii_case("stable") {
-        "stable"
-    } else {
-        &cli.rank_by
-    };
     let (changed_files, at) = if flags.map_diff {
         let files = crate::git::repo::working_tree_changes(root).map_err(io::Error::other)?;
         let at = crate::git::history::compute_git_at_stamp(root).map_err(io::Error::other)?;
@@ -58,7 +43,7 @@ pub fn dispatch_default_run(cli: &Cli, root: &str) -> io::Result<()> {
         (None, None)
     };
     let mut request = MapRequest::new(root);
-    request.rank_by = rank_by;
+    request.rank_by = &cli.rank_by;
     request.pack_budget = cli.effective_budget_bytes();
     request.top_k = cli.top_k.or(request.top_k);
     request.emit_legend = emit_legend;

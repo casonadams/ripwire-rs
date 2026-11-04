@@ -179,11 +179,8 @@ Negation filter for search: exclude matches containing pattern \fIPAT\fR.
 .BI \-\-in= SCOPE
 Scope filter: require matches to be located inside enclosing symbol, class, or directory \fISCOPE\fR.
 .TP
-.B \-\-handles
-Emit compact opaque refetch handles on retrieval rows for low-token follow-ups.
-.TP
-.BI \-\-refetch [= HANDLE ]
-With \fIHANDLE\fR, expand a compact refetch handle previously emitted by \fB\-\-handles\fR. Bare, when the root is a remote git URL, clone it fresh instead of reusing the cached clone.
+.B \-\-refetch
+Bare, when the root is a remote git URL, clone it fresh instead of reusing the cached clone.
 .TP
 .BI \-\-sections= LIST
 With \fB\-\-for\fR, restore the \fB<lego>\fR section (interfaces declared in the ranked files, with their implementors) that the bundle collapses to a counted stub \fB<lego total= shown="0" capped="1" next=>\fR by default. \fILIST\fR is a closed, comma-separated set of \fBlego\fR and \fBcompose\fR, each at most once; \fBcompose\fR (HAS-A member-field rows) is accepted but never produced because this build does not index member fields. Refused without \fB\-\-for\fR.

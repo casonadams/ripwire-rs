@@ -1,10 +1,10 @@
-//! Symbol edits shared by `--replace-symbol-body`, `--insert-before-symbol` and `--insert-after-symbol`,
-//! with their MCP tools.
+//! Symbol edits shared by `--replace-symbol-body` and `--insert-symbol`, with their MCP tools.
 use crate::commands::Run;
 use crate::commands::edit_payload::EditPayloadArgs;
 use crate::query::commands::QueryContext;
 use crate::query::edit::{self, EditOp, EditTargetRequest};
 use crate::serialize::JsonValueExt;
+use clap::ValueEnum;
 use serde_json::Value;
 use std::io::{self, Write};
 
@@ -12,7 +12,31 @@ pub const EDIT_INS_PARAMS: &[(&str, &str, &str)] = &[
     ("symbol", "string", "Symbol name"),
     ("text", "string", "Text to insert"),
     ("path", "string", "Optional file path hint"),
+    ("position", "string", "before or after the symbol"),
 ];
+
+/// Where `--insert-symbol` and the `insert_symbol` tool put their text, beside the symbol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum InsertPosition {
+    Before,
+    After,
+}
+
+impl InsertPosition {
+    #[must_use]
+    pub const fn op(self) -> EditOp {
+        match self {
+            Self::Before => EditOp::InsertBefore,
+            Self::After => EditOp::InsertAfter,
+        }
+    }
+}
+
+/// The `insert_symbol` tool: `position` picks before or after, the rest is `call_edit_tool`.
+pub fn call_insert_tool(state: &QueryContext<'_>, args: &Value) -> Result<Value, String> {
+    let position = InsertPosition::from_str(args.req_str("position")?, false)?;
+    call_edit_tool(state, position.op(), args, false)
+}
 
 /// Apply one symbol edit from the CLI; the payload and dry-run come from the edit-payload flags.
 pub fn run_edit(run: &Run<'_>, spec: &str, op: EditOp) -> io::Result<()> {

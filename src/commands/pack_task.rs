@@ -27,7 +27,7 @@ pub struct PackTaskArgs {
     pub pack_task: Option<String>,
 }
 
-/// The token ceiling: `--token-budget` or `--max-tokens`, else `--pack-budget` (bytes), else the default.
+/// The token ceiling: `--token-budget`, else `--pack-budget` (bytes), else the default.
 fn budget_tokens(cli: &Cli) -> usize {
     token_budget(cli)
         .or(cli.pack_budget.map(crate::serialize::est_tokens))

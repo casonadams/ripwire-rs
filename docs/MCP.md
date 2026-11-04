@@ -23,8 +23,7 @@ On `initialize` the server returns `instructions`, which MCP clients place in th
 prompt. They say when the navigation tools answer better than grep (callers, callees, impact) and
 that every call needs `symbol`, pinned to one definition among same-named ones by an
 owner-qualified name (`Owner::method` or `Owner.method`), the `file` argument, or a
-`file:LINE` location. Navigation tools (`callers`, `find_referencing_symbols`, `callees`,
-`impact`, `find_symbol`, `uses`) take `file`; an unknown argument's error lists the accepted ones.
+`file:LINE` location. Navigation tools (`callers`, `callees`, `impact`, `uses`) take `file`; an unknown argument's error lists the accepted ones.
 
 ---
 
@@ -32,23 +31,19 @@ owner-qualified name (`Owner::method` or `Owner.method`), the `file` argument, o
 
 | Tool | Category | Description |
 | :--- | :--- | :--- |
-| `explore` | Retrieval | Ranked map, bodies, callers, and test targets in a single byte-budgeted response. |
+| `explore` | Retrieval | Architecture map ranked by `rank_by` (or the task bundle with `task`), with bodies, callers, and test targets in a single byte-budgeted response. |
 | `for` | Retrieval | Task-lens relevance ranking using BM25 and Personalized PageRank. |
 | `batch` | Retrieval | Execute up to 16 heterogeneous sub-queries in a single call. |
-| `fetch_body` | Retrieval | Fetch symbol definition source code by handle or name with optional line bounds. |
+| `fetch_body` | Retrieval | Fetch symbol definition source code by name with optional line bounds. |
 | `exemplar` | Retrieval | Retrieve the best-in-class implementation of a given role (fn, class, interface). |
 | `lego` | Retrieval | Interface contract view with all implementors across the workspace. |
 | `grep` | Search | Trigram literal search annotated with enclosing symbols and definitions. |
-| `find_symbol` | Navigation | 1-hop symbol neighborhood: callers, callees, definitions, and ambiguity metrics. |
-| `find_referencing_symbols` | Navigation | Direct (1-hop) callers of a symbol or database table. |
 | `callers` | Navigation | Who calls a function or method: each call site's enclosing function, same-named definitions kept apart. |
 | `callees` | Navigation | What a function or method calls, with edge provenance and declined evidence. |
 | `impact` | Navigation | What breaks if a symbol or database table changes: transitive callers via the call hierarchy. |
 | `uses` | Navigation | Statically resolvable use-sites (call, read, write, import, extends), including embedded SQL table lineage from application strings. |
 | `path_between` | Architecture | Shortest directed call path between two symbols. |
 | `connect` | Architecture | Directed connecting subgraph relating 2..16 symbols, with radius 2 by default. |
-| `analyze` | Architecture | Architecture map ranked by PageRank or chosen metric. |
-| `rank_by` | Architecture | Architecture map ranked by pagerank, authority, hub, degree, ccx, or stable. |
 | `situational_awareness` | Architecture | Diff context: blast radius, tests to run, and forgotten co-change partners. |
 | `from_trace` | Debugging | Maps stack trace frames and compiler errors onto indexed symbol definitions. |
 | `slice` | Slicing | Intra-procedural def-use variable slicing (forward, backward, or both). |
@@ -65,8 +60,7 @@ owner-qualified name (`Owner::method` or `Owner.method`), the `file` argument, o
 | `whereis` | Inspection | Branch divergence tracker: finds which branch's tree defines a symbol. |
 | `stray_content` | Inspection | Lines authored on a divergent branch not present in HEAD. |
 | `replace_symbol_body` | Atomic Edit | Atomically replace an entire symbol definition with verified byte rollback. |
-| `insert_before_symbol` | Atomic Edit | Atomically insert source code before a symbol definition. |
-| `insert_after_symbol` | Atomic Edit | Atomically insert source code after a symbol definition. |
+| `insert_symbol` | Atomic Edit | Atomically insert source code before or after a symbol definition (`position`). |
 
 ## Canonical Reports
 
@@ -95,7 +89,7 @@ expected shape. CLI batch files ignore blank/comment lines and accept `name:argu
 `name:{JSON arguments}` for the shared read options.
 
 Impact `max_depth` matches the optional global CLI `--impact-depth=N`, including
-`navigate --impact`; the default traversal is unchanged. `find_symbol` retains
+`navigate --impact`; the default traversal is unchanged. `callers` and `callees` retain
 grouped definitions and the same bound/declined neighbors as navigation.
 Legends are preserved from shared reports, without per-session mutation.
 Batch executes against the real root through the same command registry. Success

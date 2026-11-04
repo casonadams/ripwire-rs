@@ -1,7 +1,7 @@
 use crate::index_support::index;
 use ripwire_rs::commands::{
     ast_match, at, connect, exemplar, for_task, from_trace, graph_query, lego, pack_task,
-    path_between, refetch, verify,
+    path_between, verify,
 };
 use ripwire_rs::query::commands::QueryContext;
 use ripwire_rs::serialize::PageRequest;
@@ -187,9 +187,6 @@ fn advanced_retrieval_and_ast_search_execute_over_context_sources() {
     assert_eq!(report.root_element().attribute("hits"), Some("5"));
     assert_eq!(report.root_element().attribute("files"), Some("2"));
 
-    let refetch_xml = run_with(|q, out| refetch::execute(q, "entry", out)).unwrap();
-    assert!(refetch_xml.contains("bridge();"), "{refetch_xml}");
-
     let trace_xml = run_with(|q, out| from_trace::execute(q, "src/flow.rs:2", out)).unwrap();
     let report = roxmltree::Document::parse(&trace_xml).unwrap();
     let suspect = report
@@ -280,7 +277,5 @@ fn each_plugin_is_selected_only_by_its_primary_flag() {
     ] {
         assert!(any(flag), "{flag}");
     }
-    for flag in ["--adaptive", "--no-route"] {
-        assert!(!any(flag), "{flag}");
-    }
+    assert!(!any("--adaptive"), "--adaptive");
 }

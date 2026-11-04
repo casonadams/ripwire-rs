@@ -215,9 +215,9 @@ fn shared_navigation_reports_keep_scip_groups_and_unbound_sites_with_paging() {
     assert!(unpinned.contains("count=\"0\""), "{unpinned}");
     assert!(unpinned.contains("declined_calls=\"1\""), "{unpinned}");
 
-    let found = render("run", NavMode::FindSymbol, &ctx);
+    let found = render("run", NavMode::Callers, &ctx);
     assert!(found.contains("root=\"repo&amp;root\""), "{found}");
-    assert!(found.contains("defs=\"2\" groups=\"2\""), "{found}");
+    assert!(found.contains("defs=\"2\""), "{found}");
     assert!(
         found.contains("<def ix=\"1\" t=\"fn\" sc=\"X\" p=\"a/x.py:2\"/>"),
         "{found}"
@@ -236,12 +236,7 @@ fn shared_navigation_reports_keep_scip_groups_and_unbound_sites_with_paging() {
         ),
         "{found}"
     );
-    let found_go = render("go", NavMode::FindSymbol, &ctx);
-    assert!(found_go.contains("defs=\"1\" groups=\"1\""), "{found_go}");
-    assert!(
-        found_go.contains("<def ix=\"1\" t=\"fn\" p=\"c/use.py:1\"/>"),
-        "{found_go}"
-    );
+    let found_go = render("go", NavMode::Callees, &ctx);
     assert!(
         found_go.contains("<s t=\"fn\" n=\"run\" p=\"b/y.py:2\" prov=\"scip\"/>"),
         "{found_go}"

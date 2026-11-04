@@ -17,7 +17,6 @@ ripwire-rs . --rank-by=authority
 # ranked symbols by its token budget (default 4000 tokens); --report defaults to 16 KiB shared across lists.
 ripwire-rs . --pack-budget=32768
 ripwire-rs . --token-budget=8192
-ripwire-rs . --max-tokens=4096
 ripwire-rs . --top-k=200
 
 # Control schema legend comment posture (compact or none) and formatting (--pretty, --json)
@@ -266,10 +265,7 @@ ripwire-rs . --report --limit=12 --offset=12
 ripwire-rs . --legend-dict
 
 # Emit deterministic path-ordered map without volatile rank scores
-ripwire-rs . --stable
-
-# Disable stable dependency violation section in --deps
-ripwire-rs . --deps --no-stable
+ripwire-rs . --rank-by=stable
 * **Benefits:** Focuses engineering attention directly on defect-prone hotspots, hidden file coupling, and dead code with mathematical precision.
 
 ---
@@ -309,7 +305,7 @@ ripwire-rs . --batch=queries.txt
 ripwire-rs . --at="src/main.rs:25"
 
 # Use that location as a symbol selector: @FILE:LINE binds the innermost definition enclosing the line
-# (--callers --callees --impact --uses --find-symbol --expand --edit-check --connect --path --around --safe-delete --lego)
+# (--callers --callees --impact --uses --expand --edit-check --connect --path --around --safe-delete --lego)
 ripwire-rs . --callers="@src/main.rs:25"
 
 # Formally verify relationship claim across 6 closed shapes (calls, uses, unused, contains, defines, reaches)
@@ -370,10 +366,6 @@ ripwire-rs . --grep="Interner" --grep-in=any --grep-context=2
 # Conjunction and negation terms (repeatable; --grep-scope=file widens them to the whole file), path scope
 ripwire-rs . --grep="cache" --and="payload" --not="deprecated" --in="src/cache.rs"
 
-# Emit compact refetch handles and re-expand them
-ripwire-rs . --for="parser" --handles
-ripwire-rs . --refetch="h:abc123"
-
 # Analyze a remote repository: a shallow clone cached under $TMPDIR/ripwire-rs/, reused across runs
 ripwire-rs https://github.com/org/repo --report
 ripwire-rs https://github.com/org/repo --refetch --report
@@ -390,10 +382,6 @@ ripwire-rs . --compress
 # Cold-parse once into an index file, then reuse it (valid while HEAD, working tree and binary match)
 ripwire-rs . --index-out="index.json"
 ripwire-rs . --cache="index.json" --callers="parse"
-
-# Annotate symbols with runtime profile weights or trace execution
-ripwire-rs . --with-profile="flamegraph.perf"
-ripwire-rs . --run-trace="cargo test" --run-timeout=30
 
 ```
 * **Benefits:** Minimal prompt token consumption with maximum semantic density for coding agents.

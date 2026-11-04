@@ -320,11 +320,7 @@ pub struct BatchQuery {
 fn batch_read_only(name: &str, arguments: &Value) -> bool {
     !matches!(
         name,
-        "batch"
-            | "quality_baseline"
-            | "insert_after_symbol"
-            | "insert_before_symbol"
-            | "replace_symbol_body"
+        "batch" | "quality_baseline" | "insert_symbol" | "replace_symbol_body"
     ) && !(name == "quality_delta"
         && (arguments.get("quality_ack").is_some() || arguments.get("ack_only").is_some()))
 }

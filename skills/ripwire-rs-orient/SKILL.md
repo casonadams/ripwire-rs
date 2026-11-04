@@ -21,7 +21,7 @@ You orient a coding agent cold-starting on a repository, with the fewest tokens,
 
 Only the plain `ripwire-rs <dir>` map carries `<inv>` (unshown files and entry points). Read it before concluding a file is absent. `--expand`, `--callers` and other lookups need no map.
 
-Budget: `--top-k=50` or `--max-tokens=8000` shape the map. On `--for`, bound output with `--signatures-only` or `--token-budget=N`. A thin answer (`coverage=` under 50, or `weak="1"`) means widen: `--for="<task>" --limit=40`, then `--offset` for the next page. For fan-out, `--pack-task="<task>" --partition=N`.
+Budget: `--top-k=50` or `--token-budget=8000` shape the map. On `--for`, bound output with `--signatures-only` or `--token-budget=N`. A thin answer (`coverage=` under 50, or `weak="1"`) means widen: `--for="<task>" --limit=40`, then `--offset` for the next page. For fan-out, `--pack-task="<task>" --partition=N`.
 
 ## Route the moment
 

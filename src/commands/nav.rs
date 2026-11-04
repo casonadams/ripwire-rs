@@ -1,4 +1,4 @@
-//! Shared by the navigation commands (`callers`, `callees`, `impact`, `uses`, `find_symbol`) and the
+//! Shared by the navigation commands (`callers`, `callees`, `impact`, `uses`) and the
 //! `navigate` subcommand.
 use super::{Command, Run, SharedOption, decode_subcommand};
 use crate::cli::Cli;
@@ -154,7 +154,10 @@ pub fn execute_navigate_with<W: Write>(
     } else if args.callees {
         NavMode::Callees
     } else {
-        NavMode::FindSymbol
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "navigate needs one of --callers, --callees, --impact",
+        ));
     };
     execute_nav_symbol_query_in_root(root, sym_name, mode, ctx, out)
 }

@@ -51,11 +51,6 @@ pub const LEGEND_DICT_ENTRIES: &[(&str, &str, &str)] = &[
     ),
     (
         "schema",
-        "ripwire-rs.find-symbol/v1",
-        "1-hop symbol neighborhood containing definitions, callers, and callees",
-    ),
-    (
-        "schema",
         "ripwire-rs.around/v1",
         "Bidirectional ego-graph neighborhood within depth and fanout bounds",
     ),

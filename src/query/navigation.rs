@@ -8,7 +8,6 @@ pub enum NavMode {
     Callees,
     Impact,
     Uses,
-    FindSymbol,
 }
 
 impl NavMode {
@@ -19,7 +18,6 @@ impl NavMode {
             Self::Callees => "--callees",
             Self::Impact => "--impact",
             Self::Uses => "--uses",
-            Self::FindSymbol => "--find-symbol",
         }
     }
 }
@@ -59,7 +57,6 @@ pub struct NavQuery<'a> {
     pub sym: &'a str,
     pub mode: NavMode,
     pub declined: &'a [crate::navigate::DeclinedCall<'a>],
-    pub declined_from: &'a [crate::navigate::DeclinedCall<'a>],
     pub def_rows: &'a [crate::navigate::ImpactDef<'a>],
     pub page: crate::serialize::PageRequest,
 }
@@ -74,19 +71,6 @@ pub fn serialize_1hop_mode<W: Write>(
     let (dir, items) = match query.mode {
         NavMode::Callers => (crate::navigate::NavDir::Callers, &nav.callers),
         NavMode::Callees => (crate::navigate::NavDir::Callees, &nav.callees),
-        NavMode::FindSymbol => {
-            return crate::navigate::FindSymbolReport {
-                root: query.root,
-                of: query.sym,
-                defs,
-                def_rows: query.def_rows,
-                nav,
-                callers_declined: query.declined,
-                callees_declined: query.declined_from,
-                page: query.page,
-            }
-            .render_envelope(out);
-        }
         _ => return Ok(()),
     };
     crate::navigate::NavItemsReport {
@@ -122,9 +106,7 @@ pub fn execute_nav_symbol_query_in_root<W: Write>(
             out,
         ),
         NavMode::Impact => serialize_impact(root, sym, &ids, ctx, out),
-        NavMode::Callers | NavMode::Callees | NavMode::FindSymbol => {
-            serialize_one_hop(root, sym, mode, &ids, ctx, out)
-        }
+        NavMode::Callers | NavMode::Callees => serialize_one_hop(root, sym, mode, &ids, ctx, out),
     }
 }
 
@@ -174,16 +156,9 @@ fn serialize_one_hop<W: Write>(
         return Ok(());
     };
     let declined = match mode {
-        NavMode::Callers | NavMode::FindSymbol => {
-            crate::navigate::declined_calls(ids, &[], ctx.ingest, ctx.interner)
-        }
+        NavMode::Callers => crate::navigate::declined_calls(ids, &[], ctx.ingest, ctx.interner),
         NavMode::Callees => crate::navigate::declined_calls_from(ids, ctx.ingest, ctx.interner),
         _ => Vec::new(),
-    };
-    let declined_from = if mode == NavMode::FindSymbol {
-        crate::navigate::declined_calls_from(ids, ctx.ingest, ctx.interner)
-    } else {
-        Vec::new()
     };
     let def_rows = crate::navigate::impact_defs(ids, ctx.ingest, ctx.interner);
     let query = NavQuery {
@@ -191,7 +166,6 @@ fn serialize_one_hop<W: Write>(
         sym,
         mode,
         declined: &declined,
-        declined_from: &declined_from,
         def_rows: &def_rows,
         page: ctx.page,
     };

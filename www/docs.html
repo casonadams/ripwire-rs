@@ -140,13 +140,13 @@ cargo install ripwire-rs</code></pre>
 
       <div class="cmd-card">
         <div class="cmd-header">
-          <div class="cmd-title"><code>ripwire-rs [PATH] [--top-k &lt;N&gt;] [--max-tokens &lt;N&gt;] [--stable] [--legend &lt;MODE&gt;] [--cache &lt;PATH&gt;] [--no-cache] [--scip &lt;FILE&gt;]</code></div>
+          <div class="cmd-title"><code>ripwire-rs [PATH] [--top-k &lt;N&gt;] [--token-budget &lt;N&gt;] [--rank-by &lt;RANK&gt;] [--legend &lt;MODE&gt;] [--cache &lt;PATH&gt;] [--no-cache] [--scip &lt;FILE&gt;]</code></div>
           <span class="cmd-badge">Architecture</span>
         </div>
         <div class="cmd-body">
           <div class="cmd-field">
             <span class="cmd-label">What It Does</span>
-            <p class="cmd-desc">Parses the repository at <code>PATH</code> (defaults to current directory), builds the workspace call graph across 36 languages, executes Personalized PageRank, and streams ranked symbol definitions with incoming callers as canonical XML (bounded by <code>--top-k</code> symbol count or <code>--max-tokens</code> / <code>--pack-budget</code> streaming limits). Automatically caches compiled call graphs in <code>TMPDIR</code> for sub-second repeat queries (use <code>--no-cache</code> for cold parse). <code>--scip=index.scip</code> overlays a compiler-backed SCIP index: the call sites it resolves bind exactly (<code>prov="scip"</code>, header <code>precise=K</code>) and bypass the cache.</p>
+            <p class="cmd-desc">Parses the repository at <code>PATH</code> (defaults to current directory), builds the workspace call graph across 36 languages, executes Personalized PageRank, and streams ranked symbol definitions with incoming callers as canonical XML (bounded by <code>--top-k</code> symbol count or <code>--token-budget</code> / <code>--pack-budget</code> streaming limits). Automatically caches compiled call graphs in <code>TMPDIR</code> for sub-second repeat queries (use <code>--no-cache</code> for cold parse). <code>--scip=index.scip</code> overlays a compiler-backed SCIP index: the call sites it resolves bind exactly (<code>prov="scip"</code>, header <code>precise=K</code>) and bypass the cache.</p>
             <p class="cmd-desc">The same global <code>--scip=PATH</code> overlay works before or after <code>navigate</code>, plain or task-ranked <code>orient</code>, and <code>mcp</code>. MCP retains its indexed graph for the session. Multiline calls match the callee identifier's index line; reports preserve the call expression's start line. Unreadable or malformed indexes fail explicitly without a name-only fallback.</p>
           </div>
           <div class="cmd-field">
@@ -437,7 +437,7 @@ cargo install ripwire-rs</code></pre>
 
       <div class="cmd-card">
         <div class="cmd-header">
-          <div class="cmd-title"><code>ripwire-rs --callers &lt;SYM&gt; / --callees &lt;SYM&gt; / --find-symbol &lt;SYM&gt;</code></div>
+          <div class="cmd-title"><code>ripwire-rs --callers &lt;SYM&gt; / --callees &lt;SYM&gt;</code></div>
           <span class="cmd-badge">Navigation</span>
         </div>
         <div class="cmd-body">
@@ -875,12 +875,10 @@ cargo install ripwire-rs</code></pre>
             <tr><td><code>explore</code></td><td>Retrieval</td><td>Ranked map, bodies, callers, and test targets in a single byte-budgeted response.</td></tr>
             <tr><td><code>for</code></td><td>Retrieval</td><td>Task-lens relevance ranking using BM25 and Personalized PageRank.</td></tr>
             <tr><td><code>batch</code></td><td>Retrieval</td><td>Execute up to 16 heterogeneous sub-queries in a single call.</td></tr>
-            <tr><td><code>fetch_body</code></td><td>Retrieval</td><td>Fetch symbol definition source code by handle or name with optional line bounds.</td></tr>
+            <tr><td><code>fetch_body</code></td><td>Retrieval</td><td>Fetch symbol definition source code by name with optional line bounds.</td></tr>
             <tr><td><code>exemplar</code></td><td>Retrieval</td><td>Retrieve the best-in-class implementation of a given role (fn, class, interface).</td></tr>
             <tr><td><code>lego</code></td><td>Retrieval</td><td>Interface contract view with all implementors across the workspace.</td></tr>
             <tr><td><code>grep</code></td><td>Search</td><td>Trigram literal search annotated with enclosing symbols and definitions.</td></tr>
-            <tr><td><code>find_symbol</code></td><td>Navigation</td><td>1-hop symbol neighborhood: callers, callees, definitions, and ambiguity metrics.</td></tr>
-            <tr><td><code>find_referencing_symbols</code></td><td>Navigation</td><td>Direct (1-hop) callers of a symbol or database table.</td></tr>
             <tr><td><code>callers</code></td><td>Navigation</td><td>Who calls a function or method: each call site's enclosing function, same-named definitions kept apart, with definition grouping.</td></tr>
             <tr><td><code>callees</code></td><td>Navigation</td><td>What a function or method calls, with provenance and declined evidence.</td></tr>
             <tr><td><code>impact</code></td><td>Navigation</td><td>What breaks if a symbol or database table changes: transitive callers via the call and reference hierarchy.</td></tr>
@@ -888,8 +886,6 @@ cargo install ripwire-rs</code></pre>
             <tr><td><code>path_between</code></td><td>Architecture</td><td>Shortest directed call path between two symbols.</td></tr>
             <tr><td><code>connect</code></td><td>Architecture</td><td>Minimal directed connecting subgraph relating 2..16 symbols.</td></tr>
             <tr><td><code>defs</code></td><td>Architecture</td><td>Definitions that 1..16 names bind, each with a selector that pins it alone.</td></tr>
-            <tr><td><code>analyze</code></td><td>Architecture</td><td>Architecture map ranked by PageRank or chosen metric.</td></tr>
-            <tr><td><code>rank_by</code></td><td>Architecture</td><td>Architecture map ranked by pagerank, authority, hub, degree, ccx, or stable; unknown signals error.</td></tr>
             <tr><td><code>situational_awareness</code></td><td>Architecture</td><td>Diff context: blast radius, tests to run, and forgotten co-change partners.</td></tr>
             <tr><td><code>from_trace</code></td><td>Debugging</td><td>Maps stack trace frames and compiler errors onto indexed symbol definitions.</td></tr>
             <tr><td><code>slice</code></td><td>Slicing</td><td>Intra-procedural def-use variable slicing (forward, backward, or both).</td></tr>
@@ -906,8 +902,7 @@ cargo install ripwire-rs</code></pre>
             <tr><td><code>whereis</code></td><td>Inspection</td><td>Branch divergence tracker: finds which branch's tree defines a symbol.</td></tr>
             <tr><td><code>stray_content</code></td><td>Inspection</td><td>Lines authored on a divergent branch not present in HEAD.</td></tr>
             <tr><td><code>replace_symbol_body</code></td><td>Atomic Edit</td><td>Atomically replace an entire symbol definition with verified byte rollback.</td></tr>
-            <tr><td><code>insert_before_symbol</code></td><td>Atomic Edit</td><td>Atomically insert source code before a symbol definition.</td></tr>
-            <tr><td><code>insert_after_symbol</code></td><td>Atomic Edit</td><td>Atomically insert source code after a symbol definition.</td></tr>
+            <tr><td><code>insert_symbol</code></td><td>Atomic Edit</td><td>Atomically insert source code before or after a symbol definition.</td></tr>
           </tbody>
         </table>
       </div>

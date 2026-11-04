@@ -108,16 +108,16 @@ why = "A 100-symbol map is 24% fewer bytes than upstream at higher facts-per-byt
 evidence = "bytes rw=16347 rip=21441; facts rw=1290 rip=1477; density rw=0.07891 rip=0.06889; ours 39 file rows and 144 c rows vs upstream 45 and 220."
 
 [[divergence]]
-id = "map-max-tokens-2000-richer"
-command = "--max-tokens=2000"
+id = "map-token-budget-2000-richer"
+command = "--token-budget=2000"
 case = ""
 kind = "richer"
 why = "Under a 2000-token budget ours packs five times the facts and more than twice the density of upstream for about the same size."
 evidence = "bytes rw=3295 rip=3075; facts rw=263 rip=109; density rw=0.07982 rip=0.03545; ours 5 file rows, 33 s rows, 34 c rows vs upstream 10, 10, 15."
 
 [[divergence]]
-id = "map-max-tokens-4000-richer"
-command = "--max-tokens=4000"
+id = "map-token-budget-4000-richer"
+command = "--token-budget=4000"
 case = ""
 kind = "richer"
 why = "Under a 4000-token budget ours is slightly smaller than upstream and carries more facts at higher density."

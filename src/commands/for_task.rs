@@ -21,24 +21,12 @@ pub struct ForTaskArgs {
     /// Cut returned set at the relevance cliff instead of fixed top-k
     #[arg(long = "adaptive")]
     pub adaptive: bool,
-    /// Skip query-shape router and force plain subtoken+body BM25
-    #[arg(long = "no-route")]
-    pub no_route: bool,
-    /// Disable query-mention anchor score lifting
-    #[arg(long = "no-mention-boost")]
-    pub no_mention_boost: bool,
-    /// Disable doc-mention backtick surfacing
-    #[arg(long = "no-doc-mention")]
-    pub no_doc_mention: bool,
     /// Restore automatic body walk on the conceptual route
     #[arg(long = "auto-bodies")]
     pub auto_bodies: bool,
     /// Opt in to full lego and compose sections (lego,compose)
     #[arg(long = "sections", value_name = "SECTIONS")]
     pub sections: Option<String>,
-    /// Emit compact refetch handles on retrieval rows
-    #[arg(long = "handles")]
-    pub handles: bool,
     /// Ranked signatures and bodies for a task or a symbol name; a name gives its callers too
     #[arg(long = "for", visible_alias = "query", value_name = "TASK")]
     pub task_for: Option<String>,

@@ -293,10 +293,7 @@ fn test_execute_doc_search_query_all_branches() {
     assert!(whereis_xml.contains("ripwire-rs.whereis/v1"));
     assert!(whereis_xml.contains("feature-branch"));
     assert!(whereis_xml.contains("fate sym=\"overview\" v=\"removed\""));
-    assert!((DOC_DRIFT.selected)(&DocDriftArgs {
-        doc_drift: true,
-        ..Default::default()
-    }));
+    assert!((DOC_DRIFT.selected)(&DocDriftArgs { doc_drift: true }));
     assert!((FLAGS.selected)(&FlagsArgs { flags: true }));
     assert!((MENTIONS.selected)(&MentionsArgs {
         mentions: Some("overview".to_string()),
