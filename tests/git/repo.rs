@@ -1,4 +1,12 @@
-use ripwire_rs::git::repo::short_id;
+use ripwire_rs::git::repo::{short_id, text_changes};
+
+#[test]
+fn test_text_changes_binary_content_is_left_out() {
+    assert!(text_changes(b"a\0b\n", b"a\nb\n").is_none());
+    assert!(text_changes(b"a\n", b"a\0b\n").is_none());
+    let changes = text_changes(b"a\nb\n", b"a\nc\n").expect("text file has changed lines");
+    assert_eq!(changes.ranges, vec![1..2]);
+}
 
 #[test]
 fn test_short_id_formatting_and_length() {

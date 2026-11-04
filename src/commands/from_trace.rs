@@ -7,22 +7,27 @@ use crate::serialize::JsonValueExt;
 use std::io::{self, Write};
 
 /// `-` reads stdin, text with a newline or `:` is used as-is, and any other value is read as a file when it exists.
-fn trace_text(query: &QueryContext<'_>, tr: &str) -> String {
+fn trace_text(query: &QueryContext<'_>, tr: &str) -> io::Result<String> {
     if tr == "-" {
-        let mut buf = String::new();
-        let _ = io::Read::read_to_string(&mut io::stdin(), &mut buf);
-        buf
+        stdin_trace(io::stdin())
     } else if tr.contains('\n') || tr.contains(':') {
-        tr.to_string()
+        Ok(tr.to_string())
     } else if let Ok(cow) = query.sources.read(tr) {
-        String::from_utf8_lossy(&cow).into_owned()
+        Ok(String::from_utf8_lossy(&cow).into_owned())
     } else {
-        tr.to_string()
+        Ok(tr.to_string())
     }
 }
 
+/// The whole of a stdin stream as trace text; a read failure is an error, not an empty trace.
+pub fn stdin_trace<R: io::Read>(mut reader: R) -> io::Result<String> {
+    let mut buf = String::new();
+    reader.read_to_string(&mut buf)?;
+    Ok(buf)
+}
+
 pub fn execute<W: Write>(query: &QueryContext<'_>, tr: &str, out: &mut W) -> io::Result<()> {
-    let text = trace_text(query, tr);
+    let text = trace_text(query, tr)?;
     let val = graph_tools::call_from_trace(query.ingest, query.interner, &text);
     crate::serialize::serialize_from_trace_xml(&val, out)
 }

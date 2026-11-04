@@ -56,7 +56,7 @@ pub fn resolve_edit_spec_with_reader<R: io::Read>(
             stdin_reader.read_to_string(&mut buf)?;
             buf
         }
-        Some(p) => std::fs::read_to_string(p).unwrap_or_else(|_| p.to_string()),
+        Some(p) => payload_or_inline(p, std::fs::read_to_string(p))?,
         None => String::new(),
     };
     Ok((spec.to_string(), raw_payload))
@@ -80,4 +80,21 @@ pub fn call_edit_tool(
         path_hint,
         payload,
     ))
+}
+
+/// All of stdin as text, for a payload given as `-`.
+pub fn read_stdin_text() -> io::Result<String> {
+    let mut buf = String::new();
+    io::Read::read_to_string(&mut io::stdin(), &mut buf)?;
+    Ok(buf)
+}
+
+/// The payload named by `arg`: the file's text, or `arg` itself when no such file exists. Any other
+/// read failure (for example permission denied) is an error, never a payload.
+pub fn payload_or_inline(arg: &str, read: io::Result<String>) -> io::Result<String> {
+    match read {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(arg.to_string()),
+        Err(e) => Err(io::Error::new(e.kind(), format!("{arg}: {e}"))),
+    }
 }

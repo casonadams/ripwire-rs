@@ -20,8 +20,13 @@ fn render<W: Write>(
     out: &mut XmlWriter<'_, W>,
 ) -> io::Result<()> {
     let plan_file = args.plan_lint.as_deref().unwrap_or_default();
-    let content = std::fs::read_to_string(plan_file).unwrap_or_default();
+    let content = read_plan(plan_file, std::fs::read_to_string(plan_file))?;
     render_plan_lint_xml(plan_file, &content, out)
+}
+
+/// The plan text, or an error that names the file: a missing `--plan-lint` file is not an empty plan.
+pub fn read_plan(plan_file: &str, read: io::Result<String>) -> io::Result<String> {
+    read.map_err(|e| io::Error::new(e.kind(), format!("{plan_file}: {e}")))
 }
 
 pub fn render_plan_lint_xml<W: Write>(

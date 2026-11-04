@@ -321,59 +321,104 @@ fn commit_summary(commit: &gix::Commit<'_>) -> Option<CommitSummary> {
     })
 }
 
-fn newest_count_change_id(repo: &gix::Repository, needle: &str) -> Option<gix::ObjectId> {
+fn newest_count_change_id(
+    repo: &gix::Repository,
+    needle: &str,
+) -> Result<Option<gix::ObjectId>, String> {
     use rayon::prelude::*;
-    let head = repo.head_id().ok()?;
-    let ids: Vec<gix::ObjectId> = repo
+    let head = repo.head_id().map_err(|e| format!("HEAD: {e}"))?;
+    let walk = repo
         .rev_walk([head])
         .sorting(newest_first())
         .all()
-        .ok()?
-        .filter_map(Result::ok)
+        .map_err(|e| format!("history walk: {e}"))?;
+    let ids: Vec<gix::ObjectId> = walk
+        .map(|info| info.map_err(|e| format!("history walk: {e}")))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
         .filter(|info| info.parent_ids.len() < 2)
         .map(|info| info.id)
         .collect();
     let sync_repo = repo.clone().into_sync();
-    ids.into_par_iter().find_first(|&id| {
-        let local = sync_repo.to_thread_local();
-        local
-            .find_commit(id)
-            .is_ok_and(|commit| changes_count(&local, &commit, needle))
-    })
+    ids.into_par_iter()
+        .find_map_first(|id| {
+            let local = sync_repo.to_thread_local();
+            match local.find_commit(id) {
+                Ok(commit) => changes_count(&local, &commit, needle)
+                    .map(|changed| changed.then_some(id))
+                    .transpose(),
+                Err(e) => Some(Err(format!("commit {id}: {e}"))),
+            }
+        })
+        .transpose()
 }
 
 /// Newest non-merge commit reachable from `HEAD` that changes how often `needle` occurs in a file.
-#[must_use]
-pub fn last_count_change(repo: &gix::Repository, needle: &str) -> Option<CommitSummary> {
-    let hit = newest_count_change_id(repo, needle)?;
-    let commit = repo.find_commit(hit).ok()?;
+/// `Err` when the history or a blob cannot be read, so an unreadable history is never "never changed".
+pub fn last_count_change(
+    repo: &gix::Repository,
+    needle: &str,
+) -> Result<Option<CommitSummary>, String> {
+    let Some(hit) = newest_count_change_id(repo, needle)? else {
+        return Ok(None);
+    };
+    let commit = repo
+        .find_commit(hit)
+        .map_err(|e| format!("commit {hit}: {e}"))?;
     commit_summary(&commit)
+        .map(Some)
+        .ok_or_else(|| format!("commit {hit} has no readable author or time"))
 }
 
-fn changes_count(repo: &gix::Repository, commit: &gix::Commit<'_>, needle: &str) -> bool {
-    let count = |id: gix::Id<'_>| {
+fn blob_count_differs(
+    repo: &gix::Repository,
+    change: gix::object::tree::diff::Change<'_, '_, '_>,
+    needle: &str,
+) -> Result<bool, String> {
+    use gix::object::tree::diff::Change;
+    let count = |id: gix::Id<'_>| -> Result<usize, String> {
         repo.find_blob(id)
-            .map_or(0, |b| b.data.find_iter(needle).count())
+            .map(|b| b.data.find_iter(needle).count())
+            .map_err(|e| format!("reading blob: {e}"))
     };
-    let mut found = false;
-    let _ = for_each_change(repo, commit, |change| {
-        use gix::object::tree::diff::Change;
-        let differs = match change {
-            Change::Addition { id, entry_mode, .. } | Change::Deletion { id, entry_mode, .. } => {
-                entry_mode.is_blob() && count(id) > 0
+    match change {
+        Change::Addition { id, entry_mode, .. } | Change::Deletion { id, entry_mode, .. } => {
+            Ok(entry_mode.is_blob() && count(id)? > 0)
+        }
+        Change::Modification {
+            previous_id,
+            id,
+            entry_mode,
+            ..
+        } => Ok(entry_mode.is_blob() && count(previous_id)? != count(id)?),
+        Change::Rewrite { .. } => Ok(false),
+    }
+}
+
+fn changes_count(
+    repo: &gix::Repository,
+    commit: &gix::Commit<'_>,
+    needle: &str,
+) -> Result<bool, String> {
+    let mut outcome: Result<bool, String> = Ok(false);
+    let walked = for_each_change(repo, commit, |change| {
+        match blob_count_differs(repo, change, needle) {
+            Ok(false) => true,
+            Ok(true) => {
+                outcome = Ok(true);
+                false
             }
-            Change::Modification {
-                previous_id,
-                id,
-                entry_mode,
-                ..
-            } => entry_mode.is_blob() && count(previous_id) != count(id),
-            Change::Rewrite { .. } => false,
-        };
-        found = differs;
-        !differs
+            Err(e) => {
+                outcome = Err(e);
+                false
+            }
+        }
     });
-    found
+    let found = outcome?;
+    if walked.is_none() && !found {
+        return Err(format!("diffing commit {}", commit.id));
+    }
+    Ok(found)
 }
 
 /// Visit each file change of `commit` against its first parent (or the empty tree), without rename
@@ -460,8 +505,12 @@ pub fn changes_since_ref(root: &str, rev: &str) -> Result<RefChanges, String> {
     let base_blobs = path_blobs(&repo, &base);
     let head_blobs = path_blobs(&repo, "HEAD");
     let dirty: std::collections::BTreeSet<String> = dirty_paths(root).into_iter().collect();
+    let worktree = dirty
+        .iter()
+        .map(|path| Ok((path.clone(), worktree_blob_id(&repo, workdir, path)?)))
+        .collect::<Result<std::collections::BTreeMap<_, _>, String>>()?;
     let paths = changed_paths(&base_blobs, &head_blobs, &dirty, |path| {
-        worktree_blob_id(&repo, workdir, path)
+        worktree.get(path).copied().flatten()
     });
     Ok(RefChanges { base, paths })
 }
@@ -490,35 +539,47 @@ pub fn base_of_range(spec: &str) -> Result<&str, String> {
 }
 
 /// New-side changed lines of each of `paths` against its blob at `base`, read from the working
-/// tree. Binary files are left out, so callers fall back to whole-file attribution for them.
-#[must_use]
+/// tree. Binary files are left out, so callers fall back to whole-file attribution for them; a
+/// path that cannot be read is an error, never an empty side.
 pub fn changed_lines_since(
     root: &str,
     base: &str,
     paths: &[String],
-) -> std::collections::BTreeMap<String, crate::gate::pr_context::ChangedLines> {
+) -> Result<std::collections::BTreeMap<String, crate::gate::pr_context::ChangedLines>, String> {
     let mut out = std::collections::BTreeMap::new();
-    let Some(repo) = discover(root) else {
-        return out;
-    };
-    let (Some(workdir), Some(tree)) = (repo.workdir(), revision_tree(&repo, base)) else {
-        return out;
-    };
+    let repo = discover(root).ok_or_else(|| format!("{root} is not a git repository"))?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| format!("{root} has no work tree"))?;
+    let tree = revision_tree(&repo, base).ok_or_else(|| format!("'{base}' has no tree"))?;
     for path in paths {
-        let old = tree
+        let old = match tree
             .lookup_entry_by_path(path)
-            .ok()
-            .flatten()
-            .and_then(|entry| entry.object().ok())
-            .map(|obj| obj.data.to_vec())
-            .unwrap_or_default();
-        let new = std::fs::read(workdir.join(path)).unwrap_or_default();
-        if is_binary(&old) || is_binary(&new) {
-            continue;
+            .map_err(|e| format!("{path}: {e}"))?
+        {
+            Some(entry) => entry
+                .object()
+                .map_err(|e| format!("{path}: {e}"))?
+                .data
+                .to_vec(),
+            None => Vec::new(),
+        };
+        let new = match std::fs::read(workdir.join(path)) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(format!("{path}: {e}")),
+        };
+        if let Some(changes) = text_changes(&old, &new) {
+            out.insert(path.clone(), changes);
         }
-        out.insert(path.clone(), new_side_changes(&old, &new));
     }
-    out
+    Ok(out)
+}
+
+/// Changed lines of a text file; `None` for binary content, which callers attribute as a whole file.
+#[must_use]
+pub fn text_changes(old: &[u8], new: &[u8]) -> Option<crate::gate::pr_context::ChangedLines> {
+    (!is_binary(old) && !is_binary(new)).then(|| new_side_changes(old, new))
 }
 
 /// Changed line ranges of `new` against `old` (0-based, half-open; empty where lines were only
@@ -577,9 +638,15 @@ fn worktree_blob_id(
     repo: &gix::Repository,
     workdir: &std::path::Path,
     path: &str,
-) -> Option<gix::ObjectId> {
-    let data = std::fs::read(workdir.join(path)).ok()?;
-    gix::objs::compute_hash(repo.object_hash(), gix::objs::Kind::Blob, &data).ok()
+) -> Result<Option<gix::ObjectId>, String> {
+    let data = match std::fs::read(workdir.join(path)) {
+        Ok(data) => data,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("{path}: {e}")),
+    };
+    gix::objs::compute_hash(repo.object_hash(), gix::objs::Kind::Blob, &data)
+        .map(Some)
+        .map_err(|e| format!("{path}: {e}"))
 }
 
 /// Object id that `rev` resolves to, or `None` when it does not resolve.

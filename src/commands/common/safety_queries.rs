@@ -301,7 +301,8 @@ pub fn execute_pr_context_dispatch<W: Write>(
         }
         None => (get_working_tree_changed_files(root), "HEAD".to_string()),
     };
-    let changed_lines = crate::git::repo::changed_lines_since(root, &base, &changed);
+    let changed_lines = crate::git::repo::changed_lines_since(root, &base, &changed)
+        .map_err(|e| io::Error::other(format!("--pr-context: {e}")))?;
     let commits = crate::git::history::walk_repository_history(root).unwrap_or_default();
     let at_stamp = crate::git::history::compute_git_at_stamp(root).unwrap_or_default();
     let req = crate::gate::pr_context::PrContextRequest {
@@ -373,11 +374,9 @@ pub fn execute_edit_plan_dispatch<W: Write>(
     out: &mut W,
 ) -> io::Result<i32> {
     let plan_raw = if plan_spec == "-" {
-        let mut buf = String::new();
-        io::Read::read_to_string(&mut io::stdin(), &mut buf)?;
-        buf
+        super::edit::read_stdin_text()?
     } else {
-        std::fs::read_to_string(plan_spec).unwrap_or_else(|_| plan_spec.to_string())
+        super::edit::payload_or_inline(plan_spec, std::fs::read_to_string(plan_spec))?
     };
     execute_edit_plan_from_facts(ctx, &plan_raw, dry_run, out)
 }

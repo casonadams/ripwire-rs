@@ -179,9 +179,7 @@ pub fn execute_batch_file<W: Write>(
     out: &mut W,
 ) -> io::Result<()> {
     let content = if file_path == "-" {
-        let mut buf = String::new();
-        io::Read::read_to_string(&mut io::stdin(), &mut buf)?;
-        buf
+        crate::commands::common::edit::read_stdin_text()?
     } else {
         std::fs::read_to_string(file_path)?
     };

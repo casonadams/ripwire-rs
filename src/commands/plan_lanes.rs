@@ -28,14 +28,20 @@ fn run(run: &Run<'_>, args: &PlanLanesArgs) -> io::Result<()> {
         .brief
         .as_deref()
         .filter(|p| !p.is_empty())
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .map(|c| c.lines().map(str::to_string).collect::<Vec<_>>());
+        .map(|p| read_brief(p, std::fs::read_to_string(p)))
+        .transpose()?;
     run.report(|ctx, out| {
         let safety = context_of(ctx);
         let val = compute_plan_lanes_from_facts(&safety, requested, &task, brief_lines.as_deref(), run.page());
         serde_json::to_writer(&mut *out, &val)?;
         writeln!(out)
     })
+}
+
+/// Brief lines from an explicit `--brief` file; a read error is reported, never an empty brief.
+pub fn read_brief(path: &str, read: io::Result<String>) -> io::Result<Vec<String>> {
+    read.map(|c| c.lines().map(str::to_string).collect())
+        .map_err(|e| io::Error::new(e.kind(), format!("{path}: {e}")))
 }
 
 pub static PLAN_LANES: Plugin<PlanLanesArgs> = Plugin {

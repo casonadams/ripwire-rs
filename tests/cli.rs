@@ -5,6 +5,7 @@ mod cli {
     mod dispatch;
     mod dispatch_contract;
     mod doctor;
+    mod error_surfacing;
     mod for_window;
     mod gate_select;
     mod queries;
