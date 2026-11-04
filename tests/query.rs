@@ -1,3 +1,9 @@
+#[path = "support/corpus.rs"]
+mod corpus_support;
+
+#[path = "support/a_safety_context.rs"]
+mod a_safety_context;
+
 mod query {
     mod body_policy;
     mod commands;

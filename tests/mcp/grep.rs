@@ -4,6 +4,14 @@ use ripwire_rs::serialize::serialize_grep_xml;
 use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
 use serde_json::{Value, json};
 
+type ReadCase = (
+    &'static str,
+    Lang,
+    &'static [u8],
+    &'static [u32],
+    &'static [&'static str],
+);
+
 fn counts(code: usize, comment: usize, literal: usize) -> TierCounts {
     TierCounts {
         code,
@@ -13,33 +21,24 @@ fn counts(code: usize, comment: usize, literal: usize) -> TierCounts {
 }
 
 #[test]
-fn test_few_code_hits_lift_strings_and_hold_back_comments() {
+fn tier_disclosure_follows_the_share_of_code_hits() {
     let attrs = tier_attrs(counts(5, 2, 2), 3, false);
     assert_eq!(attrs["suppressed_comment"], json!(2));
     assert!(!attrs.contains_key("suppressed_string"));
     assert_eq!(attrs["tier"], json!("code+string"));
     assert_eq!(attrs["string_hits"], json!(2));
     assert_eq!(attrs["tier_parsed"], json!(3));
-}
 
-#[test]
-fn test_many_code_hits_hold_back_strings() {
     let attrs = tier_attrs(counts(8, 0, 1), 1, false);
     assert_eq!(attrs["suppressed_string"], json!(1));
     assert!(!attrs.contains_key("tier"));
     assert!(!attrs.contains_key("suppressed_comment"));
-}
 
-#[test]
-fn test_empty_code_tier_serves_comments_and_strings_together() {
     let attrs = tier_attrs(counts(0, 1, 1), 1, false);
     assert_eq!(attrs["tier"], json!("comment+string"));
     assert!(!attrs.contains_key("suppressed_comment"));
     assert!(!attrs.contains_key("string_hits"));
-}
 
-#[test]
-fn test_no_tier_disclosure_when_every_hit_is_served_as_is() {
     assert!(tier_attrs(counts(4, 0, 0), 2, false).is_empty());
     assert!(tier_attrs(counts(4, 3, 3), 2, true).is_empty());
 }
@@ -83,15 +82,61 @@ fn assert_read_sites(uses: &Value, lines: &[u32]) {
 }
 
 #[test]
-fn test_python_constant_reads_reach_uses_and_grep_metadata() {
-    let source = b"LIMIT = 10\n\ndef first():\n    text = 'LIMIT'\n    return LIMIT\n\ndef second():\n    return LIMIT\n\ndef parameter(LIMIT):\n    return LIMIT\n\ndef local():\n    LIMIT = 3\n    return LIMIT\n\ndef write():\n    global LIMIT\n    LIMIT = 4\n\ndef keyword():\n    return object(LIMIT=2)\n# LIMIT\n";
-    let (uses, xml) = semantic_read_report("src/sample.py", Lang::Python, source);
-    assert_read_sites(&uses, &[5, 8]);
-    assert!(
-        xml.contains("reads=\"2\" reads_at=\"src/sample.py:5 src/sample.py:8\""),
-        "{xml}"
-    );
-    assert!(xml.contains("next=\"--uses=LIMIT\""), "{xml}");
+fn constant_reads_bind_only_to_the_repository_definition() {
+    let cases: [ReadCase; 6] = [
+        (
+            "src/sample.py",
+            Lang::Python,
+            b"LIMIT = 10\n\ndef first():\n    text = 'LIMIT'\n    return LIMIT\n\ndef second():\n    return LIMIT\n\ndef parameter(LIMIT):\n    return LIMIT\n\ndef local():\n    LIMIT = 3\n    return LIMIT\n\ndef write():\n    global LIMIT\n    LIMIT = 4\n\ndef keyword():\n    return object(LIMIT=2)\n# LIMIT\n",
+            &[5, 8],
+            &[
+                "reads=\"2\" reads_at=\"src/sample.py:5 src/sample.py:8\"",
+                "next=\"--uses=LIMIT\"",
+            ],
+        ),
+        (
+            "src/sample.rs",
+            Lang::Rust,
+            b"const LIMIT: u32 = 10;\nfn first() -> u32 { LIMIT }\nfn second() -> u32 { LIMIT }\nfn parameter(LIMIT: u32) -> u32 { LIMIT }\nfn local() -> u32 { let LIMIT = 3; LIMIT }\nfn write() { let mut LIMIT = 0; LIMIT = 4; let text = \"LIMIT\"; }\n// LIMIT\n",
+            &[2, 3],
+            &["reads=\"2\" reads_at=\"src/sample.rs:2 src/sample.rs:3\""],
+        ),
+        (
+            "src/sample.rs",
+            Lang::Rust,
+            b"const LIMIT: u32 = 10;\nfn sample() -> u32 {\n    let before = LIMIT;\n    let LIMIT = LIMIT + 1;\n    LIMIT + before\n}\n",
+            &[3, 4],
+            &[],
+        ),
+        (
+            "src/sample.js",
+            Lang::JavaScript,
+            b"const LIMIT = 10;\nfunction first() { return { LIMIT }; }\nfunction nested() { if (true) { var LIMIT = 3; } return LIMIT; }\nfunction block() { { const LIMIT = 3; } return LIMIT; }\nfunction pattern({LIMIT}) { return LIMIT; }\n",
+            &[2, 4],
+            &[],
+        ),
+        (
+            "src/sample.py",
+            Lang::Python,
+            b"LIMIT = 10\nclass Sample:\n    LIMIT = 3\n    def sample(self):\n        return LIMIT\n",
+            &[5],
+            &[],
+        ),
+        (
+            "src/sample.py",
+            Lang::Python,
+            b"LIMIT = 10\ndef sample(value=LIMIT):\n    LIMIT = 3\n    return LIMIT\n",
+            &[2],
+            &[],
+        ),
+    ];
+    for (path, lang, source, lines, needles) in cases {
+        let (uses, xml) = semantic_read_report(path, lang, source);
+        assert_read_sites(&uses, lines);
+        for needle in needles {
+            assert!(xml.contains(needle), "{xml}");
+        }
+    }
 }
 
 #[test]
@@ -115,17 +160,6 @@ fn test_javascript_and_typescript_variable_reads_ignore_targets_and_shadowing() 
         );
         assert!(xml.contains("reads=\"2\""), "{xml}");
     }
-}
-
-#[test]
-fn test_rust_constant_reads_ignore_bindings_parameters_and_writes() {
-    let source = b"const LIMIT: u32 = 10;\nfn first() -> u32 { LIMIT }\nfn second() -> u32 { LIMIT }\nfn parameter(LIMIT: u32) -> u32 { LIMIT }\nfn local() -> u32 { let LIMIT = 3; LIMIT }\nfn write() { let mut LIMIT = 0; LIMIT = 4; let text = \"LIMIT\"; }\n// LIMIT\n";
-    let (uses, xml) = semantic_read_report("src/sample.rs", Lang::Rust, source);
-    assert_read_sites(&uses, &[2, 3]);
-    assert!(
-        xml.contains("reads=\"2\" reads_at=\"src/sample.rs:2 src/sample.rs:3\""),
-        "{xml}"
-    );
 }
 
 #[test]
@@ -180,28 +214,6 @@ fn test_callable_values_do_not_add_call_edges() {
 }
 
 #[test]
-fn test_rust_local_shadow_starts_after_initializer() {
-    let source = b"const LIMIT: u32 = 10;\nfn sample() -> u32 {\n    let before = LIMIT;\n    let LIMIT = LIMIT + 1;\n    LIMIT + before\n}\n";
-    let (uses, _) = semantic_read_report("src/sample.rs", Lang::Rust, source);
-    assert_read_sites(&uses, &[3, 4]);
-}
-
-#[test]
-fn test_javascript_function_scoped_var_and_destructuring_shadow_repository_names() {
-    let source = b"const LIMIT = 10;\nfunction first() { return { LIMIT }; }\nfunction nested() { if (true) { var LIMIT = 3; } return LIMIT; }\nfunction block() { { const LIMIT = 3; } return LIMIT; }\nfunction pattern({LIMIT}) { return LIMIT; }\n";
-    let (uses, _) = semantic_read_report("src/sample.js", Lang::JavaScript, source);
-    assert_read_sites(&uses, &[2, 4]);
-}
-
-#[test]
-fn test_python_class_namespace_is_not_a_method_lexical_parent() {
-    let source =
-        b"LIMIT = 10\nclass Sample:\n    LIMIT = 3\n    def sample(self):\n        return LIMIT\n";
-    let (uses, _) = semantic_read_report("src/sample.py", Lang::Python, source);
-    assert_read_sites(&uses, &[5]);
-}
-
-#[test]
 fn test_python_local_import_shadows_repository_name() {
     let source = b"LIMIT = 10\ndef first():\n    return LIMIT\ndef imported():\n    from sample import LIMIT\n    return LIMIT\n";
     let (uses, _) = semantic_read_report("src/sample.py", Lang::Python, source);
@@ -214,13 +226,6 @@ fn test_python_local_import_shadows_repository_name() {
         .collect();
     assert_eq!(reads.len(), 1, "{uses}");
     assert_eq!(reads[0]["line"], 3);
-}
-
-#[test]
-fn test_python_default_value_is_outside_the_function_local_binding_scope() {
-    let source = b"LIMIT = 10\ndef sample(value=LIMIT):\n    LIMIT = 3\n    return LIMIT\n";
-    let (uses, _) = semantic_read_report("src/sample.py", Lang::Python, source);
-    assert_read_sites(&uses, &[2]);
 }
 
 #[test]

@@ -22,7 +22,7 @@ fn test_plan_lanes_partition_and_brief() {
             graph: &empty_graph,
             pr: &empty_pr,
             interner: &empty_interner,
-            churn: None,
+            churn: Err("no git history"),
         },
         2,
         "refactor parser",
@@ -39,7 +39,7 @@ fn test_plan_lanes_partition_and_brief() {
             graph: &graph,
             pr: &pr,
             interner: &interner,
-            churn: None,
+            churn: Err("no git history"),
         },
         2,
         "login verify charge",
@@ -101,7 +101,7 @@ fn test_plan_lanes_churn_and_hotspot_rank_follow_history() {
     let auth = file_row(&hot, "src/auth.rs");
     assert_eq!(auth["churn"], 5);
     assert_eq!(auth["hotspot_rank"], 1);
-    assert_eq!(hot["lanes"][0]["symbols"][0]["churn"], 5);
+    assert!(hot.get("churn_unavailable").is_none());
 
     let cold: HashMap<String, u32> = HashMap::new();
     let unseen = brief_plan(&ingest, &interner, &graph, &pr, Some(&cold), &brief);
@@ -113,7 +113,7 @@ fn test_plan_lanes_churn_and_hotspot_rank_follow_history() {
     let auth = file_row(&no_git, "src/auth.rs");
     assert!(auth.get("churn").is_none());
     assert!(auth.get("hotspot_rank").is_none());
-    assert!(no_git["lanes"][0]["symbols"][0].get("churn").is_none());
+    assert_eq!(no_git["churn_unavailable"], "no git history");
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn brief_plan(
             graph,
             pr,
             interner,
-            churn,
+            churn: churn.ok_or("no git history"),
         },
         brief,
         Default::default(),

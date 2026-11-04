@@ -1,5 +1,5 @@
 //! Agent skill installation: `--add-skills` and the `skills` subcommand.
-use super::{Command, SharedOption, decode_subcommand};
+use super::{Command, SharedOption, run_named_subcommand};
 use crate::cli::Cli;
 use clap::{Args, Command as ClapCommand};
 use std::io;
@@ -60,13 +60,9 @@ impl Command for Skills {
         matches: &clap::ArgMatches,
         _root: &str,
     ) -> Option<io::Result<()>> {
-        if name != "skills" {
-            return None;
-        }
-        Some(
-            decode_subcommand::<SkillsArgs>(matches)
-                .and_then(|args| execute_skills_install(args.path.as_deref())),
-        )
+        run_named_subcommand::<SkillsArgs>(name, "skills", matches, |args| {
+            execute_skills_install(args.path.as_deref())
+        })
     }
 }
 

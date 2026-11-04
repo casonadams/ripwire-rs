@@ -13,12 +13,32 @@ pub fn nav_report(
     sym: &str,
     mode: NavMode,
 ) -> std::io::Result<String> {
+    nav_report_paged(
+        ingest,
+        graph,
+        ranks,
+        interner,
+        sym,
+        mode,
+        PageRequest::default(),
+    )
+}
+
+pub fn nav_report_paged(
+    ingest: &IngestResult,
+    graph: &Graph,
+    ranks: &[f64],
+    interner: &Interner,
+    sym: &str,
+    mode: NavMode,
+    page: PageRequest,
+) -> std::io::Result<String> {
     let ctx = NavContext {
         ingest,
         graph,
         ranks,
         interner,
-        page: PageRequest::default(),
+        page,
         max_depth: None,
         pr_iters: None,
     };

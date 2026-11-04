@@ -1,3 +1,6 @@
+#[path = "support/a_callees.rs"]
+mod a_callees;
+
 #[path = "support/nav.rs"]
 mod nav_support;
 

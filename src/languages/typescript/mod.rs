@@ -151,8 +151,7 @@ impl LanguageSemantics for TypeScriptLanguage {
     }
 
     fn lint_groups(&self) -> &'static [crate::languages::LintGroup] {
-        use crate::languages::LintGroup as G;
-        &[G::DoWhile, G::Insecure, G::Parens, G::SelfAssign, G::Unreachable, G::Naming]
+        super::lint::SCRIPT_LINT_GROUPS
     }
     super::impl_grammar_method!(crate tree_sitter_typescript::LANGUAGE_TYPESCRIPT, "tags.scm");
 

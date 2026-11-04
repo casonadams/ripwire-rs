@@ -79,53 +79,65 @@ fn uses_of_undefined_symbol_is_external_not_an_error() {
 }
 
 #[test]
-fn callers_tag_each_row_with_the_definition_it_calls() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[
-        (
-            "a/alpha.dart",
-            Lang::Dart,
-            b"class Alpha { void register(String n) {} }\n",
-        ),
-        (
-            "b/beta.dart",
-            Lang::Dart,
-            b"class Beta { void register(String n) {} }\n",
-        ),
-        (
-            "b/use.dart",
-            Lang::Dart,
-            b"void viaBeta(Beta k) {\n  Beta.register('x');\n}\n",
-        ),
-    ];
-    let xml = nav_xml(fixtures, "register", NavMode::Callers).unwrap();
-    assert!(
-        xml.contains("n=\"viaBeta\"") && xml.contains("of_def=\"2\""),
-        "{xml}"
+fn callers_and_callees_label_each_row_with_its_binding() {
+    type Case<'a> = (
+        &'a [(&'a str, Lang, &'a [u8])],
+        &'a str,
+        NavMode,
+        &'a [&'a str],
+        &'a [&'a str],
     );
-}
-
-#[test]
-fn type_qualified_call_to_unindexed_type_is_external_not_declined() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[
+    let cases: [Case; 4] = [
         (
-            "a/x.dart",
-            Lang::Dart,
-            b"class X { static List<String> cols() => []; }\n",
+            &[
+                ("a/alpha.dart", Lang::Dart, b"class Alpha { void register(String n) {} }\n"),
+                ("b/beta.dart", Lang::Dart, b"class Beta { void register(String n) {} }\n"),
+                ("b/use.dart", Lang::Dart, b"void viaBeta(Beta k) {\n  Beta.register('x');\n}\n"),
+            ],
+            "register",
+            NavMode::Callers,
+            &["n=\"viaBeta\"", "of_def=\"2\""],
+            &[],
         ),
         (
-            "b/y.dart",
-            Lang::Dart,
-            b"class Y { static List<String> cols() => []; }\n",
+            &[
+                ("a/x.dart", Lang::Dart, b"class X { static List<String> cols() => []; }\n"),
+                ("b/y.dart", Lang::Dart, b"class Y { static List<String> cols() => []; }\n"),
+                ("c/load.dart", Lang::Dart, b"void load() {\n  final q = \"SELECT ${pkg.Widget.cols().join(', ')}\";\n}\n"),
+            ],
+            "load",
+            NavMode::Callees,
+            &[],
+            &["declined_calls=\"", "n=\"cols\""],
         ),
         (
-            "c/load.dart",
-            Lang::Dart,
-            b"void load() {\n  final q = \"SELECT ${pkg.Widget.cols().join(', ')}\";\n}\n",
+            &[
+                ("a/one.py", Lang::Python, b"def run():\n    return 1\n\ndef same_file():\n    return run()\n"),
+                ("a/three.py", Lang::Python, b"def same_dir():\n    return run()\n"),
+                ("b/two.py", Lang::Python, b"def run():\n    return 2\n"),
+            ],
+            "run",
+            NavMode::Callers,
+            &[
+                "<s t=\"fn\" n=\"same_file\" p=\"a/one.py:4\" of_def=\"1\"",
+                "<s t=\"fn\" n=\"same_dir\" p=\"a/three.py:1\" via=\"name\" of_def=\"1~n\"",
+            ],
+            &[],
+        ),
+        (
+            &[
+                ("b/k.py", Lang::Python, b"class K:\n    def go(self):\n        return 1\n\n    def me(self):\n        return self.go()\n"),
+                ("b/l.py", Lang::Python, b"class L:\n    def go(self):\n        return 2\n"),
+            ],
+            "me",
+            NavMode::Callees,
+            &["<s t=\"fn\" n=\"go\" p=\"b/k.py:2\"/>"],
+            &[],
         ),
     ];
-    let xml = nav_xml(fixtures, "load", NavMode::Callees).unwrap();
-    assert!(!xml.contains("declined_calls=\""), "{xml}");
-    assert!(!xml.contains("n=\"cols\""), "{xml}");
+    for (fixtures, sym, mode, has, lacks) in cases {
+        check_nav(fixtures, sym, mode, has, lacks);
+    }
 }
 
 #[test]
@@ -143,49 +155,6 @@ fn ambiguous_call_arms_are_labelled_split() {
     assert_eq!(callees.matches("prov=\"split\"").count(), 2, "{callees}");
     let callers = nav_xml(fixtures, "run", NavMode::Callers).unwrap();
     assert!(callers.contains("of_def=\"1~s 2~s\""), "{callers}");
-}
-
-#[test]
-fn caller_rows_mark_name_only_bindings_with_tilde_n() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[
-        (
-            "a/one.py",
-            Lang::Python,
-            b"def run():\n    return 1\n\ndef same_file():\n    return run()\n",
-        ),
-        (
-            "a/three.py",
-            Lang::Python,
-            b"def same_dir():\n    return run()\n",
-        ),
-        ("b/two.py", Lang::Python, b"def run():\n    return 2\n"),
-    ];
-    let xml = nav_xml(fixtures, "run", NavMode::Callers).unwrap();
-    assert!(
-        xml.contains("<s t=\"fn\" n=\"same_file\" p=\"a/one.py:4\" of_def=\"1\""),
-        "{xml}"
-    );
-    assert!(
-        xml.contains("<s t=\"fn\" n=\"same_dir\" p=\"a/three.py:1\" via=\"name\" of_def=\"1~n\""),
-        "{xml}"
-    );
-}
-
-#[test]
-fn self_receiver_calls_bind_lexically_without_a_label() {
-    let fixtures: &[(&str, Lang, &[u8])] = &[
-        (
-            "b/k.py",
-            Lang::Python,
-            b"class K:\n    def go(self):\n        return 1\n\n    def me(self):\n        return self.go()\n",
-        ),
-        ("b/l.py", Lang::Python, b"class L:\n    def go(self):\n        return 2\n"),
-    ];
-    let xml = nav_xml(fixtures, "me", NavMode::Callees).unwrap();
-    assert!(
-        xml.contains("<s t=\"fn\" n=\"go\" p=\"b/k.py:2\"/>"),
-        "{xml}"
-    );
 }
 
 const PYBIND: &[u8] = b"#include <pybind11/pybind11.h>

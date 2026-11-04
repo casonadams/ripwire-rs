@@ -1,3 +1,5 @@
+#[path = "support/index.rs"]
+mod index_support;
 #[path = "support/nav.rs"]
 mod nav_support;
 

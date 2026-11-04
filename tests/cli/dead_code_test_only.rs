@@ -21,36 +21,45 @@ fn dead_code_xml(files: &[(&str, &[u8])]) -> String {
 }
 
 #[test]
-fn functions_only_tests_call_are_listed_apart_from_count() {
-    let xml = dead_code_xml(&[
+fn test_only_references_are_listed_apart_from_production_callers() {
+    type Case<'a> = (&'a [(&'a str, &'a [u8])], &'a [&'a str], &'a [&'a str]);
+    let cases: [Case; 2] = [
         (
-            "src/lib.c",
-            b"int audit_only_helper(void) {\nreturn 1;\n}\nint shared_helper(void) {\nreturn 2;\n}\nint prod_entry(void) {\nreturn shared_helper();\n}\n",
+            &[
+                (
+                    "src/lib.c",
+                    b"int audit_only_helper(void) {\nreturn 1;\n}\nint shared_helper(void) {\nreturn 2;\n}\nint prod_entry(void) {\nreturn shared_helper();\n}\n",
+                ),
+                (
+                    "tests/check.c",
+                    b"int check_all(void) {\nreturn audit_only_helper() + shared_helper();\n}\n",
+                ),
+            ],
+            &["<to n=\"audit_only_helper\"", " count=\"0\"", " to=\"1\""],
+            &["n=\"shared_helper\"", "n=\"check_all\""],
         ),
         (
-            "tests/check.c",
-            b"int check_all(void) {\nreturn audit_only_helper() + shared_helper();\n}\n",
+            &[
+                (
+                    "src/lib.c",
+                    b"int registered_helper(void) {\nreturn 1;\n}\nint (*handler)(void) = registered_helper;\n",
+                ),
+                (
+                    "tests/check.c",
+                    b"int check_all(void) {\nreturn registered_helper();\n}\n",
+                ),
+            ],
+            &[],
+            &["n=\"registered_helper\"", " to=\""],
         ),
-    ]);
-    assert!(xml.contains("<to n=\"audit_only_helper\""), "{xml}");
-    assert!(!xml.contains("n=\"shared_helper\""), "{xml}");
-    assert!(!xml.contains("n=\"check_all\""), "{xml}");
-    assert!(xml.contains(" count=\"0\""), "{xml}");
-    assert!(xml.contains(" to=\"1\""), "{xml}");
-}
-
-#[test]
-fn a_production_reference_keeps_a_function_out_of_the_test_only_group() {
-    let xml = dead_code_xml(&[
-        (
-            "src/lib.c",
-            b"int registered_helper(void) {\nreturn 1;\n}\nint (*handler)(void) = registered_helper;\n",
-        ),
-        (
-            "tests/check.c",
-            b"int check_all(void) {\nreturn registered_helper();\n}\n",
-        ),
-    ]);
-    assert!(!xml.contains("n=\"registered_helper\""), "{xml}");
-    assert!(!xml.contains(" to=\""), "{xml}");
+    ];
+    for (files, present, absent) in cases {
+        let xml = dead_code_xml(files);
+        for needle in present {
+            assert!(xml.contains(needle), "missing {needle}: {xml}");
+        }
+        for needle in absent {
+            assert!(!xml.contains(needle), "unexpected {needle}: {xml}");
+        }
+    }
 }

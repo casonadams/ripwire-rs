@@ -1,3 +1,4 @@
+use crate::b_ingest::one_function_ingest;
 use ripwire_rs::metrics::{
     classify_identifier_casing, compute_comment_coherence_with_sources,
     serialize_executive_report_md, serialize_naming_consistency_xml,
@@ -199,18 +200,7 @@ fn test_compute_comment_coherence_with_sources() {
 #[test]
 fn test_comment_coherence_without_source_bytes_has_no_row() {
     let interner = Interner::new();
-    let mut ingest = IngestResult::new();
-    ingest.files.push(FileInfo {
-        id: 0,
-        path: interner.intern("src/users.rs"),
-        lang: Lang::Rust,
-        line_count: 20,
-        byte_size: 200,
-    });
-    let name = interner.intern("load_user_account");
-    let mut sym = Symbol::new(0, name, name, SymKind::Function, Lang::Rust, 0, 10);
-    sym.loc = 10;
-    ingest.symbols.push(sym);
+    let ingest = one_function_ingest(&interner, "src/users.rs", "load_user_account", 20, 200);
     let sources: &[(&str, &[u8])] = &[];
     let report =
         compute_comment_coherence_with_sources(sources, &ingest, &interner, PageRequest::default());

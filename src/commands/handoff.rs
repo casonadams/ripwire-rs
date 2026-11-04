@@ -41,12 +41,17 @@ struct GitHead {
     detached: bool,
 }
 
-fn resolve_git_head(root: &str) -> Option<GitHead> {
-    let repo = gix::discover(root).ok()?;
-    let branch_opt = repo.head_name().ok().flatten().map(|n| {
-        let s = n.as_bstr().to_string();
-        s.strip_prefix("refs/heads/").unwrap_or(&s).to_string()
-    });
+fn resolve_git_head(root: &str) -> io::Result<Option<GitHead>> {
+    let Some(repo) = crate::git::repo::enclosing_repo(root).map_err(io::Error::other)? else {
+        return Ok(None);
+    };
+    let branch_opt = repo
+        .head_name()
+        .map_err(|e| io::Error::other(e.to_string()))?
+        .map(|n| {
+            let s = n.as_bstr().to_string();
+            s.strip_prefix("refs/heads/").unwrap_or(&s).to_string()
+        });
     let detached = branch_opt.is_none();
     let branch = branch_opt.unwrap_or_else(|| "HEAD".to_string());
     let subject = repo
@@ -59,11 +64,11 @@ fn resolve_git_head(root: &str) -> Option<GitHead> {
         })
         .and_then(|m| m.lines().next().map(|l| l.trim().to_string()))
         .filter(|s| !s.is_empty());
-    Some(GitHead {
+    Ok(Some(GitHead {
         branch,
         subject,
         detached,
-    })
+    }))
 }
 
 fn changed_file_matches(changed: &str, path: &str) -> bool {
@@ -271,7 +276,7 @@ fn handoff_header_attrs(root: &str, head: Option<&GitHead>) -> String {
 
 pub fn build_handoff_xml(ctx: &ExecutionContext<'_>, page: PageRequest) -> io::Result<String> {
     let root = ctx.root;
-    let head = resolve_git_head(root);
+    let head = resolve_git_head(root)?;
     let changed = if head.is_some() {
         crate::commands::common::changes::get_working_tree_changed_files(root)?
     } else {

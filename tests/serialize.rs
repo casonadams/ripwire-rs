@@ -1,3 +1,5 @@
+#[path = "support/index.rs"]
+mod index_support;
 mod serialize {
     mod escape;
     mod graph_export;

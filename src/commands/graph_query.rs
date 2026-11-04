@@ -1,5 +1,5 @@
 //! `--graph-query EXPR`: evaluates the functional graph query DSL over the call graph.
-use crate::commands::common::retrieval::report_query;
+use crate::commands::common::retrieval::report_text_query;
 use crate::query::commands::QueryContext;
 use crate::serialize::PageRequest;
 use super::{Plugin, Run, SharedOption};
@@ -31,8 +31,9 @@ pub fn execute<W: std::io::Write>(
 }
 
 fn run(run: &Run<'_>, args: &GraphQueryArgs) -> std::io::Result<()> {
-    let expr = args.graph_query.as_deref().unwrap_or_default();
-    report_query(run, |query, out| execute(query, expr, run.page(), out))
+    report_text_query(run, args.graph_query.as_deref(), |query, expr, page, out| {
+        execute(query, expr, page, out)
+    })
 }
 
 pub static GRAPH_QUERY: Plugin<GraphQueryArgs> = Plugin {

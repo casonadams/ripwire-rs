@@ -1,6 +1,9 @@
+use crate::index_support::index;
+use crate::nav_support::nav_report_paged;
+use ripwire_rs::Lang;
 use ripwire_rs::query::navigation::{NavContext, NavMode, execute_nav_symbol_query_in_root};
 use ripwire_rs::serialize::PageRequest;
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, PageRankConfig, ingest_in_memory_files};
+use ripwire_rs::{Graph, Interner, LanguageRegistry, PageRankConfig, ingest_in_memory_files};
 
 const PROCESS_A: &[u8] =
     b"def process(x):\n    return x\n\ndef helper_a():\n    return process(1)\n";
@@ -12,23 +15,9 @@ const SINGLE: &[u8] = b"def run_three():\n    return process(6)\n";
 const DC_ROW: &str = "<dc in=\"";
 
 fn render(files: &[(&str, Lang, &[u8])], mode: NavMode, sym: &str, page: PageRequest) -> String {
-    let reg = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(files, &reg, &interner);
-    let graph = Graph::build(&ingest, &interner);
+    let (ingest, graph, interner) = index(files);
     let pr = graph.page_rank(&PageRankConfig::default());
-    let ctx = NavContext {
-        ingest: &ingest,
-        graph: &graph,
-        ranks: &pr.ranks,
-        interner: &interner,
-        page,
-        max_depth: None,
-        pr_iters: Some(pr.iterations),
-    };
-    let mut out = Vec::new();
-    execute_nav_symbol_query_in_root(".", sym, mode, &ctx, &mut out).unwrap();
-    String::from_utf8(out).unwrap()
+    nav_report_paged(&ingest, &graph, &pr.ranks, &interner, sym, mode, page).unwrap()
 }
 
 fn two_defs_fixture() -> Vec<(&'static str, Lang, &'static [u8])> {

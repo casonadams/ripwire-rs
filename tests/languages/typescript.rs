@@ -1,30 +1,8 @@
-use super::harness::{GraphProtocolCase, sym, verify_protocol_case};
-use ripwire_rs::{Interner, Lang, LanguageRegistry, RefRole, SymKind, ingest_in_memory_files};
+use ripwire_rs::{Interner, Lang, LanguageRegistry, RefRole, ingest_in_memory_files};
 use std::collections::HashMap;
 
 #[test]
 fn test_typescript_and_tsx_graph_protocol() {
-    verify_protocol_case(&GraphProtocolCase {
-        label: "typescript",
-        files: &[(
-            "src/service.ts",
-            Lang::TypeScript,
-            b"import { log } from './logger';\nexport const MAX_BATCH = 64;\nexport const camelNoise = 1;\nexport interface Handler { handle(): void; }\nexport class ApiHandler implements Handler {\n  handle(): void {\n    Array.isArray([]);\n    dispatch();\n  }\n}\nexport function dispatch(): void {\n  return;\n}\n",
-        )],
-        expected_syms: &[
-            sym("MAX_BATCH", SymKind::Var, None, false),
-            sym("Handler", SymKind::Interface, None, true),
-            sym("ApiHandler", SymKind::Class, None, true),
-            sym("handle", SymKind::Method, Some("ApiHandler"), true),
-            sym("dispatch", SymKind::Function, None, true),
-        ],
-        rejected_syms: &["camelNoise"],
-        expected_edges: &[("handle", "dispatch")],
-        expect_external: true,
-        expected_lego: Some(("Handler", "ApiHandler")),
-        expected_import: Some("./logger"),
-    });
-
     let reg = LanguageRegistry::new().unwrap();
     let interner = Interner::new();
     let ingest = ingest_in_memory_files(

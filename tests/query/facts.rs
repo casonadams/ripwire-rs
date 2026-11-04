@@ -7,80 +7,22 @@ use ripwire_rs::*;
 use std::collections::HashSet;
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn contract_report_keeps_incompatible_callers_outside_unflagged_page() {
-        let interner = Interner::new();
-        let registry = LanguageRegistry::new().unwrap();
-        let ingest = ingest_in_memory_files(
-            &[(
-                "src/lib.rs",
-                Lang::Rust,
-                b"pub fn target(a: i32, b: i32) -> i32 { a + b }\nfn caller() { target(1); }\n"
-                    .as_slice(),
-            )],
-            &registry,
-            &interner,
-        );
-        let graph = Graph::build(&ingest, &interner);
-        let context = SafetyContext {
-            root: ":memory:",
-            ingest: &ingest,
-            graph: &graph,
-            interner: &interner,
-        };
-        let baseline = ripwire_rs::gate::contract::SignatureContract {
-            name: "target".into(),
-            params: 1,
-            is_public: true,
-        };
-        let mut out = Vec::new();
-        write_edit_check_from_facts(
-            &EditCheckRequest {
-                sym_name: "target",
-                head_contract: Some(&baseline),
-                page: Some((0, 0)),
-                at_stamp: Some("abc:date"),
-            },
-            &context,
-            &mut out,
-        )
-        .unwrap();
-        let xml = String::from_utf8(out).unwrap();
-        assert!(xml.contains("status=\"contract-change\""));
-        assert!(xml.contains("incompatible=\"1\""));
-        assert!(xml.contains("n=\"caller\""));
-        assert!(xml.contains("at=\"abc:date\""));
-        assert!(xml.contains("shown_unflagged=\"0\""));
-    }
-
-    #[test]
-    fn baseline_policy_requires_explicit_absorption_and_preserves_head_stamp() {
-        let interner = Interner::new();
-        let registry = LanguageRegistry::new().unwrap();
-        let ingest = ingest_in_memory_files(
-            &[("src/lib.rs", Lang::Rust, b"pub fn target() {}\n".as_slice())],
-            &registry,
-            &interner,
-        );
-        let graph = Graph::build(&ingest, &interner);
-        let context = SafetyContext {
-            root: ":memory:",
-            ingest: &ingest,
-            graph: &graph,
-            interner: &interner,
-        };
-        let error =
-            baseline_from_facts(&context, "abc", Some((2, "cc target")), false).unwrap_err();
-        assert!(error.to_string().contains("2 gating finding(s)"));
-        assert!(error.to_string().contains("cc target"));
-        let dirty = baseline_from_facts(&context, "abc", Some((2, "cc target")), true).unwrap();
-        assert!(dirty.dirty);
-        assert_eq!(dirty.absorbed, 2);
-        let clean = baseline_from_facts(&context, "abc", None, false).unwrap();
-        assert!(!clean.dirty);
-        assert_eq!(clean.absorbed, 0);
+        let files = [(
+            "src/lib.rs",
+            "pub fn target(a: i32, b: i32) -> i32 { a + b }\nfn caller() { target(1); }\n",
+        )];
+        crate::a_safety_context::with_safety_context(":memory:", &files, |context| {
+            let xml =
+                crate::a_safety_context::target_edit_check_xml(context, Some((0, 0)), "abc:date");
+            assert!(xml.contains("status=\"contract-change\""));
+            assert!(xml.contains("incompatible=\"1\""));
+            assert!(xml.contains("n=\"caller\""));
+            assert!(xml.contains("at=\"abc:date\""));
+            assert!(xml.contains("shown_unflagged=\"0\""));
+        });
     }
 }
 

@@ -5,26 +5,11 @@ use ripwire_rs::{
 };
 
 pub fn owner_qualified_callees(files: &[(&str, Lang, &[u8])], caller: &str) -> Vec<String> {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(files, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    let caller = ingest
-        .symbols
-        .iter()
-        .find(|s| interner.resolve(&s.name) == caller)
-        .unwrap_or_else(|| panic!("{caller} not indexed"))
-        .id;
-    let mut out: Vec<String> = graph
-        .callees(caller)
-        .map(|(id, _)| {
-            let sym = &ingest.symbols[id as usize];
-            let owner = sym.scope.map_or("", |s| interner.resolve(&s));
-            format!("{owner}.{}", interner.resolve(&sym.name))
-        })
-        .collect();
-    out.sort();
-    out
+    crate::a_callees::callees_described(files, caller, |ingest, interner, id| {
+        let sym = &ingest.symbols[id as usize];
+        let owner = sym.scope.map_or("", |s| interner.resolve(&s));
+        format!("{owner}.{}", interner.resolve(&sym.name))
+    })
 }
 
 /// Every resolved `(from, to)` edge among the indexed files, by symbol name, sorted.
@@ -78,6 +63,17 @@ pub struct GraphProtocolCase<'a> {
     pub expected_lego: Option<(&'a str, &'a str)>,
     pub expected_import: Option<&'a str>,
 }
+
+pub const NO_CASE: GraphProtocolCase<'static> = GraphProtocolCase {
+    label: "",
+    files: &[],
+    expected_syms: &[],
+    rejected_syms: &[],
+    expected_edges: &[],
+    expect_external: false,
+    expected_lego: None,
+    expected_import: None,
+};
 
 fn assert_expected_sym(
     case_label: &str,

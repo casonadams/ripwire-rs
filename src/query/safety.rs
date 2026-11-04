@@ -393,7 +393,9 @@ pub fn execute_quality_baseline_with<W: Write>(
     allow_dirty: bool,
     out: &mut W,
 ) -> io::Result<()> {
-    let head_sha = crate::git::history::resolve_head_sha(state.root).unwrap_or_default();
+    let head_sha = crate::git::history::resolve_head_sha(state.root)
+        .map_err(io::Error::other)?
+        .unwrap_or_default();
     let snap = prepare_quality_baseline(state, &head_sha, allow_dirty)?;
     let baseline_path = Path::new(state.root).join(crate::gate::baseline::DEFAULT_BASELINE_FILE);
     crate::gate::baseline::write_baseline_file(&snap, &baseline_path)?;

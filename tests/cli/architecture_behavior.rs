@@ -1,3 +1,4 @@
+use crate::index_support::index;
 use ripwire_rs::cli::TopModifierArgs;
 use ripwire_rs::commands::dead_code::{DeadCodeContext, execute_dead_code_query_paged};
 use ripwire_rs::commands::external_surface::execute_external_surface_query;
@@ -5,18 +6,7 @@ use ripwire_rs::commands::nav::{NavigateArgs, execute_navigate_with};
 use ripwire_rs::metrics::architecture::{build_community_module, compute_deps_report};
 use ripwire_rs::query::map::{MapRequest, execute_stream_xml_ranked};
 use ripwire_rs::query::navigation::NavContext;
-use ripwire_rs::{
-    Graph, IngestResult, Interner, Lang, LanguageRegistry, PageRankConfig, find_symbols_by_name,
-    ingest_in_memory_files,
-};
-
-fn corpus(files: &[(&str, Lang, &[u8])]) -> (IngestResult, Graph, Interner) {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(files, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    (ingest, graph, interner)
-}
+use ripwire_rs::{Lang, PageRankConfig, find_symbols_by_name};
 
 fn attr<'a>(element: &'a str, name: &str) -> &'a str {
     let key = format!("{name}=\"");
@@ -37,13 +27,8 @@ fn symbol_names(xml: &str) -> Vec<&str> {
     xml.split("<s ").skip(1).map(|row| attr(row, "n")).collect()
 }
 
-#[test]
-fn external_surface_counts_calls_but_excludes_definitions_builtins_and_value_uses() {
-    let (ingest, _, interner) = corpus(&[(
-        "src/lib.rs",
-        Lang::Rust,
-        b"fn local() {}\nfn run(values: Vec<u8>) {\n    local();\n    vendor_send();\n    vendor_send();\n    vendor_flush();\n    values.len();\n    let callback = vendor_callback;\n}\n",
-    )]);
+fn external_surface_xml(files: &[(&str, Lang, &[u8])]) -> String {
+    let (ingest, _, interner) = index(files);
     let mut out = Vec::new();
     execute_external_surface_query(
         "memory",
@@ -53,19 +38,27 @@ fn external_surface_counts_calls_but_excludes_definitions_builtins_and_value_use
         &mut out,
     )
     .unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    let body = xml
-        .split_once("<external-surface ")
+    String::from_utf8(out).unwrap()
+}
+
+fn external_surface_rows(xml: &str) -> Vec<&str> {
+    xml.split_once("<external-surface ")
         .unwrap()
         .1
-        .split_once('>')
-        .unwrap()
-        .1;
-    let rows: Vec<_> = body
         .split("<x ")
         .skip(1)
         .map(|row| row.split_once('>').unwrap().0)
-        .collect();
+        .collect()
+}
+
+#[test]
+fn external_surface_counts_calls_but_excludes_definitions_builtins_and_value_uses() {
+    let xml = external_surface_xml(&[(
+        "src/lib.rs",
+        Lang::Rust,
+        b"fn local() {}\nfn run(values: Vec<u8>) {\n    local();\n    vendor_send();\n    vendor_send();\n    vendor_flush();\n    values.len();\n    let callback = vendor_callback;\n}\n",
+    )]);
+    let rows = external_surface_rows(&xml);
     assert_eq!(
         rows.iter().map(|row| attr(row, "n")).collect::<Vec<_>>(),
         ["vendor_send", "vendor_flush"],
@@ -78,7 +71,7 @@ fn external_surface_counts_calls_but_excludes_definitions_builtins_and_value_use
 
 #[test]
 fn external_surface_ignores_doc_links_shell_builtins_and_callable_fields() {
-    let (ingest, _, interner) = corpus(&[
+    let xml = external_surface_xml(&[
         (
             "docs/guide.md",
             Lang::Markdown,
@@ -91,30 +84,16 @@ fn external_surface_ignores_doc_links_shell_builtins_and_callable_fields() {
             b"struct Hooks { measure: fn() }\nfn run(hooks: &Hooks) {\n    (hooks.measure)();\n    vendor_send();\n}\n",
         ),
     ]);
-    let mut out = Vec::new();
-    execute_external_surface_query(
-        "memory",
-        &ingest,
-        &interner,
-        ripwire_rs::serialize::PageRequest::default(),
-        &mut out,
-    )
-    .unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    let names: Vec<&str> = xml
-        .split_once("<external-surface ")
-        .unwrap()
-        .1
-        .split("<x ")
-        .skip(1)
-        .map(|row| attr(row.split_once('>').unwrap().0, "n"))
+    let names: Vec<&str> = external_surface_rows(&xml)
+        .iter()
+        .map(|row| attr(row, "n"))
         .collect();
     assert_eq!(names, ["vendor_send"], "{xml}");
 }
 
 #[test]
 fn community_members_exclude_module_scope_owners() {
-    let (ingest, graph, interner) = corpus(&[(
+    let (ingest, graph, interner) = index(&[(
         "pkg/app.py",
         Lang::Python,
         b"def entry():\n    helper()\n\ndef helper():\n    pass\n\nentry()\n",
@@ -132,7 +111,7 @@ fn community_members_exclude_module_scope_owners() {
 
 #[test]
 fn rust_struct_literal_is_an_edge_to_the_constructed_type() {
-    let (ingest, graph, interner) = corpus(&[(
+    let (ingest, graph, interner) = index(&[(
         "src/lib.rs",
         Lang::Rust,
         b"struct Hook { run: u8 }\nstruct Unused;\nfn build() -> Hook {\n    Hook { run: 1 }\n}\nfn plain() {}\n",
@@ -164,7 +143,7 @@ fn rust_struct_literal_is_an_edge_to_the_constructed_type() {
 }
 #[test]
 fn community_anchor_prefers_production_code_then_substantial_callable() {
-    let (ingest, _, interner) = corpus(&[
+    let (ingest, _, interner) = index(&[
         (
             "tests/check.rs",
             Lang::Rust,
@@ -203,7 +182,7 @@ fn community_anchor_prefers_production_code_then_substantial_callable() {
 
 #[test]
 fn community_summary_partitions_isolated_documents_declarations_and_bodies() {
-    let (ingest, graph, interner) = corpus(&[
+    let (ingest, graph, interner) = index(&[
         (
             "src/lib.rs",
             Lang::Rust,
@@ -243,7 +222,7 @@ fn community_summary_partitions_isolated_documents_declarations_and_bodies() {
 
 #[test]
 fn dependency_report_deduplicates_file_edges_and_detects_transitive_cycles() {
-    let (ingest, graph, interner) = corpus(&[
+    let (ingest, graph, interner) = index(&[
         (
             "src/a.rs",
             Lang::Rust,
@@ -274,7 +253,7 @@ fn dependency_report_deduplicates_file_edges_and_detects_transitive_cycles() {
 
 #[test]
 fn ranked_stream_selects_authorities_hubs_and_preserves_complete_rows_at_budget() {
-    let (ingest, graph, interner) = corpus(&[(
+    let (ingest, graph, interner) = index(&[(
         "src/lib.rs",
         Lang::Rust,
         b"fn entry() { sink_a(); sink_b(); }\nfn sink_a() {}\nfn sink_b() {}\nfn isolated() {}\n",
@@ -344,7 +323,7 @@ fn ranked_stream_selects_authorities_hubs_and_preserves_complete_rows_at_budget(
 
 #[test]
 fn navigation_reports_direct_neighbors_and_transitive_impact_without_reversing_edges() {
-    let (ingest, graph, interner) = corpus(&[
+    let (ingest, graph, interner) = index(&[
         ("src/entry.rs", Lang::Rust, b"fn entry() { middle(); }\n"),
         ("src/middle.rs", Lang::Rust, b"fn middle() { leaf(); }\n"),
         (
@@ -394,7 +373,7 @@ fn navigation_reports_direct_neighbors_and_transitive_impact_without_reversing_e
 
 #[test]
 fn mermaid_aggregates_cross_directory_calls_without_internal_or_isolated_edges() {
-    let (ingest, graph, interner) = corpus(&[
+    let (ingest, graph, interner) = index(&[
         (
             "src/ui/entry.rs",
             Lang::Rust,
@@ -422,7 +401,7 @@ fn mermaid_aggregates_cross_directory_calls_without_internal_or_isolated_edges()
 }
 
 fn dead_code_names(files: &[(&str, Lang, &[u8])], page: &TopModifierArgs) -> Vec<String> {
-    let (ingest, graph, interner) = corpus(files);
+    let (ingest, graph, interner) = index(files);
     let sources: Vec<(&str, &[u8])> = files.iter().map(|&(path, _, src)| (path, src)).collect();
     let ctx = DeadCodeContext {
         root: ":memory:",

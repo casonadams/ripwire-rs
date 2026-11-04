@@ -1,12 +1,23 @@
+use crate::b_state::assert_reads_are_not_state;
 use crate::nonlocal_support::{function, state_report as support_state_report};
 use ripwire_rs::domain::Binding;
-use ripwire_rs::metrics::nonlocal::{NonlocalFunction, find_nonlocal_state};
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
+use ripwire_rs::metrics::nonlocal::NonlocalFunction;
+use ripwire_rs::{Interner, Lang, LanguageRegistry, ingest_in_memory_files};
 
 const CONFIG: &str = "src/config.ts";
 
 fn state_report(files: &[(&str, &str)]) -> Vec<NonlocalFunction> {
     support_state_report(Lang::TypeScript, files)
+}
+
+/// Each expectation is `(function, Some((reads, writes)))`, or `None` when the function must not be state.
+type Expect = (&'static str, Option<(usize, usize)>);
+
+fn expect_rw(report: &[NonlocalFunction], expect: &[Expect]) {
+    for &(name, rw) in expect {
+        let got = function(report, name).map(|f| (f.reads, f.writes));
+        assert_eq!(got, rw, "{name}");
+    }
 }
 
 const SCALARS: &str = "export const GREP_TIMEOUT_MS = 30_000;
@@ -28,11 +39,9 @@ export function label(): string {
 
 #[test]
 fn reads_of_const_scalars_are_not_mutable_state() {
-    let report = state_report(&[(CONFIG, SCALARS), ("src/use.ts", READS_SCALARS)]);
-    assert!(
-        report.is_empty(),
-        "immutable scalar reads reported as state: {:?}",
-        report.iter().map(|f| &f.sym_name).collect::<Vec<_>>()
+    assert_reads_are_not_state(
+        Lang::TypeScript,
+        &[(CONFIG, SCALARS), ("src/use.ts", READS_SCALARS)],
     );
 }
 
@@ -54,18 +63,6 @@ export function touchLegacy(): void {
 }
 ";
 
-#[test]
-fn module_level_let_and_var_are_mutable_state_with_writes() {
-    let report = state_report(&[(CONFIG, MODULE_LET), ("src/use.ts", WRITES_LET)]);
-    let descend = function(&report, "descend").expect("descend touches depth");
-    assert_eq!((descend.reads, descend.writes), (1, 1));
-    assert!(descend.cells.iter().all(|c| c.cell_name == "depth"));
-    let touch = function(&report, "touchLegacy").expect("touchLegacy writes module vars");
-    assert_eq!(touch.writes, 2);
-    let current = function(&report, "current").expect("read of let is state");
-    assert_eq!((current.reads, current.writes), (1, 0));
-}
-
 const MUTABLE_OBJECT: &str = "export const LIMITS = { max: 10 };
 export const TAGS = [\"a\"];
 ";
@@ -83,16 +80,31 @@ export function readMax(): number {
 ";
 
 #[test]
-fn mutation_through_const_object_reference_is_a_write() {
+fn module_let_and_const_objects_are_state_only_where_written_or_read() {
+    let report = state_report(&[(CONFIG, MODULE_LET), ("src/use.ts", WRITES_LET)]);
+    expect_rw(
+        &report,
+        &[
+            ("descend", Some((1, 1))),
+            ("touchLegacy", Some((0, 2))),
+            ("current", Some((1, 0))),
+        ],
+    );
+    let descend = function(&report, "descend").unwrap();
+    assert!(descend.cells.iter().all(|c| c.cell_name == "depth"));
+
     let report = state_report(&[(CONFIG, MUTABLE_OBJECT), ("src/use.ts", MUTATES_OBJECT)]);
-    let raise = function(&report, "raise").expect("member write through const is state");
-    assert_eq!((raise.reads, raise.writes), (0, 1));
+    expect_rw(
+        &report,
+        &[
+            ("raise", Some((0, 1))),
+            ("tag", Some((0, 1))),
+            ("readMax", Some((1, 0))),
+        ],
+    );
+    let raise = function(&report, "raise").unwrap();
     assert_eq!(raise.cells[0].cell_name, "LIMITS");
     assert!(raise.cells[0].is_write);
-    let tag = function(&report, "tag").expect("subscript write through const is state");
-    assert_eq!(tag.writes, 1);
-    let read = function(&report, "readMax").expect("reading const object contents is state");
-    assert_eq!((read.reads, read.writes), (1, 0));
 }
 
 const SHADOWED: &str = "let count = 0;
@@ -108,19 +120,6 @@ export function param(count: { n: number }): void {
   count.n = 2;
 }
 ";
-
-#[test]
-fn writes_to_local_bindings_do_not_reach_module_state() {
-    let report = state_report(&[(CONFIG, SHADOWED), ("src/use.ts", LOCAL_WRITES)]);
-    assert!(
-        function(&report, "localOnly").is_none(),
-        "local let shadowing a module let is not module state"
-    );
-    assert!(
-        function(&report, "param").is_none(),
-        "parameter mutation is not module state"
-    );
-}
 
 const DEV_TOKEN_SCRIPT: &str = "let json;
 export function refreshToken(raw: string): string {
@@ -138,22 +137,6 @@ export async function bare(res: { json(): Promise<{ data: number }> }): Promise<
   return (await res.json()).data;
 }
 ";
-
-#[test]
-fn local_declaration_shadows_cross_file_global_of_same_name() {
-    let report = state_report(&[
-        ("scripts/refresh-dev-token.ts", DEV_TOKEN_SCRIPT),
-        ("e2e/intercept.spec.ts", INTERCEPT_SPEC),
-    ]);
-    assert!(
-        function(&report, "intercept").is_none(),
-        "a local const json and a property call res.json() bind to another file's let json"
-    );
-    assert!(
-        function(&report, "bare").is_none(),
-        "a property call on an unknown receiver is not a read of a same-named variable"
-    );
-}
 
 const ENV_CONFIG: &str = "export const OWNER = process.env.DEV_MEMBER_ID!;
 export const BASE = `${process.env.HOST}/api`;
@@ -176,32 +159,59 @@ export function bump(): void {
 }
 ";
 
+const PARAM_USE: &str = "import { depth } from \"./config\";
+export function reassigned(depth: number): number {
+  depth = depth + 1;
+  return depth;
+}
+export function mapped(): number[] {
+  return [1].map(() => depth);
+}
+";
+
+const SHADOW_CONFIG: &str = "const cache = new Map<string, number>();
+export function peek(): number {
+  return cache.size;
+}
+";
+
+const SHADOW_USE: &str = "export function shadowed(): number {
+  const cache = new Map<string, number>();
+  cache.set(\"x\", 1);
+  return cache.size;
+}
+";
+
 #[test]
-fn const_bound_to_environment_scalar_is_not_mutable_state() {
+fn shadowing_and_environment_consts_are_not_module_state() {
+    let report = state_report(&[(CONFIG, SHADOWED), ("src/use.ts", LOCAL_WRITES)]);
+    expect_rw(&report, &[("localOnly", None), ("param", None)]);
+
+    let report = state_report(&[
+        ("scripts/refresh-dev-token.ts", DEV_TOKEN_SCRIPT),
+        ("e2e/intercept.spec.ts", INTERCEPT_SPEC),
+    ]);
+    expect_rw(&report, &[("intercept", None), ("bare", None)]);
+
     let report = state_report(&[(CONFIG, ENV_CONFIG), ("src/use.ts", ENV_USE)]);
-    assert!(
-        function(&report, "owner").is_none(),
-        "env-derived scalar consts are immutable: {:?}",
-        function(&report, "owner").map(|f| &f.cells)
+    expect_rw(
+        &report,
+        &[("owner", None), ("limit", None), ("bump", Some((0, 1)))],
     );
-    assert!(
-        function(&report, "limit").is_none(),
-        "an unmutated const object is configuration, not state"
+
+    let report = state_report(&[(CONFIG, MODULE_LET), ("src/use.ts", PARAM_USE)]);
+    expect_rw(&report, &[("reassigned", None), ("mapped", Some((1, 0)))]);
+
+    let report = state_report(&[(CONFIG, SHADOW_CONFIG), ("src/use.ts", SHADOW_USE)]);
+    expect_rw(&report, &[("shadowed", None), ("peek", None)]);
+    assert_eq!(
+        binding_of(&[(CONFIG, SHADOW_CONFIG)], "cache"),
+        Binding::Const
     );
-    let bump = function(&report, "bump").expect("genuine let write stays state");
-    assert_eq!((bump.reads, bump.writes), (0, 1));
 }
 
 fn analysis(files: &[(&str, &str)], lang: Lang) -> Vec<NonlocalFunction> {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let sources: Vec<(&str, Lang, &[u8])> = files
-        .iter()
-        .map(|(path, src)| (*path, lang, src.as_bytes()))
-        .collect();
-    let ingest = ingest_in_memory_files(&sources, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    find_nonlocal_state(&ingest, &graph, &interner)
+    support_state_report(lang, files)
 }
 
 fn binding_of(files: &[(&str, &str)], name: &str) -> Binding {
@@ -276,27 +286,6 @@ export function peek(): number {
 }
 ";
 
-#[test]
-fn constant_objects_are_state_only_where_the_corpus_mutates_them() {
-    let state = analysis(
-        &[(CONFIG, MUTATION_CONFIG), ("src/use.ts", MUTATION_USE)],
-        Lang::TypeScript,
-    );
-    let touch = function(&state, "touch").expect("property write is state");
-    assert_eq!((touch.reads, touch.writes), (0, 1));
-    let push = function(&state, "push").expect("in-place method call is a write");
-    assert_eq!((push.reads, push.writes), (0, 1));
-    assert_eq!(push.cells[0].cell_name, "LIST");
-    let forget = function(&state, "forget").expect("delete is a write");
-    assert_eq!((forget.reads, forget.writes), (0, 1));
-    let peek = function(&state, "peek").expect("reads of mutated objects are state");
-    assert_eq!((peek.reads, peek.writes), (2, 0));
-    assert!(
-        function(&state, "total").is_none(),
-        "reads of unmutated constants are configuration"
-    );
-}
-
 const LIST_LET: &str = "export let items: number[] = [];\n";
 
 const LIST_USE: &str = "import { items } from \"./config\";
@@ -307,47 +296,6 @@ export function add(value: number): void {
   items.push(value);
 }
 ";
-
-#[test]
-fn non_mutating_calls_on_mutable_bindings_are_reads() {
-    let report = state_report(&[(CONFIG, LIST_LET), ("src/use.ts", LIST_USE)]);
-    let size = function(&report, "size").expect("reads of a let are state");
-    assert_eq!((size.reads, size.writes), (1, 0));
-    let add = function(&report, "add").expect("push on a let mutates its contents");
-    assert_eq!((add.reads, add.writes), (0, 1));
-}
-
-const PARAM_USE: &str = "import { depth } from \"./config\";
-export function reassigned(depth: number): number {
-  depth = depth + 1;
-  return depth;
-}
-export function mapped(): number[] {
-  return [1].map(() => depth);
-}
-";
-
-#[test]
-fn parameter_reassignment_is_local_and_expression_bodied_arrows_read_state() {
-    let report = state_report(&[(CONFIG, MODULE_LET), ("src/use.ts", PARAM_USE)]);
-    assert!(
-        function(&report, "reassigned").is_none(),
-        "a parameter shadowing a module let is not module state"
-    );
-    let mapped = function(&report, "mapped").expect("a read in an arrow body is state");
-    assert_eq!((mapped.reads, mapped.writes), (1, 0));
-}
-
-const VIEW_JS: &str = "export let depth = 0;
-export const view = () => <div>{depth}</div>;
-";
-
-#[test]
-fn jsx_expression_reads_are_state() {
-    let report = analysis(&[("src/view.js", VIEW_JS)], Lang::JavaScript);
-    let view = function(&report, "view").expect("JSX interpolation reads a let");
-    assert_eq!((view.reads, view.writes), (1, 0));
-}
 
 const LOWER_CONFIG: &str = "const cache = new Map<string, number>();
 export const registry: Record<string, number> = {};
@@ -367,47 +315,44 @@ export function readTable(): number {
 ";
 
 #[test]
-fn lowercase_module_containers_are_state_only_where_mutated() {
-    let report = state_report(&[(CONFIG, LOWER_CONFIG)]);
-    let remember = function(&report, "remember").expect("Map.set on a module const is a write");
-    assert_eq!((remember.reads, remember.writes), (0, 1));
-    assert_eq!(remember.cells[0].cell_name, "cache");
-    let register = function(&report, "register").expect("indexed write through a module const");
-    assert_eq!((register.reads, register.writes), (0, 1));
-    let lookup = function(&report, "lookup").expect("reads of a mutated Map are state");
-    assert_eq!((lookup.reads, lookup.writes), (1, 0));
-    assert!(
-        function(&report, "readTable").is_none(),
-        "an unmutated lowercase object is configuration"
+fn constant_objects_and_containers_are_state_only_where_mutated() {
+    let report = state_report(&[(CONFIG, MUTATION_CONFIG), ("src/use.ts", MUTATION_USE)]);
+    expect_rw(
+        &report,
+        &[
+            ("touch", Some((0, 1))),
+            ("push", Some((0, 1))),
+            ("forget", Some((0, 1))),
+            ("peek", Some((2, 0))),
+            ("total", None),
+        ],
     );
+    let push = function(&report, "push").unwrap();
+    assert_eq!(push.cells[0].cell_name, "LIST");
+
+    let report = state_report(&[(CONFIG, LIST_LET), ("src/use.ts", LIST_USE)]);
+    expect_rw(&report, &[("size", Some((1, 0))), ("add", Some((0, 1)))]);
+
+    let report = state_report(&[(CONFIG, LOWER_CONFIG)]);
+    expect_rw(
+        &report,
+        &[
+            ("remember", Some((0, 1))),
+            ("register", Some((0, 1))),
+            ("lookup", Some((1, 0))),
+            ("readTable", None),
+        ],
+    );
+    let remember = function(&report, "remember").unwrap();
+    assert_eq!(remember.cells[0].cell_name, "cache");
 }
 
-const SHADOW_CONFIG: &str = "const cache = new Map<string, number>();
-export function peek(): number {
-  return cache.size;
-}
-";
-
-const SHADOW_USE: &str = "export function shadowed(): number {
-  const cache = new Map<string, number>();
-  cache.set(\"x\", 1);
-  return cache.size;
-}
+const VIEW_JS: &str = "export let depth = 0;
+export const view = () => <div>{depth}</div>;
 ";
 
 #[test]
-fn function_local_shadow_is_not_evidence_for_a_module_container() {
-    let report = state_report(&[(CONFIG, SHADOW_CONFIG), ("src/use.ts", SHADOW_USE)]);
-    assert!(
-        function(&report, "shadowed").is_none(),
-        "a local Map mutated inside a function is not the module const"
-    );
-    assert!(
-        function(&report, "peek").is_none(),
-        "no mutation of the module const exists, so its reads are configuration"
-    );
-    assert_eq!(
-        binding_of(&[(CONFIG, SHADOW_CONFIG)], "cache"),
-        Binding::Const
-    );
+fn jsx_expression_reads_are_state() {
+    let report = analysis(&[("src/view.js", VIEW_JS)], Lang::JavaScript);
+    expect_rw(&report, &[("view", Some((1, 0)))]);
 }

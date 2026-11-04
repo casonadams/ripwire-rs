@@ -157,6 +157,37 @@ pub(crate) fn in_field(parent: Node<'_>, node: Node<'_>, field: &str) -> bool {
     })
 }
 
+/// Per-language table of the syntax positions that are never a value read.
+pub(crate) struct NonValueRules {
+    /// Parent kinds whose every child is a non-value position.
+    pub(crate) always: &'static [&'static str],
+    /// `(kind, field)`: the node is exactly the parent's `field` child.
+    pub(crate) is_field: &'static [(&'static str, &'static str)],
+    /// `(kind, field)`: the node lies within the parent's `field` child.
+    pub(crate) within_field: &'static [(&'static str, &'static str)],
+}
+
+pub(crate) fn non_value(
+    parent: Node<'_>,
+    node: Node<'_>,
+    binding_target: impl Fn(Node<'_>, Node<'_>) -> bool,
+    rules: &NonValueRules,
+) -> bool {
+    if binding_target(parent, node) {
+        return true;
+    }
+    let kind = parent.kind();
+    rules.always.contains(&kind)
+        || rules
+            .is_field
+            .iter()
+            .any(|&(k, field)| k == kind && parent.child_by_field_name(field) == Some(node))
+        || rules
+            .within_field
+            .iter()
+            .any(|&(k, field)| k == kind && in_field(parent, node, field))
+}
+
 pub(crate) fn enclosing_scope<'a>(
     node: Node<'a>,
     is_scope: impl Fn(&str) -> bool,
@@ -187,4 +218,16 @@ pub(crate) fn value_position(
         ancestor = parent.parent();
     }
     true
+}
+
+/// A read of `node` when its parent kind is one of `expression_parents` and no enclosing position excludes it.
+pub(crate) fn value_read(
+    node: Node<'_>,
+    expression_parents: &[&str],
+    excluded: impl Fn(Node<'_>, Node<'_>) -> bool,
+    is_scope: impl Fn(&str) -> bool,
+) -> bool {
+    node.parent()
+        .is_some_and(|parent| expression_parents.contains(&parent.kind()))
+        && value_position(node, excluded, is_scope)
 }

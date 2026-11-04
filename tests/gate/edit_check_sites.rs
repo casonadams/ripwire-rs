@@ -170,44 +170,45 @@ fn receiver_is_not_a_call_argument() {
 }
 
 #[test]
-fn visibility_only_change_flags_no_call_site() {
-    let now = RUST_HEAD.replace("pub fn go", "fn go");
-    let got = check("src/s.rs", Lang::Rust, RUST_HEAD, &now, "go");
-    assert_eq!((got.callers, got.incompatible), (2, 0));
-}
-
-#[test]
-fn caller_with_wrong_arity_is_flagged_even_when_contract_is_unchanged() {
-    let now = RUST_HEAD.replace("self.go(\"x\")", "self.go(\"x\", 1)");
-    let got = check("src/s.rs", Lang::Rust, RUST_HEAD, &now, "go");
-    assert_eq!(got.status, ContractStatus::Unchanged);
-    assert_eq!((got.callers, got.incompatible), (2, 1));
-}
-
-#[test]
-fn callers_left_with_the_old_argument_count_are_found_when_the_resolver_drops_them() {
-    let head = "pub fn go(x: u8) {}\npub fn a() { go(1); }\npub fn b() { go(2); }\n";
-    let now = head.replace("go(x: u8)", "go()");
-    let got = check("src/s.rs", Lang::Rust, head, &now, "go");
-    assert_eq!((got.callers, got.incompatible, got.sites), (2, 2, 2));
-}
-
-#[test]
-fn an_unbound_call_with_some_other_argument_count_is_not_blamed_on_the_edit() {
-    let head = "pub fn go(x: u8) {}\npub fn a() { go(1); }\npub fn b() { go(1, 2, 3); }\n";
-    let now = head.replace("go(x: u8)", "go()");
-    let got = check("src/s.rs", Lang::Rust, head, &now, "go");
-    assert_eq!((got.callers, got.incompatible), (1, 1));
-}
-
-#[test]
-fn an_unbound_call_is_not_blamed_when_the_contract_did_not_change() {
-    let now = "pub fn go(x: u8) {}\npub fn a() { go(1, 2); }\n";
-    let got = check("src/s.rs", Lang::Rust, now, now, "go");
-    assert_eq!(
-        (got.status, got.callers, got.incompatible),
-        (ContractStatus::Unchanged, 0, 0)
-    );
+fn edits_flag_only_the_call_sites_the_new_contract_breaks() {
+    let unbound_head = "pub fn go(x: u8) {}\npub fn a() { go(1); }\npub fn b() { go(1, 2, 3); }\n";
+    type Check = fn(&Outcome);
+    let cases: [(String, String, Check); 5] = [
+        (
+            RUST_HEAD.into(),
+            RUST_HEAD.replace("pub fn go", "fn go"),
+            |got| assert_eq!((got.callers, got.incompatible), (2, 0)),
+        ),
+        (
+            RUST_HEAD.into(),
+            RUST_HEAD.replace("self.go(\"x\")", "self.go(\"x\", 1)"),
+            |got| {
+                assert_eq!(got.status, ContractStatus::Unchanged);
+                assert_eq!((got.callers, got.incompatible), (2, 1));
+            },
+        ),
+        (
+            "pub fn go(x: u8) {}\npub fn a() { go(1); }\npub fn b() { go(2); }\n".into(),
+            "pub fn go() {}\npub fn a() { go(1); }\npub fn b() { go(2); }\n".into(),
+            |got| assert_eq!((got.callers, got.incompatible, got.sites), (2, 2, 2)),
+        ),
+        (
+            unbound_head.into(),
+            unbound_head.replace("go(x: u8)", "go()"),
+            |got| assert_eq!((got.callers, got.incompatible), (1, 1)),
+        ),
+        (
+            "pub fn go(x: u8) {}\npub fn a() { go(1, 2); }\n".into(),
+            "pub fn go(x: u8) {}\npub fn a() { go(1, 2); }\n".into(),
+            |got| {
+                assert_eq!(got.status, ContractStatus::Unchanged);
+                assert_eq!((got.callers, got.incompatible), (0, 0));
+            },
+        ),
+    ];
+    for (head, now, verify) in cases {
+        verify(&check("src/s.rs", Lang::Rust, &head, &now, "go"));
+    }
 }
 
 #[test]

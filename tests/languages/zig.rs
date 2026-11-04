@@ -1,50 +1,16 @@
-use super::harness::{GraphProtocolCase, sym, verify_protocol_case};
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, SymKind, ingest_in_memory_files};
+use crate::a_callees::callees_described;
+use ripwire_rs::{IngestResult, Interner, Lang, LanguageRegistry, SymKind, ingest_in_memory_files};
 
-#[test]
-fn test_zig_graph_protocol() {
-    verify_protocol_case(&GraphProtocolCase {
-        label: "zig",
-        files: &[(
-            "src/main.zig",
-            Lang::Zig,
-            b"const Engine = struct {\n    pub fn start() void {\n        std.print();\n        helper();\n    }\n};\nconst Mode = enum { fast, slow };\nconst Payload = union { raw: u32 };\npub fn helper() void {\n    return;\n}\n",
-        )],
-        expected_syms: &[
-            sym("Engine", SymKind::Class, None, false),
-            sym("Mode", SymKind::Var, None, false),
-            sym("Payload", SymKind::Class, None, false),
-            sym("start", SymKind::Function, Some("Engine"), true),
-            sym("helper", SymKind::Function, None, true),
-        ],
-        expected_edges: &[("start", "helper")],
-        expect_external: true,
-        ..Default::default()
-    });
+/// A callee as `file:name`.
+fn location(ingest: &IngestResult, interner: &Interner, id: u32) -> String {
+    let sym = &ingest.symbols[id as usize];
+    let file = interner.resolve(&ingest.files[sym.file_id as usize].path);
+    format!("{file}:{}", interner.resolve(&sym.name))
 }
 
 /// Callee symbols of `caller`, as `file:name`, across an in-memory multi-file ingest.
 fn callee_locations(files: &[(&str, Lang, &[u8])], caller: &str) -> Vec<String> {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(files, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    let caller = ingest
-        .symbols
-        .iter()
-        .find(|s| interner.resolve(&s.name) == caller)
-        .unwrap_or_else(|| panic!("{caller} not indexed"))
-        .id;
-    let mut out: Vec<String> = graph
-        .callees(caller)
-        .map(|(id, _)| {
-            let sym = &ingest.symbols[id as usize];
-            let file = interner.resolve(&ingest.files[sym.file_id as usize].path);
-            format!("{file}:{}", interner.resolve(&sym.name))
-        })
-        .collect();
-    out.sort();
-    out
+    callees_described(files, caller, location)
 }
 
 #[test]

@@ -1,5 +1,4 @@
-use super::harness::{GraphProtocolCase, sym, verify_protocol_case};
-use ripwire_rs::{Interner, Lang, LanguageRegistry, RefRole, SymKind, ingest_in_memory_files};
+use ripwire_rs::{Interner, Lang, LanguageRegistry, RefRole, ingest_in_memory_files};
 
 fn indexed_names(files: &[(&str, Lang, &[u8])]) -> Vec<String> {
     let reg = LanguageRegistry::new().unwrap();
@@ -30,26 +29,6 @@ fn test_javascript_member_assigned_function_is_named_by_its_property() {
 
 #[test]
 fn test_javascript_and_jsx_graph_protocol() {
-    verify_protocol_case(&GraphProtocolCase {
-        label: "javascript",
-        files: &[(
-            "src/app.js",
-            Lang::JavaScript,
-            b"import './init.js';\nconst API_VERSION = 2;\nconst tempLocal = 0;\nclass BaseCtrl {}\nclass UserCtrl extends BaseCtrl {\n  process() {\n    JSON.stringify({});\n    validate();\n  }\n}\nfunction validate() {\n  return true;\n}\n",
-        )],
-        expected_syms: &[
-            sym("API_VERSION", SymKind::Var, None, false),
-            sym("UserCtrl", SymKind::Class, None, true),
-            sym("process", SymKind::Method, Some("UserCtrl"), true),
-            sym("validate", SymKind::Function, None, true),
-        ],
-        rejected_syms: &["tempLocal"],
-        expected_edges: &[("process", "validate")],
-        expect_external: true,
-        expected_lego: Some(("BaseCtrl", "UserCtrl")),
-        expected_import: Some("./init.js"),
-    });
-
     let reg = LanguageRegistry::new().unwrap();
     let interner = Interner::new();
     let ingest = ingest_in_memory_files(

@@ -51,6 +51,208 @@ export class ScopedClient {\n  async commitIssueKeys(scope: string): Promise<str
 const KEY_SEARCH: &str = "import type { TicketLookup } from \"../service/ticket\";\n\
 export async function keySearch(lookup: TicketLookup): Promise<string[]> {\n  return lookup.commitIssueKeys();\n}\n";
 
+const GITHUB_ONLY: &str = "export class GitHubClient {\n  async commitIssueKeys(): Promise<string[]> {\n    return [];\n  }\n}\n";
+
+const LOOKUP_WORKER: &str = "export async function runTask(): Promise<string[]> {\n\
+  const session = await makeSession();\n  return session.client.commitIssueKeys();\n}\n";
+
+const REGISTER: &str = "export function register(): { emit: (text: string) => string } {\n\
+  return { emit: (text: string) => text };\n}\n";
+
+const CHILD_USER: &str = "import { register } from \"./register\";\n\
+export function drive(): string {\n  const child = makeChild();\n  return child.emit(\"x\");\n}\n";
+
+const STEP_HANDLE: &str = "export interface StepHandle {\n  isVisible: () => boolean;\n}\n\
+export function showStep(step: StepHandle): boolean {\n  return step.isVisible();\n}\n";
+
+const EXTERNAL_LOCATOR: &str = "export function ensureReady(page: { locator(s: string): unknown }): boolean {\n\
+  const locator = page.locator(\"#ready\") as { isVisible(): boolean };\n  return locator.isVisible();\n}\n";
+
+const ALL_FILES: &[(&str, &str)] = &[
+    ("src/gcp/tasks.ts", TASKS),
+    ("src/service/webhook.ts", WEBHOOK),
+    ("tests/tasks.test.ts", CALLERS),
+    ("src/service/worker.ts", WORKER),
+];
+
+const LOOKUP_FILES: &[(&str, &str)] = &[
+    ("src/service/ticket.ts", TICKET),
+    ("src/github/client.ts", CLIENT),
+    ("src/service/key-search.ts", KEY_SEARCH),
+];
+
+const BY_NAME_FILES: &[(&str, &str)] = &[
+    ("src/service/ticket.ts", TICKET),
+    ("src/service/worker.ts", LOOKUP_WORKER),
+    ("src/github/client.ts", GITHUB_ONLY),
+];
+
+const UNTYPED_STEP_FILES: &[(&str, &str)] = &[
+    ("src/components/step-types.ts", STEP_HANDLE),
+    ("e2e/helpers.ts", EXTERNAL_LOCATOR),
+];
+
+const TYPED_STEP_FILES: &[(&str, &str)] = &[("src/components/step-types.ts", STEP_HANDLE)];
+
+/// Callers of `owner.name` in `files` must include `includes` and must not include `excludes`.
+struct Reach {
+    files: &'static [(&'static str, &'static str)],
+    owner: &'static str,
+    name: &'static str,
+    includes: &'static [&'static str],
+    excludes: &'static [&'static str],
+}
+
+const REACH_ROWS: &[Reach] = &[
+    Reach {
+        files: ALL_FILES,
+        owner: "ShapedQueue",
+        name: "enqueue",
+        includes: &["acceptEvent"],
+        excludes: &[],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &["acceptEvent"],
+        excludes: &[],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &["runDirect", "viaFactory"],
+        excludes: &[],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &["viaUnannotated", "viaChain", "viaArrow"],
+        excludes: &[],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &[],
+        excludes: &["runOther"],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &["runQueue"],
+        excludes: &["runOther"],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &["runTyped"],
+        excludes: &[],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &["drive"],
+        excludes: &[],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &[],
+        excludes: &["viaOtherFactory"],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "OtherQueue",
+        name: "enqueue",
+        includes: &["viaOtherFactory", "runOther"],
+        excludes: &["acceptEvent"],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "OtherQueue",
+        name: "enqueue",
+        includes: &["runOther"],
+        excludes: &["runQueue"],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "ReviewTaskQueue",
+        name: "enqueue",
+        includes: &[],
+        excludes: &["viaMixed", "viaAsync", "viaCycle", "viaGhost"],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "OtherQueue",
+        name: "enqueue",
+        includes: &[],
+        excludes: &["viaMixed", "viaAsync", "viaCycle", "viaGhost"],
+    },
+    Reach {
+        files: ALL_FILES,
+        owner: "TaskEnqueuer",
+        name: "enqueue",
+        includes: &["acceptEvent"],
+        excludes: &["viaMixed", "viaAsync", "viaCycle", "viaGhost"],
+    },
+    Reach {
+        files: LOOKUP_FILES,
+        owner: "GitHubClient",
+        name: "commitIssueKeys",
+        includes: &["keySearch"],
+        excludes: &[],
+    },
+    Reach {
+        files: LOOKUP_FILES,
+        owner: "ScopedClient",
+        name: "commitIssueKeys",
+        includes: &[],
+        excludes: &["keySearch"],
+    },
+    Reach {
+        files: LOOKUP_FILES,
+        owner: "TicketLookup",
+        name: "commitIssueKeys",
+        includes: &["keySearch"],
+        excludes: &[],
+    },
+    Reach {
+        files: BY_NAME_FILES,
+        owner: "GitHubClient",
+        name: "commitIssueKeys",
+        includes: &["runTask"],
+        excludes: &[],
+    },
+    Reach {
+        files: BY_NAME_FILES,
+        owner: "TicketLookup",
+        name: "commitIssueKeys",
+        includes: &[],
+        excludes: &["runTask"],
+    },
+    Reach {
+        files: UNTYPED_STEP_FILES,
+        owner: "StepHandle",
+        name: "isVisible",
+        includes: &[],
+        excludes: &["ensureReady"],
+    },
+    Reach {
+        files: TYPED_STEP_FILES,
+        owner: "StepHandle",
+        name: "isVisible",
+        includes: &["showStep"],
+        excludes: &[],
+    },
+];
+
 fn fixture(files: &[(&str, &str)]) -> Fixture {
     corpus_fixture(Lang::TypeScript, files)
 }
@@ -88,190 +290,35 @@ impl Fixture {
     }
 }
 
-fn all_files() -> Fixture {
-    fixture(&[
-        ("src/gcp/tasks.ts", TASKS),
-        ("src/service/webhook.ts", WEBHOOK),
-        ("tests/tasks.test.ts", CALLERS),
-        ("src/service/worker.ts", WORKER),
-    ])
-}
-
-fn lookup_files() -> Fixture {
-    fixture(&[
-        ("src/service/ticket.ts", TICKET),
-        ("src/github/client.ts", CLIENT),
-        ("src/service/key-search.ts", KEY_SEARCH),
-    ])
-}
-
 #[test]
-fn class_satisfying_the_interface_shape_without_declaring_it_is_reached() {
-    let fx = all_files();
-    let shaped = fx.caller_names(fx.method("ShapedQueue", "enqueue"));
-    assert!(shaped.contains(&"acceptEvent".to_string()), "{shaped:?}");
-}
-
-#[test]
-fn interface_typed_call_reaches_the_implementing_method() {
-    let fx = all_files();
-    let implementor = fx.method("ReviewTaskQueue", "enqueue");
-    assert!(
-        fx.caller_names(implementor)
-            .contains(&"acceptEvent".to_string()),
-        "{:?}",
-        fx.caller_names(implementor)
-    );
-}
-
-#[test]
-fn unrelated_class_with_the_same_method_name_is_not_linked() {
-    let fx = all_files();
-    let unrelated = fx.method("OtherQueue", "enqueue");
-    let callers = fx.caller_names(unrelated);
-    assert!(!callers.contains(&"acceptEvent".to_string()), "{callers:?}");
-    assert!(callers.contains(&"runOther".to_string()), "{callers:?}");
-    let implementor = fx.caller_names(fx.method("ReviewTaskQueue", "enqueue"));
-    assert!(
-        !implementor.contains(&"runOther".to_string()),
-        "{implementor:?}"
-    );
-}
-
-#[test]
-fn factory_with_explicit_return_annotation_reaches_the_class_method() {
-    let fx = all_files();
-    let callers = fx.caller_names(fx.method("ReviewTaskQueue", "enqueue"));
-    assert!(callers.contains(&"viaFactory".to_string()), "{callers:?}");
-    assert!(callers.contains(&"runDirect".to_string()), "{callers:?}");
-}
-
-#[test]
-fn factory_without_annotation_returning_one_class_reaches_that_class_method() {
-    let fx = all_files();
-    let callers = fx.caller_names(fx.method("ReviewTaskQueue", "enqueue"));
-    assert!(
-        callers.contains(&"viaUnannotated".to_string()),
-        "{callers:?}"
-    );
-    assert!(callers.contains(&"viaChain".to_string()), "{callers:?}");
-    assert!(callers.contains(&"viaArrow".to_string()), "{callers:?}");
-}
-
-#[test]
-fn factory_whose_returns_disagree_or_are_not_known_is_not_guessed() {
-    let fx = all_files();
-    let mut all = Vec::new();
-    for owner in ["ReviewTaskQueue", "OtherQueue", "TaskEnqueuer"] {
-        all.extend(fx.caller_names(fx.method(owner, "enqueue")));
+fn dispatch_reaches_declared_owners_and_contracts_only() {
+    for row in REACH_ROWS {
+        let fx = fixture(row.files);
+        let callers = fx.caller_names(fx.method(row.owner, row.name));
+        for caller in row.includes {
+            assert!(
+                callers.contains(&caller.to_string()),
+                "{}.{}: {caller} missing from {callers:?}",
+                row.owner,
+                row.name
+            );
+        }
+        for caller in row.excludes {
+            assert!(
+                !callers.contains(&caller.to_string()),
+                "{}.{}: {caller} present in {callers:?}",
+                row.owner,
+                row.name
+            );
+        }
     }
-    for name in ["viaMixed", "viaAsync", "viaCycle", "viaGhost"] {
-        assert!(!all.contains(&name.to_string()), "{name}: {all:?}");
-    }
-}
-
-#[test]
-fn unannotated_factory_does_not_link_an_unrelated_class_with_the_same_method() {
-    let fx = all_files();
-    let review = fx.caller_names(fx.method("ReviewTaskQueue", "enqueue"));
-    assert!(
-        !review.contains(&"viaOtherFactory".to_string()),
-        "{review:?}"
-    );
-    let other = fx.caller_names(fx.method("OtherQueue", "enqueue"));
-    assert!(other.contains(&"viaOtherFactory".to_string()), "{other:?}");
-}
-
-#[test]
-fn interface_declaration_stays_a_callee_of_the_interface_call() {
-    let fx = all_files();
-    let declared = fx.method("TaskEnqueuer", "enqueue");
-    assert!(
-        fx.caller_names(declared)
-            .contains(&"acceptEvent".to_string()),
-        "{:?}",
-        fx.caller_names(declared)
-    );
-}
-
-#[test]
-fn class_field_with_annotation_types_the_this_chain() {
-    let fx = all_files();
-    let callers = fx.caller_names(fx.method("ReviewTaskQueue", "enqueue"));
-    assert!(callers.contains(&"runQueue".to_string()), "{callers:?}");
-    assert!(!callers.contains(&"runOther".to_string()), "{callers:?}");
-}
-
-#[test]
-fn constructor_parameter_property_types_the_this_chain() {
-    let fx = all_files();
-    let callers = fx.caller_names(fx.method("ReviewTaskQueue", "enqueue"));
-    assert!(callers.contains(&"runTyped".to_string()), "{callers:?}");
-}
-
-#[test]
-fn field_initialized_with_new_types_the_this_chain() {
-    let fx = all_files();
-    let other = fx.caller_names(fx.method("OtherQueue", "enqueue"));
-    assert!(other.contains(&"runOther".to_string()), "{other:?}");
-    assert!(!other.contains(&"runQueue".to_string()), "{other:?}");
-}
-
-#[test]
-fn parameter_field_chain_types_through_a_same_file_class() {
-    let fx = all_files();
-    let callers = fx.caller_names(fx.method("ReviewTaskQueue", "enqueue"));
-    assert!(callers.contains(&"drive".to_string()), "{callers:?}");
 }
 
 #[test]
 fn function_typed_interface_property_is_a_member_for_conformance_and_dispatch() {
-    let fx = lookup_files();
+    let fx = fixture(LOOKUP_FILES);
     let declared = fx.symbol("TicketLookup", "commitIssueKeys");
     assert_eq!(fx.interner.resolve(&declared.name), "commitIssueKeys");
-    let callers = fx.caller_names(fx.method("GitHubClient", "commitIssueKeys"));
-    assert!(callers.contains(&"keySearch".to_string()), "{callers:?}");
-}
-
-#[test]
-fn function_typed_interface_property_does_not_reach_a_class_with_another_arity() {
-    let fx = lookup_files();
-    let scoped = fx.caller_names(fx.method("ScopedClient", "commitIssueKeys"));
-    assert!(!scoped.contains(&"keySearch".to_string()), "{scoped:?}");
-}
-
-const GITHUB_ONLY: &str = "export class GitHubClient {\n  async commitIssueKeys(): Promise<string[]> {\n    return [];\n  }\n}\n";
-
-const LOOKUP_WORKER: &str = "export async function runTask(): Promise<string[]> {\n\
-  const session = await makeSession();\n  return session.client.commitIssueKeys();\n}\n";
-
-const REGISTER: &str = "export function register(): { emit: (text: string) => string } {\n\
-  return { emit: (text: string) => text };\n}\n";
-
-const CHILD_USER: &str = "import { register } from \"./register\";\n\
-export function drive(): string {\n  const child = makeChild();\n  return child.emit(\"x\");\n}\n";
-
-#[test]
-fn by_name_call_reaches_implementation_not_same_directory_contract() {
-    let fx = fixture(&[
-        ("src/service/ticket.ts", TICKET),
-        ("src/service/worker.ts", LOOKUP_WORKER),
-        ("src/github/client.ts", GITHUB_ONLY),
-    ]);
-    let implementor = fx.caller_names(fx.method("GitHubClient", "commitIssueKeys"));
-    assert!(
-        implementor.contains(&"runTask".to_string()),
-        "{implementor:?}"
-    );
-    let contract = fx.caller_names(fx.method("TicketLookup", "commitIssueKeys"));
-    assert!(!contract.contains(&"runTask".to_string()), "{contract:?}");
-}
-
-#[test]
-fn interface_function_property_keeps_its_contract_for_typed_calls() {
-    let fx = lookup_files();
-    let contract = fx.caller_names(fx.method("TicketLookup", "commitIssueKeys"));
-    assert!(contract.contains(&"keySearch".to_string()), "{contract:?}");
 }
 
 #[test]
@@ -287,32 +334,6 @@ fn object_type_literal_function_property_is_not_a_member() {
         .filter(|sym| fx.interner.resolve(&sym.name) == "emit")
         .collect();
     assert!(members.is_empty(), "{members:?}");
-}
-
-const STEP_HANDLE: &str = "export interface StepHandle {\n  isVisible: () => boolean;\n}\n\
-export function showStep(step: StepHandle): boolean {\n  return step.isVisible();\n}\n";
-
-const EXTERNAL_LOCATOR: &str = "export function ensureReady(page: { locator(s: string): unknown }): boolean {\n\
-  const locator = page.locator(\"#ready\") as { isVisible(): boolean };\n  return locator.isVisible();\n}\n";
-
-#[test]
-fn untyped_call_named_like_a_function_property_does_not_bind_to_the_contract() {
-    let fx = fixture(&[
-        ("src/components/step-types.ts", STEP_HANDLE),
-        ("e2e/helpers.ts", EXTERNAL_LOCATOR),
-    ]);
-    let contract = fx.caller_names(fx.method("StepHandle", "isVisible"));
-    assert!(
-        !contract.contains(&"ensureReady".to_string()),
-        "{contract:?}"
-    );
-}
-
-#[test]
-fn typed_call_reaches_the_function_property_contract() {
-    let fx = fixture(&[("src/components/step-types.ts", STEP_HANDLE)]);
-    let contract = fx.caller_names(fx.method("StepHandle", "isVisible"));
-    assert!(contract.contains(&"showStep".to_string()), "{contract:?}");
 }
 
 #[test]

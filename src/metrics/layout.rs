@@ -202,16 +202,25 @@ fn write_field_affinity_block<W: Write + ?Sized>(
     let f_cnt = d.fields.len();
     let pairs = d.pair_count();
     let sepcost = d.sepcost();
-    let size = d.total_size();
-    let align = d.max_align();
-    let lines = d.cache_lines();
+    let modeled = !d.fields.is_empty();
+    let layout = if modeled {
+        format!(
+            " size=\"{}\" align=\"{}\" lines=\"{}\"",
+            d.total_size(),
+            d.max_align(),
+            d.cache_lines()
+        )
+    } else {
+        String::new()
+    };
     writeln!(
         out,
-        "  <s n=\"{}\" p=\"{}\" l=\"{}\" agg=\"{}\" modeled=\"1\" fields=\"{f_cnt}\" touched=\"{f_cnt}\" fns=\"1\" pairs=\"{pairs}\" sepcost=\"{sepcost:.2}\" findings=\"0\" size=\"{size}\" align=\"{align}\" lines=\"{lines}\">",
+        "  <s n=\"{}\" p=\"{}\" l=\"{}\" agg=\"{}\" modeled=\"{}\" fields=\"{f_cnt}\" touched=\"{f_cnt}\" fns=\"1\" pairs=\"{pairs}\" sepcost=\"{sepcost:.2}\" findings=\"0\"{layout}>",
         sym.xml_escaped(),
         d.path.xml_escaped(),
         d.line,
-        d.agg_kind
+        d.agg_kind,
+        u8::from(modeled)
     )?;
     if !sym.is_empty() {
         for f in &d.fields {

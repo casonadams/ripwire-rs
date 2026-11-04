@@ -813,12 +813,14 @@ fn test_removing_the_last_caller_in_another_file_makes_a_function_newly_dead() {
     }
 }
 
-/// (gating, minor, idiom) of the duplication row for two threshold ladders in different files.
-fn ladder_row(first: &str, second: &str) -> (bool, bool, Option<&'static str>) {
+/// Runs `body` over an in-memory Rust corpus, with the query context a delta gate would build.
+fn with_query_context<R>(
+    files: &[(&str, &str)],
+    body: impl FnOnce(&QueryContext<'_>, &IngestResult, &Interner) -> R,
+) -> R {
     let registry =
         ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
     let interner = Interner::new();
-    let files = [("src/grade.rs", first), ("src/bucket.rs", second)];
     let slices: Vec<_> = files
         .iter()
         .map(|(p, s)| (*p, Lang::Rust, s.as_bytes()))
@@ -837,30 +839,38 @@ fn ladder_row(first: &str, second: &str) -> (bool, bool, Option<&'static str>) {
         commits: None,
         at: None,
     };
-    let group = CloneGroup {
-        members: ingest
-            .symbols
-            .iter()
-            .filter(|s| s.kind == SymKind::Function)
-            .map(|s| s.id)
-            .collect(),
-        clone_type: CloneType::Type2,
-        token_count: 40,
-        similarity: 1.0,
-        idiom: CloneIdiom::ThresholdLadder,
-        tokens_saved: 40,
-    };
-    let status = |s: &Symbol| {
-        if ingest.file_path(s.file_id, &interner) == "src/grade.rs" {
-            MemberStatus::New
-        } else {
-            MemberStatus::Untouched
-        }
-    };
-    let mut regs = Vec::new();
-    collect_changed_clone_regressions(&[group], &state, &status, &mut regs);
-    let r = &regs[0];
-    (r.is_gating, r.is_minor, r.idiom)
+    body(&state, &ingest, &interner)
+}
+
+/// (gating, minor, idiom) of the duplication row for two threshold ladders in different files.
+fn ladder_row(first: &str, second: &str) -> (bool, bool, Option<&'static str>) {
+    let files = [("src/grade.rs", first), ("src/bucket.rs", second)];
+    with_query_context(&files, |state, ingest, interner| {
+        let group = CloneGroup {
+            members: ingest
+                .symbols
+                .iter()
+                .filter(|s| s.kind == SymKind::Function)
+                .map(|s| s.id)
+                .collect(),
+            clone_type: CloneType::Type2,
+            token_count: 40,
+            similarity: 1.0,
+            idiom: CloneIdiom::ThresholdLadder,
+            tokens_saved: 40,
+        };
+        let status = |s: &Symbol| {
+            if ingest.file_path(s.file_id, interner) == "src/grade.rs" {
+                MemberStatus::New
+            } else {
+                MemberStatus::Untouched
+            }
+        };
+        let mut regs = Vec::new();
+        collect_changed_clone_regressions(&[group], state, &status, &mut regs);
+        let r = &regs[0];
+        (r.is_gating, r.is_minor, r.idiom)
+    })
 }
 
 #[test]
@@ -905,58 +915,41 @@ fn test_baseline_paths_include_deleted_files_by_extension_and_skip_unknown_ones(
 /// Duplication rows for two identical functions, one in the changed file, against a sidecar-style
 /// baseline (complexity and size only, no body fingerprints). `bump` moves the changed one's ccx.
 fn sidecar_clone_rows(bump: u32) -> usize {
-    let registry =
-        ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
-    let interner = Interner::new();
     let body = "fn step(x: u32) -> u32 {\n    let y = x + 1;\n    y * 2\n}\n";
-    let files = [("src/a.rs", body), ("src/b.rs", body)];
-    let slices: Vec<_> = files
-        .iter()
-        .map(|(p, s)| (*p, Lang::Rust, s.as_bytes()))
-        .collect();
-    let ingest = ripwire_rs::ingest_in_memory_files(&slices, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    let pr = graph.page_rank(&ripwire_rs::PageRankConfig::default());
-    let sources: Vec<(&str, &[u8])> = files.iter().map(|(p, s)| (*p, s.as_bytes())).collect();
-    let state = QueryContext {
-        root: ":memory:",
-        ingest: &ingest,
-        graph: &graph,
-        pr: &pr,
-        interner: &interner,
-        sources: &sources.as_slice(),
-        commits: None,
-        at: None,
-    };
-    let working = compute_snapshot(&ingest, &graph, &interner, "HEAD");
-    let mut baseline = working.clone();
-    baseline.body_by_sym.clear();
-    *baseline.ccx_by_sym.get_mut("src/a.rs::step").unwrap() += bump;
-    let group = CloneGroup {
-        members: ingest.symbols.iter().map(|s| s.id).collect(),
-        clone_type: CloneType::Type2,
-        token_count: 60,
-        similarity: 1.0,
-        idiom: CloneIdiom::None,
-        tokens_saved: 60,
-    };
-    let changed = vec!["src/a.rs".to_string()];
-    let facts = QualityDeltaFacts {
-        working: &working,
-        baseline: &baseline,
-        source_name: "sidecar",
-        head_basis: None,
-        at_stamp: "abc1234",
-        changed_files: &changed,
-        acks: None,
-        clones: &[group],
-    };
-    let report = assemble_quality_delta_report(&state, &facts);
-    report
-        .regressions
-        .iter()
-        .filter(|r| r.kind == "duplication")
-        .count()
+    with_query_context(
+        &[("src/a.rs", body), ("src/b.rs", body)],
+        |state, ingest, interner| {
+            let working = compute_snapshot(ingest, state.graph, interner, "HEAD");
+            let mut baseline = working.clone();
+            baseline.body_by_sym.clear();
+            *baseline.ccx_by_sym.get_mut("src/a.rs::step").unwrap() += bump;
+            let group = CloneGroup {
+                members: ingest.symbols.iter().map(|s| s.id).collect(),
+                clone_type: CloneType::Type2,
+                token_count: 60,
+                similarity: 1.0,
+                idiom: CloneIdiom::None,
+                tokens_saved: 60,
+            };
+            let changed = vec!["src/a.rs".to_string()];
+            let facts = QualityDeltaFacts {
+                working: &working,
+                baseline: &baseline,
+                source_name: "sidecar",
+                head_basis: None,
+                at_stamp: "abc1234",
+                changed_files: &changed,
+                acks: None,
+                clones: &[group],
+            };
+            let report = assemble_quality_delta_report(state, &facts);
+            report
+                .regressions
+                .iter()
+                .filter(|r| r.kind == "duplication")
+                .count()
+        },
+    )
 }
 
 #[test]

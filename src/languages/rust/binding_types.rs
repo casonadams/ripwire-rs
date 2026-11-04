@@ -1,4 +1,5 @@
 use super::scope::{field_text, rust_scope};
+use crate::languages::reads::enclosing_scope;
 use super::types::{
     TypeCx, bare_path, enclosing_self_type, extract_type_repr, names_std_wrapper, self_or_name,
 };
@@ -62,7 +63,7 @@ fn extract_param_type(cx: &TypeCx<'_>, param: tree_sitter::Node<'_>) -> Option<S
 }
 
 pub(super) fn self_binding_type(cx: &TypeCx<'_>, node: tree_sitter::Node<'_>) -> Option<String> {
-    enclosing_param(node)
+    enclosing_of_kind(node, "parameter")
         .and_then(|param| extract_param_type(cx, param))
         .or_else(|| enclosing_self_type(cx, node))
 }
@@ -80,7 +81,7 @@ fn is_direct_binding(node: tree_sitter::Node<'_>, pattern: tree_sitter::Node<'_>
 }
 
 pub(super) fn binding_type(cx: &TypeCx<'_>, node: tree_sitter::Node<'_>) -> Option<String> {
-    if let Some(let_decl) = enclosing_let(node) {
+    if let Some(let_decl) = enclosing_of_kind(node, "let_declaration") {
         let pattern = let_decl.child_by_field_name("pattern")?;
         return if is_direct_binding(node, pattern) {
             extract_let_type(cx, let_decl)
@@ -88,7 +89,7 @@ pub(super) fn binding_type(cx: &TypeCx<'_>, node: tree_sitter::Node<'_>) -> Opti
             None
         };
     }
-    let param = enclosing_param(node)?;
+    let param = enclosing_of_kind(node, "parameter")?;
     let pattern = param.child_by_field_name("pattern")?;
     if is_direct_binding(node, pattern) {
         extract_param_type(cx, param)
@@ -97,30 +98,6 @@ pub(super) fn binding_type(cx: &TypeCx<'_>, node: tree_sitter::Node<'_>) -> Opti
     }
 }
 
-fn enclosing_let(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut curr = node.parent();
-    while let Some(n) = curr {
-        if n.kind() == "let_declaration" {
-            return Some(n);
-        }
-        if rust_scope(n.kind()) {
-            break;
-        }
-        curr = n.parent();
-    }
-    None
-}
-
-fn enclosing_param(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut curr = node.parent();
-    while let Some(n) = curr {
-        if n.kind() == "parameter" {
-            return Some(n);
-        }
-        if rust_scope(n.kind()) {
-            break;
-        }
-        curr = n.parent();
-    }
-    None
+fn enclosing_of_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
+    enclosing_scope(node, |k| k == kind || rust_scope(k)).filter(|n| n.kind() == kind)
 }

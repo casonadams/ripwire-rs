@@ -325,21 +325,24 @@ fn lint() -> String {
 
 fn ast_match_xml(world: &World) -> String {
     let query = world.query();
-    let mut out = Vec::new();
-    ast_match::execute(
-        &query,
-        "(function_item name: (identifier) @name)",
-        one(),
-        &mut out,
-    )
-    .unwrap();
-    text(out)
+    xml_of(|out| {
+        ast_match::execute(
+            &query,
+            "(function_item name: (identifier) @name)",
+            one(),
+            out,
+        )
+    })
 }
 
 fn graph_query_xml(world: &World) -> String {
     let query = world.query();
+    xml_of(|out| graph_query::execute(&query, "not(name(\"zzz\"))", one(), out))
+}
+
+fn xml_of(run: impl FnOnce(&mut Vec<u8>) -> std::io::Result<()>) -> String {
     let mut out = Vec::new();
-    graph_query::execute(&query, "not(name(\"zzz\"))", one(), &mut out).unwrap();
+    run(&mut out).unwrap();
     text(out)
 }
 

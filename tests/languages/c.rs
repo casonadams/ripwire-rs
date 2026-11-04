@@ -1,27 +1,8 @@
-use super::harness::{GraphProtocolCase, sym, verify_protocol_case};
-use ripwire_rs::{Interner, Lang, LanguageRegistry, SymKind, ingest_in_memory_files};
+use ripwire_rs::{Interner, Lang, LanguageRegistry, ingest_in_memory_files};
 use std::collections::HashMap;
 
 #[test]
 fn test_c_graph_protocol_and_header_refinement() {
-    verify_protocol_case(&GraphProtocolCase {
-        label: "c",
-        files: &[(
-            "src/core.c",
-            Lang::C,
-            b"#include \"core.h\"\n#define EMPTY_FN(x)\nstatic const int MAX_CONN = 16;\nint plain_global = 0;\nvoid start_server(void) {\n    accept_loop();\n}\nvoid accept_loop(void) {\n    return;\n}\n",
-        )],
-        expected_syms: &[
-            sym("MAX_CONN", SymKind::Var, None, false),
-            sym("start_server", SymKind::Function, None, true),
-            sym("accept_loop", SymKind::Function, None, true),
-        ],
-        rejected_syms: &["EMPTY_FN", "plain_global"],
-        expected_edges: &[("start_server", "accept_loop")],
-        expected_import: Some("core.h"),
-        ..Default::default()
-    });
-
     let registry = LanguageRegistry::new().unwrap();
     let interner = Interner::new();
     let cpp_hdr =

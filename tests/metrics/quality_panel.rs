@@ -14,40 +14,15 @@ const PATH: &str = "src/lib.rs";
 const NO_HISTORY: &str = "in-memory ingest: no git history";
 
 fn function(interner: &Interner, id: u32, name: &str) -> Symbol {
-    Symbol::new(
-        id,
-        interner.intern(name),
-        interner.intern(&format!("{PATH}::{name}")),
-        SymKind::Function,
-        Lang::Rust,
-        0,
-        id + 1,
-    )
+    function_in(interner, id, 0, PATH, name)
 }
 
 fn ingest_for(interner: &Interner, symbols: Vec<Symbol>) -> IngestResult {
-    let mut ingest = IngestResult::new();
-    ingest.files.push(FileInfo {
-        id: 0,
-        path: interner.intern(PATH),
-        lang: Lang::Rust,
-        line_count: 150,
-        byte_size: 3000,
-    });
-    ingest.symbols = symbols;
-    ingest
+    ingest_files(interner, &[PATH], symbols)
 }
 
-/// `count` commits touching `PATH`, newest first, one day apart, all inside the window.
 fn commits_in_window(count: usize) -> Vec<CommitInfo> {
-    (0..count)
-        .map(|i| CommitInfo {
-            id: format!("c{i}"),
-            timestamp: NOW - i as i64 * 86_400,
-            author: "Ada".to_string(),
-            changed_files: vec![PATH.to_string()],
-        })
-        .collect()
+    commits_touching(PATH, count)
 }
 
 /// `count` commits touching `path`, newest first, one day apart, all inside the window.
@@ -117,6 +92,43 @@ fn panel(
         interner,
         PanelInputs { preset, history },
         PageRequest::default(),
+    )
+}
+
+fn family_attrs(rep: &QualityPanelReport, name: &str, family: &str) -> String {
+    rep.rows
+        .iter()
+        .find(|r| r.name == name)
+        .expect("ranked row")
+        .evidence
+        .iter()
+        .find(|e| e.family == family)
+        .unwrap_or_else(|| panic!("{family} evidence for {name}"))
+        .attrs
+        .clone()
+}
+
+fn four_files_panel(counts: [usize; 4], name: impl Fn(usize) -> String) -> QualityPanelReport {
+    let interner = Interner::new();
+    let paths = ["src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"];
+    let symbols = paths
+        .iter()
+        .enumerate()
+        .map(|(i, p)| function_in(&interner, i as u32, i as u32, p, &name(i)))
+        .collect();
+    let ingest = ingest_files(&interner, &paths, symbols);
+    let graph = Graph::build(&ingest, &interner);
+    let commits: Vec<CommitInfo> = paths
+        .iter()
+        .zip(counts)
+        .flat_map(|(p, n)| commits_touching(p, n))
+        .collect();
+    panel(
+        &ingest,
+        &graph,
+        &interner,
+        Some("lenient"),
+        history(&ingest, &interner, &commits),
     )
 }
 
@@ -241,24 +253,11 @@ fn test_lexical_family_detects_weak_names_that_parameter_count_cannot() {
     many_params.params = 9;
     many_params.ccx = 1;
     many_params.loc = 5;
-    let ingest = ingest_for(&interner, vec![terse, many_params]);
-    let graph = Graph::build(&ingest, &interner);
-    let rep = panel(
-        &ingest,
-        &graph,
-        &interner,
-        Some("lenient"),
-        Err(NO_HISTORY.to_string()),
-    );
+    let rep = lenient_panel(&interner, vec![terse, many_params]);
     let terse_row = rep.rows.iter().find(|r| r.name == "f").expect("terse row");
     assert_eq!(terse_row.fired, "lexical");
-    let lexical = terse_row
-        .evidence
-        .iter()
-        .find(|e| e.family == "lexical")
-        .expect("lexical evidence");
     assert!(terse_row.fired.contains("lexical"));
-    assert!(lexical.attrs.contains("name_len=\"1\""));
+    assert!(family_attrs(&rep, "f", "lexical").contains("name_len=\"1\""));
 
     let long_row = rep
         .rows
@@ -267,6 +266,37 @@ fn test_lexical_family_detects_weak_names_that_parameter_count_cannot() {
         .expect("fetch_order row");
     assert!(!long_row.fired.contains("lexical"));
     assert!(long_row.fired.contains("structural"));
+
+    let mut deep = function(&interner, 0, "deep_dispatch");
+    deep.ccx = 30;
+    deep.loc = 100;
+    deep.max_nest = 5;
+    deep.humps = 3;
+    deep.deep = 39;
+    let mut flat = function(&interner, 0, "flat_dispatch");
+    flat.ccx = 30;
+    flat.loc = 100;
+    flat.max_nest = 5;
+    let rep = lenient_panel(&interner, vec![deep, flat]);
+    let informative = family_attrs(&rep, "deep_dispatch", "structural");
+    assert!(informative.contains("humps=\"3\""));
+    assert!(informative.contains("deep=\"39\""));
+    let quiet = family_attrs(&rep, "flat_dispatch", "structural");
+    assert!(!quiet.contains("humps="));
+    assert!(!quiet.contains("deep="));
+    assert!(quiet.contains("ccx=\"30\""));
+}
+
+fn lenient_panel(interner: &Interner, symbols: Vec<Symbol>) -> QualityPanelReport {
+    let ingest = ingest_for(interner, symbols);
+    let graph = Graph::build(&ingest, interner);
+    panel(
+        &ingest,
+        &graph,
+        interner,
+        Some("lenient"),
+        Err(NO_HISTORY.to_string()),
+    )
 }
 
 #[test]
@@ -387,23 +417,7 @@ fn test_historical_fires_only_in_the_hottest_file_of_a_quiet_repo() {
 
 #[test]
 fn test_uniform_low_churn_below_the_floor_is_measured_and_empty() {
-    let interner = Interner::new();
-    let paths = ["src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"];
-    let symbols = paths
-        .iter()
-        .enumerate()
-        .map(|(i, p)| function_in(&interner, i as u32, i as u32, p, "touched_twice"))
-        .collect();
-    let ingest = ingest_files(&interner, &paths, symbols);
-    let graph = Graph::build(&ingest, &interner);
-    let commits: Vec<CommitInfo> = paths.iter().flat_map(|p| commits_touching(p, 2)).collect();
-    let rep = panel(
-        &ingest,
-        &graph,
-        &interner,
-        Some("lenient"),
-        history(&ingest, &interner, &commits),
-    );
+    let rep = four_files_panel([2, 2, 2, 2], |_| "touched_twice".to_string());
     assert_eq!(rep.hranked, 0);
     assert!(rep.rows.iter().all(|r| !r.fired.contains("historical")));
     let xml = rep.to_xml_string();
@@ -414,28 +428,7 @@ fn test_uniform_low_churn_below_the_floor_is_measured_and_empty() {
 
 #[test]
 fn test_busy_repo_keeps_the_fixed_ceiling() {
-    let interner = Interner::new();
-    let paths = ["src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"];
-    let symbols = paths
-        .iter()
-        .enumerate()
-        .map(|(i, p)| function_in(&interner, i as u32, i as u32, p, &format!("f{i}")))
-        .collect();
-    let ingest = ingest_files(&interner, &paths, symbols);
-    let graph = Graph::build(&ingest, &interner);
-    let counts = [20, 20, 13, 14];
-    let commits: Vec<CommitInfo> = paths
-        .iter()
-        .zip(counts)
-        .flat_map(|(p, n)| commits_touching(p, n))
-        .collect();
-    let rep = panel(
-        &ingest,
-        &graph,
-        &interner,
-        Some("lenient"),
-        history(&ingest, &interner, &commits),
-    );
+    let rep = four_files_panel([20, 20, 13, 14], |i| format!("f{i}"));
     let historical: Vec<&str> = rep
         .rows
         .iter()
@@ -575,48 +568,4 @@ fn test_constant_the_corpus_mutates_is_state() {
         .find(|r| r.name == "read_limits")
         .expect("reader row");
     assert!(reader_row.fired.contains("state"));
-}
-
-#[test]
-fn test_structural_evidence_carries_humps_and_deep_only_when_informative() {
-    let interner = Interner::new();
-    let mut deep = function(&interner, 0, "deep_dispatch");
-    deep.ccx = 30;
-    deep.loc = 100;
-    deep.max_nest = 5;
-    deep.humps = 3;
-    deep.deep = 39;
-    let mut flat = function(&interner, 0, "flat_dispatch");
-    flat.ccx = 30;
-    flat.loc = 100;
-    flat.max_nest = 5;
-    let ingest = ingest_for(&interner, vec![deep, flat]);
-    let graph = Graph::build(&ingest, &interner);
-    let rep = panel(
-        &ingest,
-        &graph,
-        &interner,
-        Some("lenient"),
-        Err("not a git repository".to_string()),
-    );
-    let attrs_of = |name: &str| {
-        let row = rep
-            .rows
-            .iter()
-            .find(|r| r.name == name)
-            .expect("ranked row");
-        row.evidence
-            .iter()
-            .find(|e| e.family == "structural")
-            .expect("structural evidence")
-            .attrs
-            .clone()
-    };
-    let informative = attrs_of("deep_dispatch");
-    assert!(informative.contains("humps=\"3\""));
-    assert!(informative.contains("deep=\"39\""));
-    let quiet = attrs_of("flat_dispatch");
-    assert!(!quiet.contains("humps="));
-    assert!(!quiet.contains("deep="));
-    assert!(quiet.contains("ccx=\"30\""));
 }

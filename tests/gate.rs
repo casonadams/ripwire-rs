@@ -1,3 +1,6 @@
+#[path = "support/corpus.rs"]
+mod corpus_support;
+
 mod gate {
     mod affected;
     mod arch;

@@ -141,6 +141,19 @@ fn malformed_reports_return_invalid_data_without_emitting_json() {
         drop(writer);
         assert!(output.is_empty());
     }
+    {
+        let mut output = Vec::new();
+        {
+            let mut writer = XmlWriter::with_options(&mut output, false, false, true);
+            writer.write_all(b"<ctx><r></ctx>").unwrap();
+            writer.flush().unwrap();
+            assert_eq!(
+                writer.finish().unwrap_err().kind(),
+                std::io::ErrorKind::InvalidData
+            );
+        }
+        assert!(output.is_empty());
+    }
 }
 
 #[test]
@@ -201,6 +214,32 @@ fn buffered_wrappers_finish_only_after_the_closing_tag() {
             );
         }
     }
+    {
+        for json in [false, true] {
+            let mut output = Vec::new();
+            {
+                let mut writer = XmlWriter::with_options(&mut output, false, json, true);
+                writer.write_all(b"<first/>").unwrap();
+                writer.finish().unwrap();
+                writer.flush().unwrap();
+                writer.finish().unwrap();
+                writer.write_all(b"<second/>").unwrap();
+                writer.flush().unwrap();
+                writer.finish().unwrap();
+            }
+            if json {
+                let reports: Vec<serde_json::Value> = serde_json::Deserializer::from_slice(&output)
+                    .into_iter()
+                    .collect::<Result<_, _>>()
+                    .unwrap();
+                assert_eq!(reports.len(), 2);
+                assert_eq!(reports[0]["tag"], "first");
+                assert_eq!(reports[1]["tag"], "second");
+            } else {
+                assert_eq!(output, b"<first/><second/>");
+            }
+        }
+    }
 }
 
 #[test]
@@ -218,49 +257,6 @@ fn legend_none_leaves_plain_recall_and_json_bytes_unchanged() {
                 writer.finish().unwrap();
             }
             assert_eq!(output, input.as_bytes());
-        }
-    }
-}
-
-#[test]
-fn malformed_xml_in_legend_none_errors_only_at_finish() {
-    let mut output = Vec::new();
-    {
-        let mut writer = XmlWriter::with_options(&mut output, false, false, true);
-        writer.write_all(b"<ctx><r></ctx>").unwrap();
-        writer.flush().unwrap();
-        assert_eq!(
-            writer.finish().unwrap_err().kind(),
-            std::io::ErrorKind::InvalidData
-        );
-    }
-    assert!(output.is_empty());
-}
-
-#[test]
-fn buffered_finish_drains_each_report_once() {
-    for json in [false, true] {
-        let mut output = Vec::new();
-        {
-            let mut writer = XmlWriter::with_options(&mut output, false, json, true);
-            writer.write_all(b"<first/>").unwrap();
-            writer.finish().unwrap();
-            writer.flush().unwrap();
-            writer.finish().unwrap();
-            writer.write_all(b"<second/>").unwrap();
-            writer.flush().unwrap();
-            writer.finish().unwrap();
-        }
-        if json {
-            let reports: Vec<serde_json::Value> = serde_json::Deserializer::from_slice(&output)
-                .into_iter()
-                .collect::<Result<_, _>>()
-                .unwrap();
-            assert_eq!(reports.len(), 2);
-            assert_eq!(reports[0]["tag"], "first");
-            assert_eq!(reports[1]["tag"], "second");
-        } else {
-            assert_eq!(output, b"<first/><second/>");
         }
     }
 }

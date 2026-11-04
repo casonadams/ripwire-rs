@@ -1,84 +1,63 @@
+use crate::index_support::index;
 use ripwire_rs::commands::batch::execute_batch_content;
-use ripwire_rs::query::graph::execute_path_query;
-use ripwire_rs::{
-    Graph, IngestResult, Interner, Lang, LanguageRegistry, PageRankConfig, ingest_in_memory_files,
+use ripwire_rs::commands::common::safety_queries::{
+    execute_exercises_query, execute_safe_delete_query,
 };
+use ripwire_rs::query::graph::execute_path_query;
+use ripwire_rs::query::safety::SafetyContext;
+use ripwire_rs::serialize::PageRequest;
+use ripwire_rs::{Graph, IngestResult, Interner, Lang, PageRankConfig};
 
-fn setup_in_memory_fixture() -> (IngestResult, Graph, Interner) {
-    let reg = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(
-        &[(
-            "lib.rs",
-            Lang::Rust,
-            b"pub fn run_cli() { helper(); } fn helper() {}",
-        )],
-        &reg,
-        &interner,
-    );
-    let graph = Graph::build(&ingest, &interner);
-    (ingest, graph, interner)
+fn fixture() -> (IngestResult, Graph, Interner) {
+    index(&[(
+        "lib.rs",
+        Lang::Rust,
+        b"pub fn run_cli() { helper(); } fn helper() {}",
+    )])
+}
+
+fn safe_delete(
+    (ingest, graph, interner): &(IngestResult, Graph, Interner),
+    symbol: &str,
+    out: &mut Vec<u8>,
+) -> std::io::Result<()> {
+    let facts = SafetyContext {
+        root: ":memory:",
+        ingest,
+        graph,
+        interner,
+    };
+    execute_safe_delete_query(&facts, symbol, PageRequest::default(), out)
 }
 
 #[test]
-fn test_path_queries_report_fixture_edges_and_reject_missing_endpoints() {
-    let (ingest, graph, interner) = setup_in_memory_fixture();
+fn test_dispatched_queries_answer_the_fixture_graph() {
+    let (ingest, graph, interner) = fixture();
+    let pr = graph.page_rank(&PageRankConfig::default());
+
     let mut out = Vec::new();
     execute_path_query("run_cli,helper", &ingest, &graph, &interner, &mut out).unwrap();
     let xml = String::from_utf8(out).unwrap();
     assert!(xml.contains("reachable=\"1\""), "{xml}");
     assert!(xml.contains("hops=\"1\""), "{xml}");
-
     let mut out = Vec::new();
     execute_path_query("run_cli,missing", &ingest, &graph, &interner, &mut out).unwrap_err();
     assert!(out.is_empty());
-}
 
-#[test]
-fn test_safe_delete_reports_callers_and_missing_symbols() {
-    let (ingest, graph, interner) = setup_in_memory_fixture();
+    let fixture = (ingest, graph, interner);
     let mut out = Vec::new();
-    let facts = ripwire_rs::query::safety::SafetyContext {
-        root: ":memory:",
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-    };
-    ripwire_rs::commands::common::safety_queries::execute_safe_delete_query(
-        &facts,
-        "helper",
-        ripwire_rs::serialize::PageRequest::default(),
-        &mut out,
-    )
-    .unwrap();
+    safe_delete(&fixture, "helper", &mut out).unwrap();
     let xml = String::from_utf8(out).unwrap();
     assert!(
         xml.contains("<safe-delete schema=\"ripwire-rs.safe-delete/v1\""),
         "{xml}"
     );
     assert!(xml.contains("run_cli"), "{xml}");
-
     let mut out = Vec::new();
-    let facts = ripwire_rs::query::safety::SafetyContext {
-        root: ":memory:",
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-    };
-    ripwire_rs::commands::common::safety_queries::execute_safe_delete_query(
-        &facts,
-        "missing",
-        ripwire_rs::serialize::PageRequest::default(),
-        &mut out,
-    )
-    .unwrap_err();
+    safe_delete(&fixture, "missing", &mut out).unwrap_err();
     assert!(out.is_empty());
-}
+    let (ingest, graph, interner) = fixture;
 
-#[test]
-fn test_batch_content_runs_navigation_queries_in_memory() {
-    let (ingest, graph, interner) = setup_in_memory_fixture();
-    let pr = graph.page_rank(&PageRankConfig::default());
     let mut out = Vec::new();
     execute_batch_content(
         ".",
@@ -101,27 +80,17 @@ fn test_batch_content_runs_navigation_queries_in_memory() {
         "{xml}"
     );
     assert!(xml.ends_with("</batch>\n"), "{xml}");
-}
 
-#[test]
-fn test_exercises_reports_production_callees() {
-    let reg = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(
-        &[
-            ("lib.rs", Lang::Rust, b"pub fn run_cli() {}"),
-            (
-                "tests/check.rs",
-                Lang::Rust,
-                b"fn test_run() { run_cli(); }",
-            ),
-        ],
-        &reg,
-        &interner,
-    );
-    let graph = Graph::build(&ingest, &interner);
+    let (ingest, graph, interner) = index(&[
+        ("lib.rs", Lang::Rust, b"pub fn run_cli() {}"),
+        (
+            "tests/check.rs",
+            Lang::Rust,
+            b"fn test_run() { run_cli(); }",
+        ),
+    ]);
     let mut out = Vec::new();
-    ripwire_rs::commands::common::safety_queries::execute_exercises_query(
+    execute_exercises_query(
         ":memory:",
         "tests/check.rs",
         &ingest,

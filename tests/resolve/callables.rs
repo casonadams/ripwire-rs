@@ -95,8 +95,10 @@ fn invoke(command: &Command) { (command.handler)(); }
 }
 
 #[test]
-fn an_unmodeled_callable_field_does_not_fall_back_to_a_same_named_function() {
-    let source = r#"
+fn callable_fields_never_bind_the_names_their_source_does_not_prove() {
+    let cases: [(&str, &str); 4] = [
+        (
+            r#"
 struct Command { handler: fn() }
 fn handler() {}
 fn action() {}
@@ -106,43 +108,47 @@ macro_rules! command {
 }
 static COMMAND: Command = command!(action);
 fn invoke(command: &Command) { (command.handler)(); }
-"#;
-    assert!(
-        !targets(source, "invoke")
-            .iter()
-            .any(|(name, _)| name == "handler")
-    );
-}
-
-#[test]
-fn repeated_macro_patterns_do_not_invent_callable_assignments() {
-    let source = r#"
+"#,
+            "handler",
+        ),
+        (
+            r#"
 struct Command { handler: fn() }
 fn handler() {}
 fn action() {}
 macro_rules! commands { ($($handler:path),*) => { [$(Command { handler: $handler }),*] }; }
 static COMMANDS: &[Command] = &commands!(action);
 fn invoke(command: &Command) { (command.handler)(); }
-"#;
-    assert!(
-        !targets(source, "invoke")
-            .iter()
-            .any(|(name, _)| name == "handler")
-    );
-}
-
-#[test]
-fn duplicate_local_type_names_do_not_merge_callable_fields() {
-    let source = r#"
+"#,
+            "handler",
+        ),
+        (
+            r#"
 mod first { pub struct Command { pub handler: fn() } pub fn action() {} pub static COMMAND: Command = Command { handler: action }; }
 mod second { pub struct Command { pub handler: fn() } pub fn unrelated() {} pub static COMMAND: Command = Command { handler: unrelated }; }
 fn invoke(command: &first::Command) { (command.handler)(); }
-"#;
-    assert!(
-        !targets(source, "invoke")
-            .iter()
-            .any(|(name, _)| name == "unrelated")
-    );
+"#,
+            "unrelated",
+        ),
+        (
+            r#"
+struct Command { handler: fn() }
+struct Other { handler: fn() }
+fn action() {}
+static COMMAND: Command = Command { handler: action };
+fn invoke() { let value = external::source(); (value.handler)(); }
+"#,
+            "action",
+        ),
+    ];
+    for (source, name) in cases {
+        assert!(
+            !targets(source, "invoke")
+                .iter()
+                .any(|(target, _)| target == name),
+            "{name}"
+        );
+    }
 }
 
 #[test]
@@ -186,22 +192,6 @@ fn invoke(command: &Command) { (command.handler)(); }
     assert_eq!(
         targets(source, "invoke"),
         [("first::action".into(), EdgeProv::Binding)]
-    );
-}
-
-#[test]
-fn unknown_receivers_do_not_pick_the_only_populated_callable_field() {
-    let source = r#"
-struct Command { handler: fn() }
-struct Other { handler: fn() }
-fn action() {}
-static COMMAND: Command = Command { handler: action };
-fn invoke() { let value = external::source(); (value.handler)(); }
-"#;
-    assert!(
-        !targets(source, "invoke")
-            .iter()
-            .any(|(name, _)| name == "action")
     );
 }
 

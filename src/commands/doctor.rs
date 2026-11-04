@@ -325,7 +325,7 @@ fn sniff_binary(path: &Path) -> bool {
 
 fn tracked_paths(root: &str, repo: &gix::Repository) -> Option<Vec<PathBuf>> {
     let workdir = repo.workdir()?;
-    let prefix = crate::git::repo::workdir_prefix(repo, root)?;
+    let prefix = crate::git::repo::workdir_prefix(repo, root).ok()?;
     let index = repo.index_or_empty().ok()?;
     Some(
         index

@@ -330,39 +330,18 @@ fn whereis_catalogue_advertises_selectors_and_renderer_exposes_refs() {
 
 #[test]
 fn edit_check_pages_preserve_flagged_callers_and_offset_unflagged_rows() {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let ingest = ingest_in_memory_files(&[("virtual.rs", Lang::Rust,
-        b"pub fn target(a: i32, b: i32) {}\nfn broken() { target(1); }\nfn first() { target(1, 2); }\nfn second() { target(3, 4); }\n".as_slice())],
-        &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    let context = ripwire_rs::query::safety::SafetyContext {
-        root: ":memory:",
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-    };
-    let baseline = ripwire_rs::gate::contract::SignatureContract {
-        name: "target".into(),
-        params: 1,
-        is_public: true,
-    };
-    let mut output = Vec::new();
-    ripwire_rs::query::safety::write_edit_check_from_facts(
-        &ripwire_rs::query::safety::EditCheckRequest {
-            sym_name: "target",
-            head_contract: Some(&baseline),
-            page: Some((1, 1)),
-            at_stamp: Some("memory"),
+    let source = b"pub fn target(a: i32, b: i32) {}\nfn broken() { target(1); }\nfn first() { target(1, 2); }\nfn second() { target(3, 4); }\n";
+    crate::a_safety_context::with_safety_context(
+        ":memory:",
+        &[("virtual.rs", std::str::from_utf8(source).unwrap())],
+        |context| {
+            let xml =
+                crate::a_safety_context::target_edit_check_xml(context, Some((1, 1)), "memory");
+            assert!(xml.contains("n=\"broken\""));
+            assert!(xml.contains("shown_unflagged=\"1\""));
+            assert!(xml.contains("offset=\"1\" limit=\"1\""));
         },
-        &context,
-        &mut output,
-    )
-    .unwrap();
-    let xml = String::from_utf8(output).unwrap();
-    assert!(xml.contains("n=\"broken\""));
-    assert!(xml.contains("shown_unflagged=\"1\""));
-    assert!(xml.contains("offset=\"1\" limit=\"1\""));
+    );
 }
 
 #[test]

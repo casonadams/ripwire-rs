@@ -1,6 +1,6 @@
 //! Shared by the navigation commands (`callers`, `callees`, `impact`, `uses`) and the
 //! `navigate` subcommand.
-use super::{Command, Run, SharedOption, decode_subcommand};
+use super::{Command, Run, SharedOption, run_named_subcommand};
 use crate::cli::Cli;
 use crate::commands::context::{OutputDialect, Paginated, load_repo_analysis_for_cli};
 use crate::query::commands::{QueryContext, render_xml};
@@ -72,13 +72,9 @@ impl Command for Nav {
         matches: &clap::ArgMatches,
         root: &str,
     ) -> Option<io::Result<()>> {
-        if name != "navigate" {
-            return None;
-        }
-        Some(
-            decode_subcommand::<NavigateArgs>(matches)
-                .and_then(|args| execute_navigate(cli, &args, root)),
-        )
+        run_named_subcommand::<NavigateArgs>(name, "navigate", matches, |args| {
+            execute_navigate(cli, args, root)
+        })
     }
 }
 

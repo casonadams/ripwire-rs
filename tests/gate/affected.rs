@@ -226,28 +226,69 @@ fn test_affected_partner_cross_language_and_cross_package() {
 }
 
 #[test]
-fn test_affected_partner_lists_every_candidate() {
-    assert_eq!(
-        affected_paths(
+fn test_affected_partner_pairs_by_each_naming_convention() {
+    let cases: [(&[&str], &str, &[&str]); 11] = [
+        (
             &["a/widget.py", "a/test_widget.py", "a/widget_test.py"],
-            "a/widget.py"
+            "a/widget.py",
+            &["a/test_widget.py", "a/widget_test.py"],
         ),
-        ["a/test_widget.py", "a/widget_test.py"]
-    );
-    assert_eq!(
-        affected_paths(
+        (
             &["a/widget.py", "a/test_widget.py", "b/test_widget.py"],
-            "a/widget.py"
+            "a/widget.py",
+            &["a/test_widget.py", "b/test_widget.py"],
         ),
-        ["a/test_widget.py", "b/test_widget.py"]
-    );
-    assert_eq!(
-        affected_paths(
+        (
             &["a/widget.ts", "a/widget.test.ts", "a/widget.spec.ts"],
-            "a/widget.ts"
+            "a/widget.ts",
+            &["a/widget.spec.ts", "a/widget.test.ts"],
         ),
-        ["a/widget.spec.ts", "a/widget.test.ts"]
-    );
+        (
+            &["src/widget.json", "src/test_widget.json"],
+            "src/widget.json",
+            &["src/test_widget.json"],
+        ),
+        (
+            &["src/widget.toml", "src/test_widget.toml"],
+            "src/widget.toml",
+            &["src/test_widget.toml"],
+        ),
+        // Languages upstream does not index still pair tests by convention (a recorded divergence).
+        (
+            &["db/widget.sql", "db/test_widget.sql"],
+            "db/widget.sql",
+            &["db/test_widget.sql"],
+        ),
+        (
+            &["src/widget.scala", "src/test_widget.scala"],
+            "src/widget.scala",
+            &["src/test_widget.scala"],
+        ),
+        (
+            &["src/widget.xyz", "src/test_widget.xyz"],
+            "src/widget.xyz",
+            &[],
+        ),
+        (
+            &["src/Widget.py", "tests/WidgetTest.py"],
+            "src/Widget.py",
+            &["tests/WidgetTest.py"],
+        ),
+        (
+            &["src/Widget.ts", "test/WidgetTest.ts"],
+            "src/Widget.ts",
+            &["test/WidgetTest.ts"],
+        ),
+        (
+            &["src/Widget.py", "src/WidgetTest.py"],
+            "src/Widget.py",
+            &[],
+        ),
+    ];
+    for (paths, changed, expected) in cases {
+        assert_eq!(affected_paths(paths, changed), expected, "{changed}");
+    }
+    assert!(!is_test_path("src/WidgetTest.java"));
 }
 
 #[test]
@@ -333,53 +374,6 @@ fn test_affected_partner_needs_symbols_on_changed_test_only() {
         ["tests/widget.test.ts"]
     );
     assert!(affected_in(&ingest, &interner, "tests/widget.test.ts").is_empty());
-}
-
-#[test]
-fn test_affected_partner_indexes_every_language_test_convention() {
-    assert_eq!(
-        affected_paths(
-            &["src/widget.json", "src/test_widget.json"],
-            "src/widget.json"
-        ),
-        ["src/test_widget.json"]
-    );
-    assert_eq!(
-        affected_paths(
-            &["src/widget.toml", "src/test_widget.toml"],
-            "src/widget.toml"
-        ),
-        ["src/test_widget.toml"]
-    );
-    // Languages upstream does not index still pair tests by convention (a recorded divergence).
-    assert_eq!(
-        affected_paths(&["db/widget.sql", "db/test_widget.sql"], "db/widget.sql"),
-        ["db/test_widget.sql"]
-    );
-    assert_eq!(
-        affected_paths(
-            &["src/widget.scala", "src/test_widget.scala"],
-            "src/widget.scala"
-        ),
-        ["src/test_widget.scala"]
-    );
-    assert!(
-        affected_paths(&["src/widget.xyz", "src/test_widget.xyz"], "src/widget.xyz").is_empty()
-    );
-}
-
-#[test]
-fn test_affected_partner_camel_convention_needs_test_dir() {
-    assert_eq!(
-        affected_paths(&["src/Widget.py", "tests/WidgetTest.py"], "src/Widget.py"),
-        ["tests/WidgetTest.py"]
-    );
-    assert_eq!(
-        affected_paths(&["src/Widget.ts", "test/WidgetTest.ts"], "src/Widget.ts"),
-        ["test/WidgetTest.ts"]
-    );
-    assert!(affected_paths(&["src/Widget.py", "src/WidgetTest.py"], "src/Widget.py").is_empty());
-    assert!(!is_test_path("src/WidgetTest.java"));
 }
 
 #[test]
@@ -716,9 +710,7 @@ fn test_affected_assertion_scripts_name_their_subject() {
 
 #[test]
 fn test_affected_assertion_script_reaches_subject_without_marking_importers() {
-    let registry = LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(
+    let tests = affected_tests(
         &[
             (
                 "src/lib/onboarding-flow/cart-pricing.ts",
@@ -739,19 +731,15 @@ fn test_affected_assertion_script_reaches_subject_without_marking_importers() {
                     .as_slice(),
             ),
         ],
-        &registry,
-        &interner,
-    );
-    let graph = Graph::build(&ingest, &interner);
-    let report = find_affected_tests(
         &["src/lib/onboarding-flow/cart-pricing.ts"],
-        &ingest,
-        &graph,
-        &interner,
     );
-    let paths: Vec<&str> = report.tests.iter().map(|t| t.path.as_str()).collect();
-    assert_eq!(paths, ["src/lib/onboarding-flow/cart-pricing.check.ts"]);
-    assert!(report.tests[0].is_partner);
+    assert_eq!(
+        tests,
+        [(
+            "src/lib/onboarding-flow/cart-pricing.check.ts".to_string(),
+            true
+        )]
+    );
 }
 
 #[test]
@@ -771,11 +759,22 @@ fn test_affected_root_names_the_reading_that_seeded_the_walk() {
     assert!(unmatched.to_xml_string().contains(" seeded_by=\"none\""));
 }
 
-#[test]
-fn test_affected_reaches_a_test_through_a_static_initializer_read() {
+/// Each affected test path with whether it is a naming partner, for one in-memory corpus.
+fn affected_tests(files: &[(&str, Lang, &[u8])], changed: &[&str]) -> Vec<(String, bool)> {
     let registry = LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
     let interner = Interner::new();
-    let ingest = ingest_in_memory_files(
+    let ingest = ingest_in_memory_files(files, &registry, &interner);
+    let graph = Graph::build(&ingest, &interner);
+    find_affected_tests(changed, &ingest, &graph, &interner)
+        .tests
+        .into_iter()
+        .map(|t| (t.path, t.is_partner))
+        .collect()
+}
+
+#[test]
+fn test_affected_reaches_a_test_through_a_static_initializer_read() {
+    let tests = affected_tests(
         &[
             (
                 "src/cmds/mod.rs",
@@ -788,11 +787,8 @@ fn test_affected_reaches_a_test_through_a_static_initializer_read() {
                 b"#[test]\nfn lists_tools() {\n    tools();\n}\n",
             ),
         ],
-        &registry,
-        &interner,
+        &["options"],
     );
-    let graph = Graph::build(&ingest, &interner);
-    let report = find_affected_tests(&["options"], &ingest, &graph, &interner);
-    let paths: Vec<&str> = report.tests.iter().map(|t| t.path.as_str()).collect();
+    let paths: Vec<&str> = tests.iter().map(|(path, _)| path.as_str()).collect();
     assert_eq!(paths, ["tests/cmds.rs"]);
 }

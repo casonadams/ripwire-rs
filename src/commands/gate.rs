@@ -6,7 +6,7 @@ use super::common::gate::validate_gate_modifiers;
 use super::edit_check::{EditCheckArgs, run_edit_check};
 use super::quality_baseline::{QualityBaselineArgs, QualityBaselineFlags, run_quality_baseline};
 use super::quality_delta::{QualityDeltaArgs, QualityDeltaFlags, run_quality_delta};
-use super::{Command, Run, SharedOption, decode_subcommand};
+use super::{Command, Run, SharedOption, run_named_subcommand};
 use crate::cli::Cli;
 use clap::{Args, Command as ClapCommand};
 use std::io;
@@ -171,11 +171,8 @@ impl Command for Gate {
         matches: &clap::ArgMatches,
         root: &str,
     ) -> Option<io::Result<()>> {
-        if name != "gate" {
-            return None;
-        }
-        Some(decode_subcommand::<GateArgs>(matches).and_then(|args| {
-            execute_gate_subcommand(cli, root, &args)
-        }))
+        run_named_subcommand::<GateArgs>(name, "gate", matches, |args| {
+            execute_gate_subcommand(cli, root, args)
+        })
     }
 }

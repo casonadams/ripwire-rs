@@ -152,8 +152,8 @@ pub struct ReadabilityReport<'a> {
 
 impl ReadabilityReport<'_> {
     fn window(&self) -> crate::serialize::PageWindow {
-        self.page.window_fit(self.functions.len(), |i| {
-            crate::serialize::row_bytes(|w| write_readability_row(&self.functions[i], w))
+        crate::serialize::window_rows(self.page, &self.functions, |f, w| {
+            write_readability_row(f, w)
         })
     }
 }
@@ -193,11 +193,12 @@ impl crate::serialize::XmlReport for ReadabilityReport<'_> {
         write!(out, " functions=\"{}\"", self.functions.len())
     }
     fn write_body<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<()> {
-        let pw = self.window();
-        for entry in &self.functions[pw.begin..pw.end] {
-            write_readability_row(entry, out)?;
-        }
-        Ok(())
+        crate::serialize::write_window_rows(
+            &self.functions,
+            &self.window(),
+            out,
+            write_readability_row,
+        )
     }
 }
 

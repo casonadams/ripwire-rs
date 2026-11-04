@@ -3,12 +3,6 @@ use ripwire_rs::commands::{
     around, biggest_first, communities, context_ratio, external_surface, naming_consistency,
     quality_panel, report, symbol_metrics, tree,
 };
-use ripwire_rs::commands::{
-    around::AroundArgs, biggest_first::BiggestFirstArgs, communities::CommunitiesArgs,
-    context_ratio::ContextRatioArgs, external_surface::ExternalSurfaceArgs,
-    naming_consistency::NamingConsistencyArgs, quality_panel::QualityPanelArgs,
-    symbol_metrics::SymbolMetricsArgs,
-};
 use ripwire_rs::serialize::XmlWriter;
 use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, PageRankConfig, ingest_in_memory_files};
 use std::collections::BTreeSet;
@@ -48,6 +42,19 @@ fn render(
     Ok(String::from_utf8(output).unwrap())
 }
 
+fn render_plugin<A: clap::FromArgMatches + 'static>(
+    args: &[&str],
+    render_with: impl FnOnce(
+        &ExecutionContext<'_>,
+        &A,
+        &mut XmlWriter<'_, Vec<u8>>,
+    ) -> std::io::Result<()>,
+) -> std::io::Result<String> {
+    render(args, |ctx, out| {
+        render_with(ctx, &ctx.cli.plugins.decode::<A>().unwrap(), out)
+    })
+}
+
 fn names(xml: &str) -> BTreeSet<String> {
     roxmltree::Document::parse(xml)
         .unwrap()
@@ -58,39 +65,137 @@ fn names(xml: &str) -> BTreeSet<String> {
 }
 
 #[test]
-fn file_tree_retains_definitions_without_inventing_call_edges() {
-    let output = render(&["--tree"], |ctx, out| {
-        tree::render(ctx, &tree::TreeArgs::default(), out)
-    })
-    .unwrap();
-    assert_eq!(
-        names(&output),
-        ["entry", "helper", "isolated"].map(str::to_owned).into()
-    );
-    let document = roxmltree::Document::parse(&output).unwrap();
-    assert!(
-        document
-            .descendants()
-            .any(|node| node.attribute("p") == Some("src/lib.rs"))
-    );
+fn plugin_and_report_renders_keep_their_fixture_contracts() {
+    type Case = (fn() -> std::io::Result<String>, fn(&str));
+    let cases: [Case; 10] = [
+        (
+            || {
+                render(&["--tree"], |ctx, out| {
+                    tree::render(ctx, &tree::TreeArgs::default(), out)
+                })
+            },
+            |xml| {
+                assert_eq!(
+                    names(xml),
+                    ["entry", "helper", "isolated"].map(str::to_owned).into()
+                );
+                let document = roxmltree::Document::parse(xml).unwrap();
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.attribute("p") == Some("src/lib.rs"))
+                );
+            },
+        ),
+        (
+            || render_plugin(&["--biggest-first"], biggest_first::render),
+            |xml| {
+                assert_eq!(
+                    names(xml),
+                    ["entry", "helper", "isolated"].map(str::to_owned).into()
+                )
+            },
+        ),
+        (
+            || render_plugin(&["--communities"], communities::render),
+            |xml| {
+                let document = roxmltree::Document::parse(xml).unwrap();
+                let summary = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("communities"))
+                    .unwrap();
+                assert_eq!(summary.attribute("isolated_source"), Some("1"));
+                let reported = names(xml);
+                assert!(reported.contains("entry"));
+                assert!(reported.contains("helper"));
+            },
+        ),
+        (
+            || render_plugin(&["--around", "entry"], around::render),
+            |xml| assert_eq!(names(xml), ["entry", "helper"].map(str::to_owned).into()),
+        ),
+        (
+            || render_plugin(&["--external-surface"], external_surface::render),
+            |xml| {
+                let document = roxmltree::Document::parse(xml).unwrap();
+                assert!(!document.descendants().any(|node| node.has_tag_name("x")));
+            },
+        ),
+        (
+            || render_plugin(&["--naming-consistency"], naming_consistency::render),
+            |xml| {
+                let document = roxmltree::Document::parse(xml).unwrap();
+                let votes: Vec<_> = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("vote"))
+                    .map(|node| {
+                        (
+                            node.attribute("kind"),
+                            node.attribute("style"),
+                            node.attribute("count"),
+                        )
+                    })
+                    .collect();
+                assert_eq!(votes, [(Some("fn"), Some("lower"), Some("3"))]);
+            },
+        ),
+        (
+            || render(&["--report"], report::render),
+            |xml| {
+                let rows: Vec<_> = xml
+                    .lines()
+                    .filter(|line| line.starts_with("| `"))
+                    .map(|line| line.split('|').nth(1).unwrap().trim().trim_matches('`'))
+                    .collect();
+                assert_eq!(rows, ["helper", "entry", "isolated"]);
+            },
+        ),
+        (
+            || render_plugin(&["--context-ratio"], context_ratio::render),
+            |xml| {
+                let document = roxmltree::Document::parse(xml).unwrap();
+                assert_eq!(document.root_element().attribute("units"), Some("3"));
+                let row = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("s"))
+                    .unwrap();
+                assert_eq!(row.attribute("n"), Some("entry"));
+                assert_eq!(row.attribute("ents"), Some("1"));
+                assert_eq!(row.attribute("ents_out"), Some("0"));
+            },
+        ),
+        (
+            || render_plugin(&["--quality-panel"], quality_panel::render),
+            |xml| {
+                let document = roxmltree::Document::parse(xml).unwrap();
+                let report = document.root_element();
+                assert_eq!(report.attribute("eligible"), Some("3"));
+                assert_eq!(report.attribute("ranked"), Some("0"));
+            },
+        ),
+        (
+            || render_plugin(&["--metrics"], symbol_metrics::render),
+            |xml| {
+                let document = roxmltree::Document::parse(xml).unwrap();
+                let helper = document
+                    .descendants()
+                    .find(|node| node.attribute("n") == Some("helper"))
+                    .unwrap();
+                let entry = document
+                    .descendants()
+                    .find(|node| node.attribute("n") == Some("entry"))
+                    .unwrap();
+                assert_eq!(helper.attribute("in"), Some("1"));
+                assert_eq!(helper.attribute("out"), Some("0"));
+                assert_eq!(entry.attribute("in"), Some("0"));
+                assert_eq!(entry.attribute("out"), Some("1"));
+            },
+        ),
+    ];
+    for (render_case, check) in cases {
+        check(&render_case().unwrap());
+    }
 }
-
-#[test]
-fn readability_inventory_does_not_lose_unreachable_functions() {
-    let output = render(&["--biggest-first"], |ctx, out| {
-        biggest_first::render(
-            ctx,
-            &ctx.cli.plugins.decode::<BiggestFirstArgs>().unwrap(),
-            out,
-        )
-    })
-    .unwrap();
-    assert_eq!(
-        names(&output),
-        ["entry", "helper", "isolated"].map(str::to_owned).into()
-    );
-}
-
 #[test]
 fn invalid_slice_requests_fail_before_any_repository_acquisition() {
     for (args, message) in [
@@ -104,151 +209,6 @@ fn invalid_slice_requests_fail_before_any_repository_acquisition() {
         let error = ripwire_rs::run_cli_args(cli).unwrap_err();
         assert!(error.to_string().contains(message), "{error}");
     }
-}
-
-#[test]
-fn community_dispatch_separates_an_isolated_definition_from_a_connected_pair() {
-    let output = render(&["--communities"], |ctx, out| {
-        communities::render(
-            ctx,
-            &ctx.cli.plugins.decode::<CommunitiesArgs>().unwrap(),
-            out,
-        )
-    })
-    .unwrap();
-    let document = roxmltree::Document::parse(&output).unwrap();
-    let summary = document
-        .descendants()
-        .find(|node| node.has_tag_name("communities"))
-        .unwrap();
-    assert_eq!(summary.attribute("isolated_source"), Some("1"));
-    let reported = names(&output);
-    assert!(reported.contains("entry"));
-    assert!(reported.contains("helper"));
-}
-
-#[test]
-fn ego_graph_dispatch_excludes_disconnected_functions() {
-    let output = render(&["--around", "entry"], |ctx, out| {
-        around::render(ctx, &ctx.cli.plugins.decode::<AroundArgs>().unwrap(), out)
-    })
-    .unwrap();
-    assert_eq!(
-        names(&output),
-        ["entry", "helper"].map(str::to_owned).into()
-    );
-}
-
-#[test]
-fn external_surface_does_not_reclassify_a_resolved_internal_call() {
-    let output = render(&["--external-surface"], |ctx, out| {
-        external_surface::render(
-            ctx,
-            &ctx.cli.plugins.decode::<ExternalSurfaceArgs>().unwrap(),
-            out,
-        )
-    })
-    .unwrap();
-    let document = roxmltree::Document::parse(&output).unwrap();
-    assert!(!document.descendants().any(|node| node.has_tag_name("x")));
-}
-
-#[test]
-fn naming_votes_count_only_the_selected_language_definitions() {
-    let output = render(&["--naming-consistency"], |ctx, out| {
-        naming_consistency::render(
-            ctx,
-            &ctx.cli.plugins.decode::<NamingConsistencyArgs>().unwrap(),
-            out,
-        )
-    })
-    .unwrap();
-    let document = roxmltree::Document::parse(&output).unwrap();
-    let votes: Vec<_> = document
-        .descendants()
-        .filter(|node| node.has_tag_name("vote"))
-        .map(|node| {
-            (
-                node.attribute("kind"),
-                node.attribute("style"),
-                node.attribute("count"),
-            )
-        })
-        .collect();
-    assert_eq!(votes, [(Some("fn"), Some("lower"), Some("3"))]);
-}
-
-#[test]
-fn executive_report_ranks_the_reached_helper_ahead_of_uncalled_entries() {
-    let output = render(&["--report"], report::render).unwrap();
-    let rows: Vec<_> = output
-        .lines()
-        .filter(|line| line.starts_with("| `"))
-        .map(|line| line.split('|').nth(1).unwrap().trim().trim_matches('`'))
-        .collect();
-    assert_eq!(rows, ["helper", "entry", "isolated"]);
-}
-
-#[test]
-fn context_ratio_counts_internal_entities_without_external_context() {
-    let output = render(&["--context-ratio"], |ctx, out| {
-        context_ratio::render(
-            ctx,
-            &ctx.cli.plugins.decode::<ContextRatioArgs>().unwrap(),
-            out,
-        )
-    })
-    .unwrap();
-    let document = roxmltree::Document::parse(&output).unwrap();
-    assert_eq!(document.root_element().attribute("units"), Some("3"));
-    let row = document
-        .descendants()
-        .find(|node| node.has_tag_name("s"))
-        .unwrap();
-    assert_eq!(row.attribute("n"), Some("entry"));
-    assert_eq!(row.attribute("ents"), Some("1"));
-    assert_eq!(row.attribute("ents_out"), Some("0"));
-}
-
-#[test]
-fn quality_panel_does_not_rank_a_small_healthy_call_graph_as_a_problem() {
-    let output = render(&["--quality-panel"], |ctx, out| {
-        quality_panel::render(
-            ctx,
-            &ctx.cli.plugins.decode::<QualityPanelArgs>().unwrap(),
-            out,
-        )
-    })
-    .unwrap();
-    let document = roxmltree::Document::parse(&output).unwrap();
-    let report = document.root_element();
-    assert_eq!(report.attribute("eligible"), Some("3"));
-    assert_eq!(report.attribute("ranked"), Some("0"));
-}
-
-#[test]
-fn metrics_reports_reference_direction_not_just_symbol_presence() {
-    let output = render(&["--metrics"], |ctx, out| {
-        symbol_metrics::render(
-            ctx,
-            &ctx.cli.plugins.decode::<SymbolMetricsArgs>().unwrap(),
-            out,
-        )
-    })
-    .unwrap();
-    let document = roxmltree::Document::parse(&output).unwrap();
-    let helper = document
-        .descendants()
-        .find(|node| node.attribute("n") == Some("helper"))
-        .unwrap();
-    let entry = document
-        .descendants()
-        .find(|node| node.attribute("n") == Some("entry"))
-        .unwrap();
-    assert_eq!(helper.attribute("in"), Some("1"));
-    assert_eq!(helper.attribute("out"), Some("0"));
-    assert_eq!(entry.attribute("in"), Some("0"));
-    assert_eq!(entry.attribute("out"), Some("1"));
 }
 
 fn selected<A: clap::FromArgMatches + 'static>(

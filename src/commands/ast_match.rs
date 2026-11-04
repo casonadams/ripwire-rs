@@ -1,6 +1,6 @@
 //! `--match QUERY`: AST pattern query over the corpus; honors `--limit/--offset`.
 use super::common::grep::write_hits;
-use super::common::retrieval::report_query;
+use super::common::retrieval::report_text_query;
 use super::{Plugin, Run, SharedOption};
 use crate::query::commands::QueryContext;
 use crate::query::retrieval;
@@ -23,8 +23,9 @@ pub fn execute<W: Write>(query: &QueryContext<'_>, expr: &str, page: PageRequest
 }
 
 fn run(run: &Run<'_>, args: &AstMatchArgs) -> io::Result<()> {
-    let expr = args.ast_match.as_deref().unwrap_or_default();
-    report_query(run, |query, out| execute(query, expr, run.page(), out))
+    report_text_query(run, args.ast_match.as_deref(), |query, expr, page, out| {
+        execute(query, expr, page, out)
+    })
 }
 
 pub static AST_MATCH: Plugin<AstMatchArgs> = Plugin {

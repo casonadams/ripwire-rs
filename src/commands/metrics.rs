@@ -1,7 +1,7 @@
 //! `metrics` subcommand: co-change coupling and maintenance hotspots for a repository path.
 use super::cochange::{CochangeArgs, CochangeQuery, execute_cochange};
 use super::hotspots::{HotspotsArgs, execute_hotspots};
-use super::{Command, SharedOption, decode_subcommand};
+use super::{Command, SharedOption, run_named_subcommand};
 use crate::cli::Cli;
 use crate::serialize::PageRequest;
 use clap::{Args, Command as ClapCommand};
@@ -76,12 +76,8 @@ impl Command for Metrics {
         matches: &clap::ArgMatches,
         root: &str,
     ) -> Option<io::Result<()>> {
-        if name != "metrics" {
-            return None;
-        }
-        Some(
-            decode_subcommand::<MetricsArgs>(matches)
-                .and_then(|args| execute_metrics_subcommand(root, &args)),
-        )
+        run_named_subcommand::<MetricsArgs>(name, "metrics", matches, |args| {
+            execute_metrics_subcommand(root, args)
+        })
     }
 }

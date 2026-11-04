@@ -456,10 +456,7 @@ fn diff_commit_tree(
         true
     })
     .ok_or_else(|| GitHistoryError::TreeDiff(meta.id.to_string()))?;
-    let author = commit
-        .author()
-        .map(|a| a.email.to_string())
-        .unwrap_or_default();
+    let author = commit.author().map_err(walk_err)?.email.to_string();
     Ok(CommitInfo {
         id: meta.id.to_string(),
         timestamp: meta.timestamp,
@@ -512,10 +509,10 @@ pub fn walk_repository_history_scoped<P: AsRef<Path>>(
 ) -> Result<Vec<CommitInfo>, GitHistoryError> {
     let repo_path = repo_path.as_ref();
     let repo = gix::discover(repo_path).map_err(|e| GitHistoryError::Open(e.to_string()))?;
-    let prefix = repo_path
-        .to_str()
-        .and_then(|root| super::repo::workdir_prefix(&repo, root))
-        .unwrap_or_default();
+    let root = repo_path.to_str().ok_or_else(|| {
+        GitHistoryError::Open(format!("{} is not valid UTF-8", repo_path.display()))
+    })?;
+    let prefix = super::repo::workdir_prefix(&repo, root).map_err(GitHistoryError::Open)?;
     let head = repo
         .head_id()
         .map_err(|e| GitHistoryError::Head(e.to_string()))?
@@ -525,18 +522,19 @@ pub fn walk_repository_history_scoped<P: AsRef<Path>>(
     Ok(strip_subdir_prefix(commits, &prefix))
 }
 
-/// Full hex id of the repository's HEAD commit, or `None` outside a git repository.
-#[must_use]
-pub fn resolve_head_sha<P: AsRef<Path>>(root: P) -> Option<String> {
-    let repo = gix::discover(root.as_ref()).ok()?;
-    let head = repo.head_commit().ok()?;
-    Some(head.id().to_string())
+/// Full hex id of the repository's HEAD commit. `Ok(None)` outside a git repository or on an unborn HEAD;
+/// `Err` when the repository or HEAD cannot be read.
+pub fn resolve_head_sha(root: &str) -> Result<Option<String>, String> {
+    let Some(repo) = super::repo::enclosing_repo(root)? else {
+        return Ok(None);
+    };
+    Ok(super::repo::head_commit_id(&repo)?.map(|id| id.to_string()))
 }
 
 /// Compute the canonical git stamp `sha[+dirty]` for a repository root. `Ok(None)` when there is no
 /// HEAD commit; `Err` when the working tree cannot be read, so its dirtiness is unknown.
 pub fn compute_git_at_stamp(root: &str) -> Result<Option<String>, String> {
-    let Some(full_id) = resolve_head_sha(root) else {
+    let Some(full_id) = resolve_head_sha(root)? else {
         return Ok(None);
     };
     let short_sha = &full_id[..9.min(full_id.len())];

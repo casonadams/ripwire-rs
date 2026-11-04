@@ -215,8 +215,7 @@ impl LanguageSemantics for CppLanguage {
     }
 
     fn lint_groups(&self) -> &'static [crate::languages::LintGroup] {
-        use crate::languages::LintGroup as G;
-        &[G::Cast, G::Goto, G::DoWhile, G::Insecure, G::Parens, G::CFamily, G::SelfAssign, G::NativeOnly, G::Unreachable, G::Naming]
+        super::lint::C_FAMILY_LINT_GROUPS
     }
     super::impl_grammar_method!(crate tree_sitter_cpp::LANGUAGE, "tags.scm");
 

@@ -162,9 +162,7 @@ pub struct NonlocalStateReport<'a> {
 
 impl NonlocalStateReport<'_> {
     fn window(&self) -> crate::serialize::PageWindow {
-        self.page.window_fit(self.funcs.len(), |i| {
-            crate::serialize::row_bytes(|w| write_nonlocal_fn_row(&self.funcs[i], w))
-        })
+        crate::serialize::window_rows(self.page, self.funcs, |f, w| write_nonlocal_fn_row(f, w))
     }
 }
 
@@ -189,11 +187,7 @@ impl crate::serialize::XmlReport for NonlocalStateReport<'_> {
         )
     }
     fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        let window = self.window();
-        for f in &self.funcs[window.begin..window.end] {
-            write_nonlocal_fn_row(f, out)?;
-        }
-        Ok(())
+        crate::serialize::write_window_rows(self.funcs, &self.window(), out, write_nonlocal_fn_row)
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::domain::{IngestResult, Interner};
-use crate::serialize::{PageWindow, row_bytes};
+use crate::serialize::PageWindow;
 use std::collections::HashMap;
 use std::io::{self, Write};
 
@@ -42,9 +42,7 @@ impl HotspotsReport {
     }
 
     fn window(&self) -> PageWindow {
-        self.page.window_fit(self.files.len(), |i| {
-            row_bytes(|w| write_hotspot_row(&self.files[i], w))
-        })
+        crate::serialize::window_rows(self.page, &self.files, |f, w| write_hotspot_row(f, w))
     }
 }
 
@@ -82,11 +80,7 @@ impl crate::serialize::XmlReport for HotspotsReport {
         )
     }
     fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
-        let window = self.window();
-        for f in &self.files[window.begin..window.end] {
-            write_hotspot_row(f, out)?;
-        }
-        Ok(())
+        crate::serialize::write_window_rows(&self.files, &self.window(), out, write_hotspot_row)
     }
 }
 

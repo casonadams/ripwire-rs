@@ -1,19 +1,13 @@
+use crate::index_support::index;
 use ripwire_rs::serialize::graph_export::{GraphExport, GraphFormat};
-use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, PageRankConfig, ingest_in_memory_files};
+use ripwire_rs::{Lang, PageRankConfig};
 
 fn export(format: GraphFormat) -> String {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(
-        &[(
-            "src/a&b.rs",
-            Lang::Rust,
-            b"fn entry() { helper(); }\nfn helper() {}\n".as_slice(),
-        )],
-        &registry,
-        &interner,
-    );
-    let graph = Graph::build(&ingest, &interner);
+    let (ingest, graph, interner) = index(&[(
+        "src/a&b.rs",
+        Lang::Rust,
+        b"fn entry() { helper(); }\nfn helper() {}\n".as_slice(),
+    )]);
     let pr = graph.page_rank(&PageRankConfig::default());
     let mut out = Vec::new();
     GraphExport {

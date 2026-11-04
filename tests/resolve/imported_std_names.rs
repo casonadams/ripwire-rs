@@ -1,56 +1,62 @@
-use ripwire_rs::{
-    Interner, Lang, LanguageRegistry, ingest_in_memory_files, resolve_all_references,
-};
+use crate::a_callees::callees_described;
+use ripwire_rs::{Interner, Lang};
 
-fn callees_of(caller: &str, files: &[(&str, Lang, &[u8])]) -> Vec<String> {
-    let registry = LanguageRegistry::new().unwrap();
-    let interner = Interner::new();
-    let ingest = ingest_in_memory_files(files, &registry, &interner);
-    let resolution = resolve_all_references(&ingest, &interner);
-    let from = ingest
-        .symbols
-        .iter()
-        .find(|symbol| interner.resolve(&symbol.name) == caller)
-        .unwrap()
-        .id;
-    let mut names: Vec<_> = resolution
-        .edge_accumulators
-        .keys()
-        .filter(|(f, _)| *f == from)
-        .map(|(_, to)| {
-            interner
-                .resolve(&ingest.symbols[*to as usize].name)
-                .to_owned()
-        })
-        .collect();
-    names.sort();
-    names
+/// A callee described by its simple name.
+fn callee_name(ingest: &ripwire_rs::IngestResult, interner: &Interner, id: u32) -> String {
+    interner
+        .resolve(&ingest.symbols[id as usize].name)
+        .to_owned()
 }
 
 const DEFINER: &[u8] = b"export function reject(code: string) { return code; }\n";
 
-#[test]
-fn imported_function_named_like_a_std_member_resolves_across_files() {
-    let files: [(&str, Lang, &[u8]); 2] = [
-        ("src/errors.ts", Lang::TypeScript, DEFINER),
-        (
-            "src/check.ts",
-            Lang::TypeScript,
-            b"import { reject } from \"./errors\";\nexport function check() { reject(\"bad\"); }\n",
-        ),
-    ];
-    assert_eq!(callees_of("check", &files), ["reject"]);
-}
+type Case<'a> = (&'a str, &'a [(&'a str, Lang, &'a [u8])], &'a [&'a str]);
 
 #[test]
-fn unimported_function_named_like_a_std_member_stays_declined() {
-    let files: [(&str, Lang, &[u8]); 2] = [
-        ("src/errors.ts", Lang::TypeScript, DEFINER),
+fn std_named_functions_bind_only_when_imported_or_by_a_real_call() {
+    let cases: [Case; 3] = [
         (
-            "src/other.ts",
-            Lang::TypeScript,
-            b"export function check() { reject(\"bad\"); }\n",
+            "check",
+            &[
+                ("src/errors.ts", Lang::TypeScript, DEFINER),
+                (
+                    "src/check.ts",
+                    Lang::TypeScript,
+                    b"import { reject } from \"./errors\";\nexport function check() { reject(\"bad\"); }\n",
+                ),
+            ],
+            &["reject"],
+        ),
+        (
+            "check",
+            &[
+                ("src/errors.ts", Lang::TypeScript, DEFINER),
+                (
+                    "src/other.ts",
+                    Lang::TypeScript,
+                    b"export function check() { reject(\"bad\"); }\n",
+                ),
+            ],
+            &[],
+        ),
+        (
+            "probe",
+            &[
+                ("src/query/mod.rs", Lang::Rust, b"pub mod map;\npub mod json;\n"),
+                (
+                    "src/app.rs",
+                    Lang::Rust,
+                    b"fn probe(v: Vec<u8>) { let _ = v.iter().map(|x| x + 1).count(); }\n",
+                ),
+            ],
+            &[],
         ),
     ];
-    assert!(callees_of("check", &files).is_empty());
+    for (caller, files, expected) in cases {
+        assert_eq!(
+            callees_described(files, caller, callee_name),
+            expected,
+            "{caller} over {files:?}"
+        );
+    }
 }

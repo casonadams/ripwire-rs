@@ -1,4 +1,4 @@
-use super::harness::{GraphProtocolCase, owner_qualified_callees, sym, verify_protocol_case};
+use super::harness::owner_qualified_callees;
 use ripwire_rs::{Lang, LanguageRegistry, SymKind};
 use std::collections::HashMap;
 
@@ -6,26 +6,6 @@ use ripwire_rs::domain::RefRole;
 use ripwire_rs::ingest::parse_file_content;
 #[test]
 fn test_rust_graph_protocol_and_imports() {
-    verify_protocol_case(&GraphProtocolCase {
-        label: "rust",
-        files: &[(
-            "src/lib.rs",
-            Lang::Rust,
-            b"use crate::util::helper;\npub trait Runner { fn execute(&self); }\npub struct Engine;\nimpl Runner for Engine {\n    pub fn execute(&self) {\n        let local_noise = 1;\n        println!(\"{}\", local_noise);\n        std::mem::drop(local_noise);\n        step();\n    }\n}\npub fn step() {}\n",
-        )],
-        expected_syms: &[
-            sym("Runner", SymKind::Interface, None, true),
-            sym("Engine", SymKind::Class, None, false),
-            sym("execute", SymKind::Method, Some("Engine"), true),
-            sym("step", SymKind::Function, None, true),
-        ],
-        rejected_syms: &["local_noise"],
-        expected_edges: &[("execute", "step")],
-        expect_external: true,
-        expected_lego: Some(("Runner", "Engine")),
-        expected_import: Some("crate::util::helper"),
-    });
-
     let mut file_index = HashMap::new();
     file_index.insert("crates/core/src/sub/worker.rs", 4);
     file_index.insert("crates/core/src/common.rs", 5);

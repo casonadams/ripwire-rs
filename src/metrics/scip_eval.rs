@@ -83,16 +83,20 @@ impl ScipEvalReport {
 
     #[must_use]
     pub fn precision(&self) -> Option<f64> {
-        let hits = self.count(SiteVerdict::Exact) + self.count(SiteVerdict::SplitHit);
-        let bound = hits + self.count(SiteVerdict::Wrong) + self.count(SiteVerdict::FalseEdge);
-        ratio(hits, bound)
+        self.ratio_over_hits(SiteVerdict::FalseEdge)
     }
 
     #[must_use]
     pub fn recall(&self) -> Option<f64> {
+        self.ratio_over_hits(SiteVerdict::Missed)
+    }
+
+    fn ratio_over_hits(&self, other: SiteVerdict) -> Option<f64> {
         let hits = self.count(SiteVerdict::Exact) + self.count(SiteVerdict::SplitHit);
-        let truth = hits + self.count(SiteVerdict::Wrong) + self.count(SiteVerdict::Missed);
-        ratio(hits, truth)
+        ratio(
+            hits,
+            hits + self.count(SiteVerdict::Wrong) + self.count(other),
+        )
     }
 }
 

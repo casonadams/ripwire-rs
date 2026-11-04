@@ -6,13 +6,13 @@ ripwire-rs, rw \- high-throughput agent context router and deterministic static 
 [\fIPATH\fR] [\fIOPTIONS\fR] [\fICOMMAND\fR]
 .br
 .B ripwire-rs
-[\fIPATH\fR] [\fB\-\-top\-k\fR \fIN\fR] [\fB\-\-max\-tokens\fR \fIN\fR] [\fB\-\-pack\-budget\fR \fIBYTES\fR] [\fB\-\-rank\-by\fR \fIMODE\fR] [\fB\-\-legend\fR \fIMODE\fR]
+[\fIPATH\fR] [\fB\-\-top\-k\fR \fIN\fR] [\fB\-\-token\-budget\fR \fIN\fR] [\fB\-\-pack\-budget\fR \fIBYTES\fR] [\fB\-\-rank\-by\fR \fIMODE\fR] [\fB\-\-legend\fR \fIMODE\fR]
 .br
 .B ripwire-rs
 [\fIPATH\fR] [\fB\-\-expand\fR \fISYMS\fR [\fB\-\-outline\fR]] [\fB\-\-tree\fR]
 .br
 .B ripwire-rs
-[\fIPATH\fR] [\fB\-\-callers\fR \fISYM\fR] [\fB\-\-callees\fR \fISYM\fR] [\fB\-\-impact\fR \fISYM\fR] [\fB\-\-uses\fR \fISYM\fR] [\fB\-\-find\-symbol\fR \fISYM\fR]
+[\fIPATH\fR] [\fB\-\-callers\fR \fISYM\fR] [\fB\-\-callees\fR \fISYM\fR] [\fB\-\-impact\fR \fISYM\fR] [\fB\-\-uses\fR \fISYM\fR]
 .br
 .B ripwire-rs
 [\fIPATH\fR] [\fB\-\-for\fR \fITASK\fR] [\fB\-\-grep\fR \fIPAT\fR] [\fB\-\-connect\fR \fIA,B\fR] [\fB\-\-path\fR \fIA:B\fR] [\fB\-\-whereis\fR \fISYM\fR]
@@ -45,7 +45,7 @@ ripwire-rs, rw \- high-throughput agent context router and deterministic static 
 [\fIPATH\fR] [\fB\-\-context\-ratio\fR] [\fB\-\-comment\-coherence\fR] [\fB\-\-plan\-lanes\fR [\fIN\fR] \fB\-\-task\fR \fIGOAL\fR] [\fB\-\-scan\-skills\fR [\fIDIR\fR]]
 .br
 .B ripwire-rs
-[\fIPATH\fR] [\fB\-\-detail\fR [\fIN\fR]] [\fB\-\-adaptive\fR] [\fB\-\-pack\-signatures\fR] [\fB\-\-with\-history\fR] [\fB\-\-eval\fR] [\fB\-\-eval\-retrieval\fR]
+[\fIPATH\fR] [\fB\-\-detail\fR [\fIN\fR]] [\fB\-\-adaptive\fR] [\fB\-\-with\-history\fR] [\fB\-\-eval\fR \fIKIND\fR]
 .br
 .B ripwire-rs
 [\fB\-\-add\-skills\fR [\fIDIR\fR]]
@@ -60,17 +60,14 @@ ripwire-rs, rw \- high-throughput agent context router and deterministic static 
 It indexes codebases across 36 programming languages using multi-threaded parallel Tree-Sitter grammar queries, extracts language-agnostic embedded SQL table lineage from application string literals without extra flags, builds a resolved workspace call graph with multi-tier scoping precedence, executes Personalized PageRank over compressed sparse row (CSR) transpose matrices with dangling node mass redistribution, and streams dense, token-budgeted XML representations to stdout.
 Output formats are minified, self-documenting XML designed to maximize LLM in-context reasoning efficiency while eliminating hallucinated code dependencies and false-negative omissions.
 
-Budget flags are shaping ceilings, not hard gates: output is shaped to fit. \fB\-\-pack\-task\fR reports \fBover_budget=1\fR and \fB\-\-recall\fR reports \fBover_ceiling=1\fR only when the minimal unit alone cannot fit. \fB\-\-recall\fR admits \fI5*N/2\fR bytes for \fB\-\-max\-tokens=N\fR; \fB\-\-for\fR windows its ranked symbols by the token budget (default 4000 tokens), with \fB\-\-limit\fR / \fB\-\-offset\fR overriding the window.
+Budget flags are shaping ceilings, not hard gates: output is shaped to fit. \fB\-\-pack\-task\fR reports \fBover_budget=1\fR and \fB\-\-recall\fR reports \fBover_ceiling=1\fR only when the minimal unit alone cannot fit. \fB\-\-recall\fR admits \fI5*N/2\fR bytes for \fB\-\-token\-budget=N\fR; \fB\-\-for\fR windows its ranked symbols by the token budget (default 4000 tokens), with \fB\-\-limit\fR / \fB\-\-offset\fR overriding the window.
 .SH ORIENTATION & BUDGET OPTIONS
 .TP
 .BI \-\-top\-k= N
 Retain only the \fIN\fR highest-ranked symbols in the emitted symbol map (e.g. \fB\-\-top\-k=200\fR).
 .TP
-.BI \-\-max\-tokens= N
-Budget the output to approximately \fIN\fR LLM prompt tokens (~2.75 bytes per token).
-.TP
 .BI \-\-token\-budget= N
-Alias for \fB\-\-max\-tokens\fR.
+Budget the output to approximately \fIN\fR LLM prompt tokens (~2.75 bytes per token).
 .TP
 .BI \-\-pack\-budget= BYTES
 Streaming budget cap in raw bytes (default: 8192 = 8 KB per list; secondary lists in a report get a quarter).
@@ -83,14 +80,14 @@ Schema documentation comment posture: \fBcompact\fR (default, includes in-contex
 .TP
 .B \-\-legend\-dict
 Emit full schema legend dictionary explaining all XML and JSON tags and attribute abbreviations.
-.TP
-.B \-\-stable
-Emit deterministic path-ordered symbol map omitting volatile rank attributes.
 
 .SH DETAIL LADDER & BODY OPTIONS
 .TP
 .BI \-\-expand= SYMS
-Expand full source body of comma-separated symbols \fISYMS\fR and list callee signatures; with \fB\-\-outline\fR, show control-flow skeletons (declarations, loops, branches with body statements collapsed) instead.
+Expand full source body of comma-separated symbols \fISYMS\fR and list callee signatures.
+.TP
+.B \-\-outline
+With \fB\-\-expand\fR, show control-flow skeletons (declarations, loops, branches with body statements collapsed) instead of full bodies.
 .TP
 .B \-\-tree
 Orient file by file, showing each file's top 3 symbols by rank.
@@ -117,9 +114,6 @@ Optional impact traversal depth limit, matching MCP \fBmax_depth\fR. Global; als
 Query all static use-sites (calls, definitions, reads, writes, imports, extends) of symbol \fISYM\fR, including cross-language embedded SQL table lineage from application string literals.
 All indexed sites are shown by default. Use \fB\-\-limit=N \-\-offset=M\fR for a path-and-line ordered window; \fBnext_offset\fR advances the window.
 Bare non-local variable reads are indexed for Python, JavaScript/TypeScript, and Rust; declarations, assignment targets, labels, and lexical shadows are excluded. Unsupported binding forms remain evidence floors.
-.TP
-.BI \-\-find\-symbol= SYM
-Query both incoming callers and outgoing callees of symbol \fISYM\fR in one view.
 .TP
 .BI \-\-connect= A,B,...
 Compute the minimal connecting subgraph relating 2 to 16 named symbols.
@@ -253,8 +247,6 @@ Select comma-separated AST lint rule prefixes to run (e.g. \fBlarge-function,dee
 .BI \-\-lint\-ignore= RULES
 Ignore specific comma-separated AST lint rules during lint scan.
 .TP
-.B \-\-naming\-calibration
-Calibrate naming consistency lens rules against git rename history.
 .BI \-\-at= FILE:LINE
 Resolve innermost symbol definition enclosing \fIFILE:LINE\fR. Exits 1 if no symbol spans line.
 .TP
@@ -276,17 +268,20 @@ Display pinned session gotchas and notes.
 .BI \-\-note\-add= NOTE
 Append a pinned session gotcha note.
 .TP
-.BI \-\-replace\-symbol\-body= BODY
+.BI \-\-replace\-symbol\-body= SYM:BODY
 Atomically replace an entire symbol definition with new source code body.
 .TP
-.BI \-\-insert\-before\-symbol= TEXT
-Atomically insert source code immediately before a symbol definition.
+.BI \-\-insert\-symbol= SYM:TEXT
+Atomically insert source code beside a symbol definition, placed by \fB\-\-position\fR.
 .TP
-.BI \-\-insert\-after\-symbol= TEXT
-Atomically insert source code immediately after a symbol definition.
+.BI \-\-position= before|after
+Where \fB\-\-insert\-symbol\fR puts its text.
 .TP
 .BI \-\-edit\-target\-file= FILE
 Specify target file to disambiguate symbol during atomic code replacement.
+.TP
+.BI \-\-edit\-payload= PAYLOAD
+Execute a JSON edit payload. \fB\-\-edit\-payload=FILE\fR reads the JSON payload from FILE. When no file has that name, the value is read as inline JSON. A file that exists but cannot be read is an error, never an empty payload.
 .TP
 .B \-\-no\-post\-check
 Skip post-edit contract, arity, and syntax verification.
@@ -299,9 +294,6 @@ Pin architectural baseline sidecar stamped with git \fBHEAD\fR.
 .TP
 .B \-\-baseline\-update
 Update architectural baseline sidecar with newly introduced violations.
-.TP
-.B \-\-pin\-census
-Pin quality census snapshot.
 .TP
 .BI \-\-scope= SCOPE
 Partition \fB\-\-quality\-delta\fR analysis by author or team ownership scope \fISCOPE\fR.
@@ -320,9 +312,6 @@ Plan \fIN\fR parallel worktree lanes before writing code (with \fB\-\-task=GOAL\
 .TP
 .BI \-\-brief= FILE
 Explicit per-lane brief file for \fB\-\-plan\-lanes\fR (one non-blank task line per lane).
-.TP
-.B \-\-no\-stable
-Disable stable dependency violation warnings in \fB\-\-deps\fR output.
 .SH ARCHITECTURE & CODE INTELLIGENCE
 .TP
 .B \-\-dead\-code
@@ -424,9 +413,6 @@ Launch stdio JSON-RPC Language Server Protocol (LSP) server bridge supporting \f
 .B \-\-pretty
 Pretty-print indented XML output (default is minified token-optimized single-line XML).
 .TP
-.BI \-\-mcp\-token= TOKEN
-Require authentication token \fITOKEN\fR for MCP transport.
-.TP
 .B \-\-no\-inventory
 Drop the unranked file inventory tier from ranked map and metrics output.
 .TP
@@ -445,35 +431,14 @@ Emit verbatim matched lines in \fB\-\-whereis\fR without length truncation.
 .BI \-\-whereis\-listing= MODE
 Filter \fB\-\-whereis\fR results by \fBdefs\fR, \fBrefs\fR, or \fBall\fR.
 .TP
-.BI \-\-mcp\-tools= LIST
-Restrict exposed MCP tools to a comma-separated list or profile (\fBcore\fR, \fBfull\fR).
-.TP
 .BI \-\-agent= AGENT
 Target agent profile for output token shaping and syntax formatting.
 .TP
-.BI \-\-with\-profile= FILE
-Annotate code symbols with runtime performance profile weights from \fIFILE\fR.
+.BI \-\-eval= KIND
+Self-evaluation: \fBcochange\fR (co-change recall), \fBretrieval\fR (known-item retrieval), or \fBscip\fR (call resolution scored against the compiler-backed SCIP index given by \fB\-\-scip\fR). With \fBscip\fR, every call site the index pins is resolved again without SCIP and classified exact, split-hit, wrong, missed, external-agreed, false-edge or unindexed (an edge the index calls external into a file it holds no document for, such as \fB.js\fR beside a TypeScript-only index; left out of precision), with precision, recall, and per-reason counts for each disagreeing class.
 .TP
-.BI \-\-run\-trace= CMD
-Execute runtime trace command \fICMD\fR and map executed frames onto indexed symbols.
-.TP
-.BI \-\-run\-timeout= SEC
-Timeout in seconds for \fB\-\-run\-trace\fR execution (default: 30).
-.TP
-.B \-\-eval\-mined
-Run evaluation benchmark against mined git commits.
-.TP
-.B \-\-eval\-skills
-Run agent skill effectiveness evaluation benchmark.
-.TP
-.B \-\-eval\-stray
-Run cross-branch divergent stray content evaluation benchmark.
-.TP
-.BI \-\-eval\-scip= FILE
-Score name-based call resolution against the compiler-backed SCIP index \fIFILE\fR: every call site the index pins is resolved again without SCIP and classified exact, split-hit, wrong, missed, external-agreed, false-edge or unindexed (an edge the index calls external into a file it holds no document for, such as \fB.js\fR beside a TypeScript-only index; left out of precision), with precision, recall, per-reason counts for each disagreeing class (the edge's provenance, or declined, unresolved, external, builtin, ignored) and sampled disagreements per class and reason. Refuses \fB\-\-scip\fR.
-.TP
-.BI \-\-eval\-samples= N
-Sampled disagreements per class and reason for \fB\-\-eval\-scip\fR (default 10).
+.BI \-\-samples= N
+Sampled disagreements per verdict and reason for \fB\-\-eval=scip\fR (default 10).
 .SH VISUALIZATION OPTIONS
 .TP
 .BI \-\-html [=FILE]
@@ -499,7 +464,7 @@ Pre-commit verification safety gates.
 .B ripwire-rs metrics \fR[\fIPATH\fR] [\fB\-\-hotspots\fR|\fB\-\-clones\fR]
 Code health and structural complexity metrics.
 .TP
-.B ripwire-rs slice \fR[\fIPATH\fR] \fB\-\-symbol\fR \fISYM\fR \fB\-\-var\fR \fIVAR\fR
+.B ripwire-rs slice \fR[\fIPATH\fR] \fISYM:VAR\fR
 Intra-procedural def-use slicing.
 .TP
 .B ripwire-rs mcp \fR[\fIPATH\fR] [\fB\-\-scip\fR \fIFILE\fR]

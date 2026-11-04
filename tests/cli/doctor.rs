@@ -97,47 +97,67 @@ fn test_doctor_empty_report_passes_vacuously() {
 }
 
 #[test]
-fn test_binary_path_row_found_different_file_prints_version() {
-    let check = binary_path_row(
-        Some(Path::new("/build/ripwire-rs")),
-        Some(Path::new("/usr/local/bin/ripwire-rs")),
-        false,
-        Some("ripwire-rs 0.6.3".to_string()),
+fn binary_path_row_reports_location_version_and_hint() {
+    type Case<'a> = (
+        Option<&'a str>,
+        Option<&'a str>,
+        bool,
+        Option<&'a str>,
+        &'a [&'a str],
+        &'a [&'a str],
     );
-    let mut out = Vec::new();
-    check.write_xml(&mut out).unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    assert!(xml.contains("ok=\"1\""));
-    assert!(xml.contains("which=\"/usr/local/bin/ripwire-rs\""));
-    assert!(xml.contains("which_version=\"ripwire-rs 0.6.3\""));
-    assert!(xml.contains("on_path=\"1\" same_file=\"0\""));
-    assert!(!xml.contains("hint="));
-}
-
-#[test]
-fn test_binary_path_row_same_file_omits_version_even_when_supplied() {
-    let check = binary_path_row(
-        Some(Path::new("/bin/ripwire-rs")),
-        Some(Path::new("/bin/ripwire-rs")),
-        true,
-        Some("ripwire-rs 0.6.3".to_string()),
-    );
-    let mut out = Vec::new();
-    check.write_xml(&mut out).unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    assert!(!xml.contains("which_version="));
-    assert!(xml.contains("same_file=\"1\""));
-}
-
-#[test]
-fn test_binary_path_row_not_found_fails_and_exports_path_hint() {
-    let check = binary_path_row(Some(Path::new("/opt/bin/ripwire-rs")), None, false, None);
-    let mut out = Vec::new();
-    check.write_xml(&mut out).unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    assert!(xml.contains("ok=\"0\""));
-    assert!(xml.contains("on_path=\"0\""));
-    assert!(xml.contains("hint=\"export PATH=&quot;/opt/bin:$PATH&quot;\""));
+    let cases: [Case; 3] = [
+        (
+            Some("/build/ripwire-rs"),
+            Some("/usr/local/bin/ripwire-rs"),
+            false,
+            Some("ripwire-rs 0.6.3"),
+            &[
+                "ok=\"1\"",
+                "which=\"/usr/local/bin/ripwire-rs\"",
+                "which_version=\"ripwire-rs 0.6.3\"",
+                "on_path=\"1\" same_file=\"0\"",
+            ],
+            &["hint="],
+        ),
+        (
+            Some("/bin/ripwire-rs"),
+            Some("/bin/ripwire-rs"),
+            true,
+            Some("ripwire-rs 0.6.3"),
+            &["same_file=\"1\""],
+            &["which_version="],
+        ),
+        (
+            Some("/opt/bin/ripwire-rs"),
+            None,
+            false,
+            None,
+            &[
+                "ok=\"0\"",
+                "on_path=\"0\"",
+                "hint=\"export PATH=&quot;/opt/bin:$PATH&quot;\"",
+            ],
+            &[],
+        ),
+    ];
+    for (running, on_path, same_file, version, present, absent) in cases {
+        let check = binary_path_row(
+            running.map(Path::new),
+            on_path.map(Path::new),
+            same_file,
+            version.map(str::to_owned),
+        );
+        let mut out = Vec::new();
+        check.write_xml(&mut out).unwrap();
+        let xml = String::from_utf8(out).unwrap();
+        for needle in present {
+            assert!(xml.contains(needle), "missing {needle}: {xml}");
+        }
+        for needle in absent {
+            assert!(!xml.contains(needle), "unexpected {needle}: {xml}");
+        }
+    }
 }
 
 #[test]
@@ -178,15 +198,16 @@ fn test_index_cache_row_corrupt_or_unreadable_fails_the_row() {
 
 #[test]
 fn test_classify_fsmonitor() {
-    assert_eq!(classify_fsmonitor(None), "unset");
-    assert_eq!(classify_fsmonitor(Some("true")), "builtin");
-    assert_eq!(classify_fsmonitor(Some("Yes")), "builtin");
-    assert_eq!(classify_fsmonitor(Some("false")), "off");
-    assert_eq!(classify_fsmonitor(Some("")), "off");
-    assert_eq!(
-        classify_fsmonitor(Some(".git/hooks/fsmonitor-watchman")),
-        "hook"
-    );
+    let inputs = [
+        None,
+        Some("true"),
+        Some("Yes"),
+        Some("false"),
+        Some(""),
+        Some(".git/hooks/fsmonitor-watchman"),
+    ];
+    let got: Vec<&str> = inputs.into_iter().map(classify_fsmonitor).collect();
+    assert_eq!(got, ["unset", "builtin", "builtin", "off", "off", "hook"]);
 }
 
 #[test]

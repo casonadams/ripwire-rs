@@ -6,62 +6,57 @@ use ripwire_rs::{Graph, Interner, Lang, LanguageRegistry, ToXmlString, ingest_in
 
 #[test]
 fn test_quality_baseline_from_facts_clean() {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let files = [(
-        "src/lib.rs",
-        Lang::Rust,
-        b"pub fn clean_func() {}\n".as_slice(),
-    )];
-    let ingest = ingest_in_memory_files(&files, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    let context = SafetyContext {
-        root: "pure-facts",
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-    };
-
-    let snap = baseline_from_facts(&context, "sha_clean_123", None, false).unwrap();
-    assert_eq!(snap.head_sha, "sha_clean_123");
-    assert!(!snap.dirty);
-    assert_eq!(snap.absorbed, 0);
+    crate::a_safety_context::with_safety_context(
+        "pure-facts",
+        &[("src/lib.rs", "pub fn clean_func() {}\n")],
+        |context| {
+            let snap = baseline_from_facts(context, "sha_clean_123", None, false).unwrap();
+            assert_eq!(snap.head_sha, "sha_clean_123");
+            assert!(!snap.dirty);
+            assert_eq!(snap.absorbed, 0);
+        },
+    );
 }
 
 #[test]
 fn test_quality_baseline_from_facts_dirty_policy() {
-    let interner = Interner::new();
-    let registry = LanguageRegistry::new().unwrap();
-    let files = [("src/lib.rs", Lang::Rust, b"pub fn sample() {}\n".as_slice())];
-    let ingest = ingest_in_memory_files(&files, &registry, &interner);
-    let graph = Graph::build(&ingest, &interner);
-    let context = SafetyContext {
-        root: "pure-facts",
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-    };
+    crate::a_safety_context::with_safety_context(
+        "pure-facts",
+        &[("src/lib.rs", "pub fn sample() {}\n")],
+        |context| {
+            let err = baseline_from_facts(
+                context,
+                "sha_dirty_456",
+                Some((3, "complexity sample src/lib.rs:1 was=2 now=8")),
+                false,
+            )
+            .unwrap_err();
+            assert!(err.to_string().contains("3 gating finding(s)"));
+            assert!(err.to_string().contains("--allow-dirty"));
 
-    let err = baseline_from_facts(
-        &context,
-        "sha_dirty_456",
-        Some((3, "complexity sample src/lib.rs:1 was=2 now=8")),
-        false,
-    )
-    .unwrap_err();
-    assert!(err.to_string().contains("3 gating finding(s)"));
-    assert!(err.to_string().contains("--allow-dirty"));
+            let snap = baseline_from_facts(
+                context,
+                "sha_dirty_456",
+                Some((3, "complexity sample src/lib.rs:1 was=2 now=8")),
+                true,
+            )
+            .unwrap();
+            assert_eq!(snap.head_sha, "sha_dirty_456");
+            assert!(snap.dirty);
+            assert_eq!(snap.absorbed, 3);
 
-    let snap = baseline_from_facts(
-        &context,
-        "sha_dirty_456",
-        Some((3, "complexity sample src/lib.rs:1 was=2 now=8")),
-        true,
-    )
-    .unwrap();
-    assert_eq!(snap.head_sha, "sha_dirty_456");
-    assert!(snap.dirty);
-    assert_eq!(snap.absorbed, 3);
+            let error =
+                baseline_from_facts(context, "abc", Some((2, "cc target")), false).unwrap_err();
+            assert!(error.to_string().contains("2 gating finding(s)"));
+            assert!(error.to_string().contains("cc target"));
+            let dirty = baseline_from_facts(context, "abc", Some((2, "cc target")), true).unwrap();
+            assert!(dirty.dirty);
+            assert_eq!(dirty.absorbed, 2);
+            let clean = baseline_from_facts(context, "abc", None, false).unwrap();
+            assert!(!clean.dirty);
+            assert_eq!(clean.absorbed, 0);
+        },
+    );
 }
 
 #[test]

@@ -1,100 +1,118 @@
 use ripwire_rs::query::branch_tools::{is_stray_candidate, stray_content_value};
-use ripwire_rs::query::stray_lines::{BranchVerdict, branch_verdict, classify_file};
+use ripwire_rs::query::stray_lines::{BranchVerdict, FileStray, branch_verdict, classify_file};
 
 const BASE: &str = "fn a() {\n    old_one();\n    old_two();\n}\n";
 
-#[test]
-fn pure_addition_absent_from_head_is_all_stray() {
-    let branch = "fn a() {}\nfn fresh() {\n    new_work();\n}\n";
-    let stat = classify_file(BASE, branch, BASE, false);
-    assert_eq!(stat.authored, 3);
-    assert_eq!(stat.del, 3);
-    assert_eq!(stat.stray, 3);
-    assert!(!stat.superseded, "HEAD never touched the file");
-    assert_eq!(stat.verdict(), "unmerged");
-}
+type Check = fn(&FileStray);
 
 #[test]
-fn head_reimplementing_removed_base_lines_supersedes_the_branch() {
-    let branch = "fn a() {\n    rewritten_once();\n}\n";
-    let head = "fn a() {\n    rewritten_twice();\n}\n";
-    let stat = classify_file(BASE, branch, head, true);
-    assert_eq!(stat.authored, 1);
-    assert_eq!(stat.stray, 1, "the branch's line is not on HEAD");
-    assert_eq!(stat.del, 2);
-    assert_eq!(
-        stat.redone, 2,
-        "HEAD removed both base lines the branch removed"
-    );
-    assert!(stat.superseded);
-    assert_eq!(stat.verdict(), "superseded");
-}
-
-#[test]
-fn head_holding_the_branch_lines_leaves_no_stray_to_supersede() {
-    let branch = "fn a() {\n    replacement();\n}\n";
-    let head = "fn a() {\n    replacement();\n}\n";
-    let stat = classify_file(BASE, branch, head, true);
-    assert_eq!(stat.del, 2);
-    assert_eq!(stat.redone, 2);
-    assert_eq!(stat.stray, 0, "HEAD already holds the branch's line");
-    assert!(
-        !stat.superseded,
-        "no stray lines means nothing to supersede"
-    );
-}
-
-#[test]
-fn head_reworking_only_part_of_the_removed_base_is_unmerged() {
-    let branch = "fn a() {\n    fresh_one();\n    fresh_two();\n}\n";
-    let head = "fn a() {\n    old_one();\n    different();\n}\n";
-    let stat = classify_file(BASE, branch, head, true);
-    assert_eq!(stat.del, 2);
-    assert_eq!(stat.redone, 1, "only old_two was removed by HEAD");
-    assert_eq!(stat.stray, 2);
-    assert!(
-        !stat.superseded,
-        "1 of 2 removed lines is below the supersession share"
-    );
-}
-
-#[test]
-fn head_untouched_file_is_never_superseded() {
-    let branch = "fn a() {\n    fresh_one();\n}\n";
-    let stat = classify_file(BASE, branch, BASE, false);
-    assert_eq!(stat.redone, 0);
-    assert!(!stat.superseded);
-}
-
-#[test]
-fn whitespace_and_blank_lines_do_not_count_as_authored_work() {
-    let branch = "fn a() {\n\n        old_one();   \n    old_two();\n}\n";
-    let stat = classify_file(BASE, branch, BASE, true);
-    assert_eq!(stat.authored, 0);
-    assert_eq!(stat.stray, 0);
-    assert!((stat.sim - 1.0).abs() < f64::EPSILON);
-}
-
-#[test]
-fn similarity_is_the_share_of_branch_lines_head_already_has() {
-    let branch = "alpha\nbeta\ngamma\ndelta\n";
-    let head = "alpha\nbeta\n";
-    let stat = classify_file("", branch, head, true);
-    assert_eq!(stat.authored, 4);
-    assert_eq!(stat.stray, 2);
-    assert!((stat.sim - 0.5).abs() < f64::EPSILON);
-    assert!(
-        !stat.superseded,
-        "pure addition with half the lines missing stays unmerged"
-    );
-}
-
-#[test]
-fn empty_branch_text_has_no_stray_or_similarity() {
-    let stat = classify_file(BASE, "", BASE, true);
-    assert_eq!(stat.authored, 0);
-    assert_eq!(stat.stray, 0);
-    assert_eq!(stat.sim, 0.0);
+fn classify_file_counts_stray_lines_and_supersession() {
+    let cases: [(&str, &str, &str, bool, Check); 8] = [
+        (
+            BASE,
+            "fn a() {}\nfn fresh() {\n    new_work();\n}\n",
+            BASE,
+            false,
+            |stat| {
+                assert_eq!(stat.authored, 3);
+                assert_eq!(stat.del, 3);
+                assert_eq!(stat.stray, 3);
+                assert!(!stat.superseded, "HEAD never touched the file");
+                assert_eq!(stat.verdict(), "unmerged");
+            },
+        ),
+        (
+            BASE,
+            "fn a() {\n    rewritten_once();\n}\n",
+            "fn a() {\n    rewritten_twice();\n}\n",
+            true,
+            |stat| {
+                assert_eq!(stat.authored, 1);
+                assert_eq!(stat.stray, 1, "the branch's line is not on HEAD");
+                assert_eq!(stat.del, 2);
+                assert_eq!(
+                    stat.redone, 2,
+                    "HEAD removed both base lines the branch removed"
+                );
+                assert!(stat.superseded);
+                assert_eq!(stat.verdict(), "superseded");
+            },
+        ),
+        (
+            BASE,
+            "fn a() {\n    replacement();\n}\n",
+            "fn a() {\n    replacement();\n}\n",
+            true,
+            |stat| {
+                assert_eq!(stat.del, 2);
+                assert_eq!(stat.redone, 2);
+                assert_eq!(stat.stray, 0, "HEAD already holds the branch's line");
+                assert!(
+                    !stat.superseded,
+                    "no stray lines means nothing to supersede"
+                );
+            },
+        ),
+        (
+            BASE,
+            "fn a() {\n    fresh_one();\n    fresh_two();\n}\n",
+            "fn a() {\n    old_one();\n    different();\n}\n",
+            true,
+            |stat| {
+                assert_eq!(stat.del, 2);
+                assert_eq!(stat.redone, 1, "only old_two was removed by HEAD");
+                assert_eq!(stat.stray, 2);
+                assert!(
+                    !stat.superseded,
+                    "1 of 2 removed lines is below the supersession share"
+                );
+            },
+        ),
+        (
+            BASE,
+            "fn a() {\n    fresh_one();\n}\n",
+            BASE,
+            false,
+            |stat| {
+                assert_eq!(stat.redone, 0);
+                assert!(!stat.superseded);
+            },
+        ),
+        (
+            BASE,
+            "fn a() {\n\n        old_one();   \n    old_two();\n}\n",
+            BASE,
+            true,
+            |stat| {
+                assert_eq!(stat.authored, 0);
+                assert_eq!(stat.stray, 0);
+                assert!((stat.sim - 1.0).abs() < f64::EPSILON);
+            },
+        ),
+        (
+            "",
+            "alpha\nbeta\ngamma\ndelta\n",
+            "alpha\nbeta\n",
+            true,
+            |stat| {
+                assert_eq!(stat.authored, 4);
+                assert_eq!(stat.stray, 2);
+                assert!((stat.sim - 0.5).abs() < f64::EPSILON);
+                assert!(
+                    !stat.superseded,
+                    "pure addition with half the lines missing stays unmerged"
+                );
+            },
+        ),
+        (BASE, "", BASE, true, |stat| {
+            assert_eq!(stat.authored, 0);
+            assert_eq!(stat.stray, 0);
+            assert_eq!(stat.sim, 0.0);
+        }),
+    ];
+    for (base, branch, head, head_touched, check) in cases {
+        check(&classify_file(base, branch, head, head_touched));
+    }
 }
 
 #[test]

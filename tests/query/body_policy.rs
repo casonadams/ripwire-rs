@@ -60,18 +60,29 @@ fn exact_name_lookup_serves_the_definition_with_its_doc() {
 }
 
 #[test]
-fn signatures_only_discloses_the_body_posture_with_an_executable_follow_up() {
-    let value = run(
-        [("src/module.ts", SESSION_TS)],
-        "useFreshSession",
-        ForTaskOptions {
-            signatures_only: true,
-            ..Default::default()
-        },
-    );
-    assert!(body_of(&value, "useFreshSession").is_none());
-    assert_eq!(value["reason"], "signatures-only");
-    assert_eq!(value["follow"], "--expand=src/module.ts:useFreshSession");
+fn withheld_bodies_name_their_reason_and_an_executable_follow_up() {
+    let cases = [
+        (
+            ForTaskOptions {
+                signatures_only: true,
+                ..Default::default()
+            },
+            "signatures-only",
+        ),
+        (
+            ForTaskOptions {
+                budget_tokens: Some(1),
+                ..Default::default()
+            },
+            "budget",
+        ),
+    ];
+    for (options, reason) in cases {
+        let value = run([("src/module.ts", SESSION_TS)], "useFreshSession", options);
+        assert!(body_of(&value, "useFreshSession").is_none());
+        assert_eq!(value["reason"], reason);
+        assert_eq!(value["follow"], "--expand=src/module.ts:useFreshSession");
+    }
 }
 
 #[test]
@@ -90,21 +101,6 @@ fn conceptual_route_stays_compact_and_discloses_the_expand_route() {
             .unwrap()
             .starts_with("--expand=src/module.ts:")
     );
-}
-
-#[test]
-fn tight_budget_withholds_the_body_and_says_so() {
-    let value = run(
-        [("src/module.ts", SESSION_TS)],
-        "useFreshSession",
-        ForTaskOptions {
-            budget_tokens: Some(1),
-            ..Default::default()
-        },
-    );
-    assert!(body_of(&value, "useFreshSession").is_none());
-    assert_eq!(value["reason"], "budget");
-    assert_eq!(value["follow"], "--expand=src/module.ts:useFreshSession");
 }
 
 #[test]

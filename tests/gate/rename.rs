@@ -107,17 +107,21 @@ fn complexity_rows(report: &QualityDeltaReport) -> Vec<&QualityRegression> {
         .collect()
 }
 
+/// Diffs the `base` functions against the `work` functions, each built as its own snapshot.
+fn pair(base: Vec<Func>, work: Vec<Func>, acks: Option<&str>) -> QualityDeltaReport {
+    let interner = Interner::new();
+    let base = snapshot(&interner, &base, "base");
+    let work = snapshot(&interner, &work, "work");
+    delta(&base, &work, acks)
+}
+
 #[test]
 fn rename_with_added_branches_gates_against_the_old_values() {
-    let interner = Interner::new();
-    let base = snapshot(
-        &interner,
-        &[func("compute_total", 24, branches(24))],
-        "base",
+    let report = pair(
+        vec![func("compute_total", 24, branches(24))],
+        vec![func("compute_sum", 34, branches(34))],
+        None,
     );
-    let work = snapshot(&interner, &[func("compute_sum", 34, branches(34))], "work");
-
-    let report = delta(&base, &work, None);
 
     let rows = complexity_rows(&report);
     assert_eq!(rows.len(), 1);
@@ -138,15 +142,11 @@ fn rename_with_added_branches_gates_against_the_old_values() {
 
 #[test]
 fn pure_rename_without_worsening_yields_no_row_and_carries_its_ack() {
-    let interner = Interner::new();
-    let base = snapshot(
-        &interner,
-        &[func("compute_total", 24, branches(24))],
-        "base",
+    let report = pair(
+        vec![func("compute_total", 24, branches(24))],
+        vec![func("compute_sum", 24, branches(24))],
+        Some("ack complexity compute_total 24\n"),
     );
-    let work = snapshot(&interner, &[func("compute_sum", 24, branches(24))], "work");
-
-    let report = delta(&base, &work, Some("ack complexity compute_total 24\n"));
 
     assert!(report.regressions.is_empty());
     assert!(report.stale_acks.is_empty());
@@ -161,15 +161,11 @@ fn pure_rename_without_worsening_yields_no_row_and_carries_its_ack() {
 
 #[test]
 fn ack_keyed_by_old_name_acknowledges_a_renamed_regression() {
-    let interner = Interner::new();
-    let base = snapshot(
-        &interner,
-        &[func("compute_total", 24, branches(24))],
-        "base",
+    let report = pair(
+        vec![func("compute_total", 24, branches(24))],
+        vec![func("compute_sum", 34, branches(34))],
+        Some("ack complexity compute_total 34\n"),
     );
-    let work = snapshot(&interner, &[func("compute_sum", 34, branches(34))], "work");
-
-    let report = delta(&base, &work, Some("ack complexity compute_total 34\n"));
 
     assert!(complexity_rows(&report).is_empty());
     assert_eq!(report.acked_count, 1);
@@ -179,116 +175,65 @@ fn ack_keyed_by_old_name_acknowledges_a_renamed_regression() {
 }
 
 #[test]
-fn identical_bodies_that_tie_for_one_removed_symbol_are_not_paired() {
-    let interner = Interner::new();
-    let base = snapshot(
-        &interner,
-        &[func("compute_total", 10, branches(24))],
-        "base",
-    );
-    let work = snapshot(
-        &interner,
-        &[
-            func("compute_a", 34, branches(24)),
-            func("compute_b", 34, branches(24)),
-        ],
-        "work",
-    );
-
-    let report = delta(&base, &work, None);
-
-    assert_eq!(report.renames, 0);
-    let rows = complexity_rows(&report);
-    assert_eq!(rows.len(), 2);
-    assert!(
-        rows.iter()
-            .all(|r| r.is_new_symbol && r.renamed_from.is_none())
-    );
-}
-
-#[test]
-fn different_kind_is_not_paired() {
-    let interner = Interner::new();
-    let method = Func {
-        kind: SymKind::Method,
-        ..func("compute_total", 24, branches(24))
-    };
-    let base = snapshot(&interner, &[method], "base");
-    let work = snapshot(&interner, &[func("compute_sum", 34, branches(34))], "work");
-
-    let report = delta(&base, &work, None);
-
-    assert_eq!(report.renames, 0);
-    let rows = complexity_rows(&report);
-    assert_eq!(rows.len(), 1);
-    assert!(rows[0].is_new_symbol);
-    assert!(rows[0].renamed_from.is_none());
-}
-
-#[test]
-fn different_arity_is_not_paired() {
-    let interner = Interner::new();
-    let base = snapshot(
-        &interner,
-        &[func("compute_total", 24, branches(24))],
-        "base",
-    );
-    let two_params = Func {
-        params: 2,
-        ..func("compute_sum", 34, branches(34))
-    };
-    let work = snapshot(&interner, &[two_params], "work");
-
-    let report = delta(&base, &work, None);
-
-    assert_eq!(report.renames, 0);
-    let rows = complexity_rows(&report);
-    assert_eq!(rows.len(), 1);
-    assert!(rows[0].is_new_symbol);
-    assert!(rows[0].renamed_from.is_none());
-}
-
-#[test]
-fn body_below_the_clone_floor_is_not_paired() {
-    let interner = Interner::new();
-    let base = snapshot(
-        &interner,
-        &[func("compute_total", 10, branches(24))],
-        "base",
-    );
-    let work = snapshot(
-        &interner,
-        &[func("compute_other", 34, unrelated_body())],
-        "work",
-    );
-
-    let report = delta(&base, &work, None);
-
-    assert_eq!(report.renames, 0);
-    let rows = complexity_rows(&report);
-    assert_eq!(rows.len(), 1);
-    assert!(rows[0].is_new_symbol);
-    assert!(rows[0].renamed_from.is_none());
+fn functions_that_differ_in_kind_arity_or_size_are_not_paired() {
+    let cases: [(&str, Vec<Func>, Vec<Func>, usize); 4] = [
+        (
+            "identical bodies tie for one removed symbol",
+            vec![func("compute_total", 10, branches(24))],
+            vec![
+                func("compute_a", 34, branches(24)),
+                func("compute_b", 34, branches(24)),
+            ],
+            2,
+        ),
+        (
+            "different kind",
+            vec![Func {
+                kind: SymKind::Method,
+                ..func("compute_total", 24, branches(24))
+            }],
+            vec![func("compute_sum", 34, branches(34))],
+            1,
+        ),
+        (
+            "different arity",
+            vec![func("compute_total", 24, branches(24))],
+            vec![Func {
+                params: 2,
+                ..func("compute_sum", 34, branches(34))
+            }],
+            1,
+        ),
+        (
+            "body below the clone floor",
+            vec![func("compute_total", 10, branches(24))],
+            vec![func("compute_other", 34, unrelated_body())],
+            1,
+        ),
+    ];
+    for (label, base, work, new_rows) in cases {
+        let report = pair(base, work, None);
+        let rows = complexity_rows(&report);
+        assert_eq!(report.renames, 0, "{label}");
+        assert_eq!(rows.len(), new_rows, "{label}");
+        assert!(
+            rows.iter()
+                .all(|r| r.is_new_symbol && r.renamed_from.is_none()),
+            "{label}"
+        );
+    }
 }
 
 #[test]
 fn unrelated_new_symbol_stays_new_beside_a_paired_rename() {
-    let interner = Interner::new();
-    let base = snapshot(
-        &interner,
-        &[func("compute_total", 24, branches(24))],
-        "base",
-    );
-    let work = snapshot(
-        &interner,
-        &[
+    let report = pair(
+        vec![func("compute_total", 24, branches(24))],
+        vec![
             func("compute_sum", 34, branches(34)),
             func("helper", 34, unrelated_body()),
         ],
-        "work",
+        None,
     );
-
-    let report = delta(&base, &work, None);
 
     assert_eq!(report.renames, 1);
     let rows = complexity_rows(&report);

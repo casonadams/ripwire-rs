@@ -228,30 +228,56 @@ fn safe_delete_xml(files: &[(&str, Lang, &[u8])], sym: &str) -> String {
 }
 
 #[test]
-fn test_safe_delete_radius_and_defs_come_from_the_graph() {
-    let xml = safe_delete_xml(
-        &[
-            (
-                "src/lib.rs",
-                Lang::Rust,
-                b"pub fn alpha(x: u8) -> u8 { x }\npub fn run() { let _ = alpha(1); }\n",
-            ),
-            (
-                "tests/check.rs",
-                Lang::Rust,
-                b"fn checks() { assert_eq!(alpha(2), 2); }\n",
-            ),
-        ],
-        "alpha",
-    );
-    assert!(xml.contains(" defs=\"1\""), "{xml}");
-    assert!(xml.contains(" callers=\"2\""), "{xml}");
-    assert!(xml.contains(" impact_reaches=\"2\""), "{xml}");
-    assert!(
-        xml.contains(" radius_tested=\"1\" radius_untested=\"1\""),
-        "{xml}"
-    );
-    assert!(xml.contains(" dead_code_candidate=\"0\""), "{xml}");
+fn safe_delete_reports_graph_counts_radius_and_risk_for_the_alpha_fixture() {
+    type Case<'a> = (&'a [(&'a str, Lang, &'a [u8])], &'a [&'a str]);
+    let cases: [Case; 2] = [
+        (
+            &[
+                (
+                    "src/lib.rs",
+                    Lang::Rust,
+                    b"pub fn alpha(x: u8) -> u8 { x }\npub fn run() { let _ = alpha(1); }\n",
+                ),
+                (
+                    "tests/check.rs",
+                    Lang::Rust,
+                    b"fn checks() { assert_eq!(alpha(2), 2); }\n",
+                ),
+            ],
+            &[
+                " defs=\"1\"",
+                " callers=\"2\"",
+                " impact_reaches=\"2\"",
+                " radius_tested=\"1\" radius_untested=\"1\"",
+                " dead_code_candidate=\"0\"",
+            ],
+        ),
+        (
+            &[
+                (
+                    "src/lib.rs",
+                    Lang::Rust,
+                    b"pub fn alpha(x: u8) -> u8 { x }\n",
+                ),
+                (
+                    "tests/check.rs",
+                    Lang::Rust,
+                    b"fn checks_alpha() { assert_eq!(alpha(2), 4); }\n",
+                ),
+            ],
+            &[
+                " callers=\"1\"",
+                " risk=\"uses-exist\"",
+                " dead_code_candidate=\"0\"",
+            ],
+        ),
+    ];
+    for (files, expected) in cases {
+        let xml = safe_delete_xml(files, "alpha");
+        for needle in expected {
+            assert!(xml.contains(needle), "missing {needle}: {xml}");
+        }
+    }
 }
 
 #[test]
@@ -268,26 +294,4 @@ fn test_safe_delete_counts_each_definition_of_a_shared_name() {
         "helper",
     );
     assert!(xml.contains(" defs=\"2\""), "{xml}");
-}
-
-#[test]
-fn test_safe_delete_macro_argument_call_is_not_a_low_risk_dead_symbol() {
-    let xml = safe_delete_xml(
-        &[
-            (
-                "src/lib.rs",
-                Lang::Rust,
-                b"pub fn alpha(x: u8) -> u8 { x }\n",
-            ),
-            (
-                "tests/check.rs",
-                Lang::Rust,
-                b"fn checks_alpha() { assert_eq!(alpha(2), 4); }\n",
-            ),
-        ],
-        "alpha",
-    );
-    assert!(xml.contains(" callers=\"1\""), "{xml}");
-    assert!(xml.contains(" risk=\"uses-exist\""), "{xml}");
-    assert!(xml.contains(" dead_code_candidate=\"0\""), "{xml}");
 }

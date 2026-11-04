@@ -183,13 +183,6 @@ fn test_cutoff_is_inclusive_at_exact_commit_time() {
     assert_eq!(walk(&g, 3, Some(200)), vec![oid(3), oid(2)]);
     assert_eq!(walk(&g, 3, Some(201)), vec![oid(3)]);
     assert_eq!(walk(&g, 3, Some(100)), vec![oid(3), oid(2), oid(1)]);
-}
-
-#[test]
-fn test_cutoff_newer_than_head_yields_nothing() {
-    let mut g = Graph::new();
-    add(&mut g, 3, 300, &[2]);
-    add(&mut g, 2, 200, &[]);
     assert!(walk(&g, 3, Some(301)).is_empty());
 }
 

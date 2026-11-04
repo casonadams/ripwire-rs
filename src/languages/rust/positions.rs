@@ -1,4 +1,5 @@
 use super::scope::{rust_binding_target, rust_scope};
+use crate::languages::reads::{NonValueRules, non_value};
 
 /// Function names are snake_case. CamelCase names in macro arguments are often patterns
 /// (`matches!(x, Kind::Mode(_))`) or constructors, so only snake_case names count as calls.
@@ -30,64 +31,61 @@ pub(super) fn is_macro_argument_call(node: tree_sitter::Node<'_>) -> bool {
     parenthesized && !declared && !in_metadata_or_rules
 }
 
+const NON_VALUE: NonValueRules = NonValueRules {
+    always: &[
+        "type_arguments",
+        "type_parameters",
+        "use_declaration",
+        "macro_invocation",
+        "token_tree",
+        "attribute_item",
+        "inner_attribute_item",
+    ],
+    is_field: &[("call_expression", "function"), ("scoped_identifier", "path")],
+    within_field: &[("assignment_expression", "left"), ("compound_assignment_expr", "left")],
+};
+
 fn rust_non_value(parent: tree_sitter::Node<'_>, node: tree_sitter::Node<'_>) -> bool {
-    if rust_binding_target(parent, node) {
-        return true;
-    }
-    match parent.kind() {
-        "type_arguments"
-        | "type_parameters"
-        | "use_declaration"
-        | "macro_invocation"
-        | "token_tree"
-        | "attribute_item"
-        | "inner_attribute_item" => true,
-        "call_expression" => parent.child_by_field_name("function") == Some(node),
-        "assignment_expression" | "compound_assignment_expr" => {
-            super::super::reads::in_field(parent, node, "left")
-        }
-        "scoped_identifier" => parent.child_by_field_name("path") == Some(node),
-        _ => false,
-    }
+    non_value(parent, node, rust_binding_target, &NON_VALUE)
 }
 
+
+const EXPRESSION_PARENTS: &[&str] = &[
+    "binary_expression",
+    "return_expression",
+    "arguments",
+    "array_expression",
+    "tuple_expression",
+    "reference_expression",
+    "unary_expression",
+    "index_expression",
+    "field_expression",
+    "let_declaration",
+    "const_item",
+    "static_item",
+    "assignment_expression",
+    "compound_assignment_expr",
+    "if_expression",
+    "while_expression",
+    "match_expression",
+    "closure_expression",
+    "parenthesized_expression",
+    "expression_statement",
+    "block",
+    "field_initializer",
+    "shorthand_field_initializer",
+    "scoped_identifier",
+];
+
 pub(super) fn rust_read_position(node: tree_sitter::Node<'_>) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-    if parent.kind() == "scoped_identifier"
-        && parent.parent().is_some_and(|call| {
-            call.kind() == "call_expression" && call.child_by_field_name("function") == Some(parent)
-        })
-    {
+    if node.parent().is_some_and(|parent| {
+        parent.kind() == "scoped_identifier"
+            && parent.parent().is_some_and(|call| {
+                call.kind() == "call_expression"
+                    && call.child_by_field_name("function") == Some(parent)
+            })
+    }) {
         return false;
     }
-    let expression = matches!(
-        parent.kind(),
-        "binary_expression"
-            | "return_expression"
-            | "arguments"
-            | "array_expression"
-            | "tuple_expression"
-            | "reference_expression"
-            | "unary_expression"
-            | "index_expression"
-            | "field_expression"
-            | "let_declaration"
-            | "const_item"
-            | "static_item"
-            | "assignment_expression"
-            | "compound_assignment_expr"
-            | "if_expression"
-            | "while_expression"
-            | "match_expression"
-            | "closure_expression"
-            | "parenthesized_expression"
-            | "expression_statement"
-            | "block"
-            | "field_initializer"
-            | "shorthand_field_initializer"
-            | "scoped_identifier"
-    );
-    expression && super::super::reads::value_position(node, rust_non_value, rust_scope)
+    crate::languages::reads::value_read(node, EXPRESSION_PARENTS, rust_non_value, rust_scope)
 }

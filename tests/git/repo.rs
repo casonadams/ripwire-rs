@@ -9,6 +9,30 @@ fn test_text_changes_binary_content_is_left_out() {
 }
 
 #[test]
+fn test_blob_text_of_marks_binary_as_absent() {
+    use ripwire_rs::git::repo::blob_text_of;
+
+    assert_eq!(blob_text_of(b"a\nb\n"), Some("a\nb\n".to_string()));
+    assert_eq!(blob_text_of(b"a\0b\n"), None);
+}
+
+#[test]
+fn test_relative_prefix_is_none_outside_the_work_tree() {
+    use ripwire_rs::git::repo::relative_prefix;
+    use std::path::Path;
+
+    assert_eq!(
+        relative_prefix(Path::new("/w"), Path::new("/w/dir")),
+        Some("dir/".to_string())
+    );
+    assert_eq!(
+        relative_prefix(Path::new("/w"), Path::new("/w")),
+        Some(String::new())
+    );
+    assert_eq!(relative_prefix(Path::new("/w"), Path::new("/x")), None);
+}
+
+#[test]
 fn test_short_id_formatting_and_length() {
     let oid = gix::ObjectId::from_hex(b"0123456789abcdef0123456789abcdef01234567").unwrap();
     let sid = short_id(oid);
@@ -57,52 +81,54 @@ fn dirty(paths: &[&str]) -> std::collections::BTreeSet<String> {
 }
 
 #[test]
-fn test_changed_paths_reports_committed_change_since_base() {
+fn test_changed_paths_compares_committed_dirty_and_untracked_files_against_base() {
     use ripwire_rs::git::repo::changed_paths;
-    let base = tree(&[("src/a.rs", 'a'), ("src/b.rs", 'b')]);
-    let head = tree(&[("src/a.rs", 'c'), ("src/b.rs", 'b')]);
-    let changed = changed_paths(&base, &head, &dirty(&[]), |_| None);
-    assert_eq!(changed, vec!["src/a.rs"]);
-}
-
-#[test]
-fn test_changed_paths_empty_when_tree_matches_base() {
-    use ripwire_rs::git::repo::changed_paths;
-    let base = tree(&[("src/a.rs", 'a')]);
-    let changed = changed_paths(&base, &base, &dirty(&[]), |_| None);
-    assert!(changed.is_empty());
-}
-
-#[test]
-fn test_changed_paths_dirty_edit_is_hashed_against_base() {
-    use ripwire_rs::git::repo::changed_paths;
-    let base = tree(&[("src/a.rs", 'a')]);
-    let head = tree(&[("src/a.rs", 'a')]);
-    let changed = changed_paths(&base, &head, &dirty(&["src/a.rs"]), |_| Some(blob('d')));
-    assert_eq!(changed, vec!["src/a.rs"]);
-}
-
-#[test]
-fn test_changed_paths_dirty_file_restored_to_base_is_unchanged() {
-    use ripwire_rs::git::repo::changed_paths;
-    let base = tree(&[("src/a.rs", 'a')]);
-    let head = tree(&[("src/a.rs", 'c')]);
-    let changed = changed_paths(&base, &head, &dirty(&["src/a.rs"]), |_| Some(blob('a')));
-    assert!(changed.is_empty());
-}
-
-#[test]
-fn test_changed_paths_untracked_and_deleted_files() {
-    use ripwire_rs::git::repo::changed_paths;
-    let base = tree(&[("src/gone.rs", 'e')]);
-    let head = tree(&[("src/gone.rs", 'e')]);
-    let changed = changed_paths(
-        &base,
-        &head,
-        &dirty(&["src/gone.rs", "src/new.rs"]),
-        |path| (path == "src/new.rs").then(|| blob('f')),
+    type Entries<'a> = &'a [(&'a str, char)];
+    type Case<'a> = (
+        Entries<'a>,
+        Entries<'a>,
+        &'a [&'a str],
+        Entries<'a>,
+        &'a [&'a str],
     );
-    assert_eq!(changed, vec!["src/gone.rs", "src/new.rs"]);
+    let cases: [Case; 5] = [
+        (
+            &[("src/a.rs", 'a'), ("src/b.rs", 'b')],
+            &[("src/a.rs", 'c'), ("src/b.rs", 'b')],
+            &[],
+            &[],
+            &["src/a.rs"],
+        ),
+        (&[("src/a.rs", 'a')], &[("src/a.rs", 'a')], &[], &[], &[]),
+        (
+            &[("src/a.rs", 'a')],
+            &[("src/a.rs", 'a')],
+            &["src/a.rs"],
+            &[("src/a.rs", 'd')],
+            &["src/a.rs"],
+        ),
+        (
+            &[("src/a.rs", 'a')],
+            &[("src/a.rs", 'c')],
+            &["src/a.rs"],
+            &[("src/a.rs", 'a')],
+            &[],
+        ),
+        (
+            &[("src/gone.rs", 'e')],
+            &[("src/gone.rs", 'e')],
+            &["src/gone.rs", "src/new.rs"],
+            &[("src/new.rs", 'f')],
+            &["src/gone.rs", "src/new.rs"],
+        ),
+    ];
+    for (base, head, dirty_paths, worktree, expected) in cases {
+        let worktree = tree(worktree);
+        let changed = changed_paths(&tree(base), &tree(head), &dirty(dirty_paths), |path| {
+            worktree.get(path).copied()
+        });
+        assert_eq!(changed, expected);
+    }
 }
 
 #[test]

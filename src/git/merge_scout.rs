@@ -91,7 +91,7 @@ fn collect_arm(
     label: &str,
 ) -> Result<ArmChanges, String> {
     let tip = revision_commit(repo, label).ok_or_else(|| format!("unknown ref '{label}'"))?;
-    let Some(base) = merge_base(repo, head.id, tip.id) else {
+    let Some(base) = merge_base(repo, head.id, tip.id)? else {
         return Ok(unrelated_arm(label));
     };
     let base_tree = commit_tree(repo, base).map_err(|e| format!("merge-base of '{label}': {e}"))?;
@@ -150,8 +150,15 @@ fn unrelated_arm(label: &str) -> ArmChanges {
     }
 }
 
-fn merge_base(repo: &gix::Repository, a: gix::ObjectId, b: gix::ObjectId) -> Option<gix::ObjectId> {
-    repo.merge_base(a, b).ok().flatten().map(gix::Id::detach)
+fn merge_base(
+    repo: &gix::Repository,
+    a: gix::ObjectId,
+    b: gix::ObjectId,
+) -> Result<Option<gix::ObjectId>, String> {
+    let base = repo
+        .merge_base(a, b)
+        .map_err(|e| format!("merge base of {a} and {b}: {e}"))?;
+    Ok(base.map(gix::Id::detach))
 }
 
 fn commit_tree(repo: &gix::Repository, id: gix::ObjectId) -> Result<gix::Tree<'_>, String> {

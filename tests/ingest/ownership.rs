@@ -86,29 +86,7 @@ fn file_with_only_definitions_gets_no_owner() {
 }
 
 #[test]
-fn top_level_import_is_not_a_caller() {
-    let (ingest, interner) = ingest(&[
-        (
-            "src/util/Square.kt",
-            Lang::Kotlin,
-            b"package com.example.util\nfun square(x: Int): Int = x * x\n",
-        ),
-        (
-            "src/Greeter.kt",
-            Lang::Kotlin,
-            b"package com.example\nimport com.example.util.square\nfun greet(): Int = square(2)\n",
-        ),
-    ]);
-    let graph = Graph::build(&ingest, &interner);
-    let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
-    let square = sym_id(&ingest, &interner, "square");
-    let nav = navigate_1hop(square, &ingest, &graph, &ranks, &interner).unwrap();
-    let callers: Vec<&str> = nav.callers.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(callers, ["greet"]);
-}
-
-#[test]
-fn test_script_calling_at_module_scope_is_affected() {
+fn test_module_scope_script_is_affected_and_import_is_not_a_caller() {
     let (ingest, interner) = ingest(&[
         (
             "scripts/lint.py",
@@ -129,6 +107,26 @@ fn test_script_calling_at_module_scope_is_affected() {
         .map(|t| (t.path.as_str(), t.hops))
         .collect();
     assert_eq!(tests, [("scripts/test_lint.py", 1)]);
+    {
+        let (ingest, interner) = self::ingest(&[
+            (
+                "src/util/Square.kt",
+                Lang::Kotlin,
+                b"package com.example.util\nfun square(x: Int): Int = x * x\n",
+            ),
+            (
+                "src/Greeter.kt",
+                Lang::Kotlin,
+                b"package com.example\nimport com.example.util.square\nfun greet(): Int = square(2)\n",
+            ),
+        ]);
+        let graph = Graph::build(&ingest, &interner);
+        let ranks = graph.page_rank(&PageRankConfig::default()).ranks;
+        let square = sym_id(&ingest, &interner, "square");
+        let nav = navigate_1hop(square, &ingest, &graph, &ranks, &interner).unwrap();
+        let callers: Vec<&str> = nav.callers.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(callers, ["greet"]);
+    }
 }
 
 #[test]

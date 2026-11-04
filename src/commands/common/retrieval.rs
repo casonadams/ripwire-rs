@@ -2,7 +2,7 @@
 use crate::cli::Cli;
 use crate::commands::Run;
 use crate::query::commands::QueryContext;
-use crate::serialize::XmlWriter;
+use crate::serialize::{PageRequest, XmlWriter};
 use std::io::{self, StdoutLock};
 use std::path::Path;
 
@@ -28,6 +28,21 @@ pub fn report_query(
         };
         body(&query, out)
     })
+}
+
+/// Runs a query whose one text argument is `text` (empty when unset) under the request's page.
+pub fn report_text_query(
+    run: &Run<'_>,
+    text: Option<&str>,
+    body: impl FnOnce(
+        &QueryContext<'_>,
+        &str,
+        PageRequest,
+        &mut XmlWriter<'_, StdoutLock<'static>>,
+    ) -> io::Result<()>,
+) -> io::Result<()> {
+    let text = text.unwrap_or_default();
+    report_query(run, |query, out| body(query, text, run.page(), out))
 }
 
 /// The `--token-budget` ceiling for task bundles.

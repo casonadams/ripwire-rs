@@ -1,3 +1,4 @@
+use crate::b_state::assert_reads_are_not_state;
 use crate::nonlocal_support::{function, state_report as support_state_report};
 use ripwire_rs::Lang;
 use ripwire_rs::metrics::nonlocal::NonlocalFunction;
@@ -26,11 +27,9 @@ def run():
 
 #[test]
 fn reads_of_python_constants_and_type_factories_are_not_state() {
-    let report = state_report(&[(MODULE, CONSTANTS), ("src/use.py", READS_CONSTANTS)]);
-    assert!(
-        report.is_empty(),
-        "immutable python reads reported as state: {:?}",
-        report.iter().map(|f| &f.sym_name).collect::<Vec<_>>()
+    assert_reads_are_not_state(
+        Lang::Python,
+        &[(MODULE, CONSTANTS), ("src/use.py", READS_CONSTANTS)],
     );
 }
 

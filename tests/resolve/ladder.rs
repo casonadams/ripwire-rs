@@ -1,50 +1,53 @@
 use ripwire_rs::{
-    FileInfo, IngestResult, Interner, Lang, RefRole, Reference, SymKind, Symbol,
+    FileInfo, IngestResult, Interner, Lang, RefRole, Reference, ResolutionResult, SymKind, Symbol,
     resolve_all_references,
 };
 
-#[test]
-fn test_precedence_ladder_same_file() {
+/// Resolves one call from `caller` (file 0) to `name`, with one candidate per entry of `candidate_files`.
+fn resolve_call(paths: &[&str], name: &str, candidate_files: &[u32]) -> ResolutionResult {
     let interner = Interner::new();
-    let f0 = FileInfo {
-        id: 0,
-        path: interner.intern("src/a.rs"),
-        lang: Lang::Rust,
-        line_count: 10,
-        byte_size: 100,
-    };
-    let f1 = FileInfo {
-        id: 1,
-        path: interner.intern("src/b.rs"),
-        lang: Lang::Rust,
-        line_count: 10,
-        byte_size: 100,
-    };
-    let name = interner.intern("target");
+    let mut ingest = IngestResult::new();
+    for (id, path) in paths.iter().enumerate() {
+        ingest.files.push(FileInfo {
+            id: id as u32,
+            path: interner.intern(path),
+            lang: Lang::Rust,
+            line_count: 10,
+            byte_size: 100,
+        });
+    }
+    let name = interner.intern(name);
     let canon = interner.intern("canon");
-    let caller = Symbol::new(
+    let caller = interner.intern("caller");
+    ingest.symbols.push(Symbol::new(
         0,
-        interner.intern("caller"),
+        caller,
         canon,
         SymKind::Function,
         Lang::Rust,
         0,
         1,
-    );
-    let cand_same_file = Symbol::new(1, name, canon, SymKind::Function, Lang::Rust, 0, 5);
-    let cand_other_file = Symbol::new(2, name, canon, SymKind::Function, Lang::Rust, 1, 5);
+    ));
+    for (i, &file) in candidate_files.iter().enumerate() {
+        ingest.symbols.push(Symbol::new(
+            i as u32 + 1,
+            name,
+            canon,
+            SymKind::Function,
+            Lang::Rust,
+            file,
+            5,
+        ));
+    }
+    ingest
+        .references
+        .push(Reference::new(0, name, 0, 2, Lang::Rust, RefRole::Call));
+    resolve_all_references(&ingest, &interner)
+}
 
-    let call = Reference::new(0, name, 0, 2, Lang::Rust, RefRole::Call);
-
-    let mut ingest = IngestResult::new();
-    ingest.files.push(f0);
-    ingest.files.push(f1);
-    ingest.symbols.push(caller);
-    ingest.symbols.push(cand_same_file);
-    ingest.symbols.push(cand_other_file);
-    ingest.references.push(call);
-
-    let res = resolve_all_references(&ingest, &interner);
+#[test]
+fn test_precedence_ladder_same_file() {
+    let res = resolve_call(&["src/a.rs", "src/b.rs"], "target", &[0, 1]);
     assert_eq!(res.edge_accumulators.len(), 1);
     assert!(res.edge_accumulators.contains_key(&(0, 1)));
     assert_eq!(res.edge_accumulators[&(0, 1)].conf_sum, 1.0);
@@ -54,66 +57,13 @@ fn test_precedence_ladder_same_file() {
 
 #[test]
 fn test_precedence_ladder_same_dir_and_unique_global() {
-    let interner = Interner::new();
-    let f0 = FileInfo {
-        id: 0,
-        path: interner.intern("pkg/a.rs"),
-        lang: Lang::Rust,
-        line_count: 10,
-        byte_size: 100,
-    };
-    let f1 = FileInfo {
-        id: 1,
-        path: interner.intern("pkg/b.rs"),
-        lang: Lang::Rust,
-        line_count: 10,
-        byte_size: 100,
-    };
-    let f2 = FileInfo {
-        id: 2,
-        path: interner.intern("other/c.rs"),
-        lang: Lang::Rust,
-        line_count: 10,
-        byte_size: 100,
-    };
-
-    let name = interner.intern("shared");
-    let canon = interner.intern("canon");
-    let caller = Symbol::new(
-        0,
-        interner.intern("caller"),
-        canon,
-        SymKind::Function,
-        Lang::Rust,
-        0,
-        1,
-    );
-    let cand_same_dir = Symbol::new(1, name, canon, SymKind::Function, Lang::Rust, 1, 5);
-    let cand_other_dir = Symbol::new(2, name, canon, SymKind::Function, Lang::Rust, 2, 5);
-
-    let call = Reference::new(0, name, 0, 2, Lang::Rust, RefRole::Call);
-
-    let mut ingest = IngestResult::new();
-    ingest.files.extend_from_slice(&[f0, f1, f2]);
-    ingest
-        .symbols
-        .extend_from_slice(&[caller, cand_same_dir, cand_other_dir]);
-    ingest.references.push(call);
-
-    let res = resolve_all_references(&ingest, &interner);
+    let paths = ["pkg/a.rs", "pkg/b.rs", "other/c.rs"];
+    let res = resolve_call(&paths, "shared", &[1, 2]);
     assert_eq!(res.edge_accumulators.len(), 1);
     assert!(res.edge_accumulators.contains_key(&(0, 1)));
     assert_eq!(res.edge_accumulators[&(0, 1)].conf_sum, 0.5);
 
-    let cand_unique_global = Symbol::new(1, name, canon, SymKind::Function, Lang::Rust, 2, 5);
-    let mut ingest_global = IngestResult::new();
-    ingest_global.files.extend_from_slice(&[f0, f1, f2]);
-    ingest_global
-        .symbols
-        .extend_from_slice(&[caller, cand_unique_global]);
-    ingest_global.references.push(call);
-
-    let res_global = resolve_all_references(&ingest_global, &interner);
+    let res_global = resolve_call(&paths, "shared", &[2]);
     assert_eq!(res_global.edge_accumulators.len(), 1);
     assert!(res_global.edge_accumulators.contains_key(&(0, 1)));
     assert_eq!(res_global.edge_accumulators[&(0, 1)].conf_sum, 0.2);
@@ -121,50 +71,7 @@ fn test_precedence_ladder_same_dir_and_unique_global() {
 
 #[test]
 fn test_precedence_ladder_non_unique_global_dropped() {
-    let interner = Interner::new();
-    let f0 = FileInfo {
-        id: 0,
-        path: interner.intern("src/a.rs"),
-        lang: Lang::Rust,
-        line_count: 10,
-        byte_size: 100,
-    };
-    let f1 = FileInfo {
-        id: 1,
-        path: interner.intern("dir1/b.rs"),
-        lang: Lang::Rust,
-        line_count: 10,
-        byte_size: 100,
-    };
-    let f2 = FileInfo {
-        id: 2,
-        path: interner.intern("dir2/c.rs"),
-        lang: Lang::Rust,
-        line_count: 10,
-        byte_size: 100,
-    };
-
-    let name = interner.intern("common");
-    let canon = interner.intern("canon");
-    let caller = Symbol::new(
-        0,
-        interner.intern("caller"),
-        canon,
-        SymKind::Function,
-        Lang::Rust,
-        0,
-        1,
-    );
-    let cand1 = Symbol::new(1, name, canon, SymKind::Function, Lang::Rust, 1, 5);
-    let cand2 = Symbol::new(2, name, canon, SymKind::Function, Lang::Rust, 2, 5);
-    let call = Reference::new(0, name, 0, 2, Lang::Rust, RefRole::Call);
-
-    let mut ingest = IngestResult::new();
-    ingest.files.extend_from_slice(&[f0, f1, f2]);
-    ingest.symbols.extend_from_slice(&[caller, cand1, cand2]);
-    ingest.references.push(call);
-
-    let res = resolve_all_references(&ingest, &interner);
+    let res = resolve_call(&["src/a.rs", "dir1/b.rs", "dir2/c.rs"], "common", &[1, 2]);
     assert!(res.edge_accumulators.is_empty());
 }
 
@@ -691,69 +598,76 @@ fn test_bare_calls_reach_module_functions_and_nested_defs_not_class_members() {
     );
 }
 
-#[test]
-fn test_python_method_named_like_a_container_method_needs_its_type_on_an_unknown_receiver() {
-    let py = "class Jar:\n    def get(self, name):\n        return name\n\n    def lookup(self, name):\n        return self.get(name)\n\n\ndef read(headers):\n    return headers.get(\"Host\")\n";
-    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
-    assert_eq!(
-        call_edges("src/jar.py", Lang::Python, py),
-        vec![edge("Jar::lookup", "Jar::get")]
-    );
+/// One in-memory file and the exact `caller -> callee` edges it must produce.
+struct EdgeCase {
+    name: &'static str,
+    path: &'static str,
+    lang: Lang,
+    source: &'static str,
+    edges: &'static [(&'static str, &'static str)],
 }
 
 #[test]
-fn test_python_property_reads_bind_to_the_property_but_plain_and_standard_names_need_evidence() {
-    let py = "class Jar:\n    @property\n    def contents(self):\n        return 1\n\n    @property\n    def name(self):\n        return \"jar\"\n\n    def label(self):\n        return self.name\n\n\ndef inspect(jar, path):\n    return (jar.contents, jar.other, path.name)\n";
-    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
-    assert_eq!(
-        call_edges("src/jar.py", Lang::Python, py),
-        vec![
-            edge("Jar::label", "Jar::name"),
-            edge("inspect", "Jar::contents")
-        ]
-    );
-}
-
-#[test]
-fn test_a_receiver_typed_through_a_field_or_a_free_function_binds_one_owner() {
-    let src = "struct Graph;\nimpl Graph {\n    fn gauges(&self) {}\n}\nstruct Other;\nimpl Other {\n    fn gauges(&self) {}\n}\nstruct Ctx<'a> {\n    graph: &'a Graph,\n}\nmod build {\n    pub fn make() -> super::Graph {\n        super::Graph\n    }\n}\nfn by_field(ctx: &Ctx) {\n    ctx.graph.gauges();\n}\nfn by_path() {\n    build::make().gauges();\n}\n";
-    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
-    assert_eq!(
-        call_edges("src/lib.rs", Lang::Rust, src),
-        vec![
-            edge("by_field", "Graph::gauges"),
-            edge("by_path", "Graph::gauges"),
-            edge("by_path", "build::make")
-        ]
-    );
-}
-
-#[test]
-fn test_a_std_named_call_on_a_field_does_not_bind_to_the_callers_own_method() {
-    let src = "struct Heap {\n    items: Vec<u8>,\n}\nimpl Heap {\n    fn is_empty(&self) -> bool {\n        true\n    }\n    fn drained(&self) -> bool {\n        self.items.is_empty()\n    }\n    fn idle(&self) -> bool {\n        self.is_empty()\n    }\n}\n";
-    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
-    assert_eq!(
-        call_edges("src/lib.rs", Lang::Rust, src),
-        vec![edge("Heap::idle", "Heap::is_empty")]
-    );
-}
-
-#[test]
-fn test_a_path_qualified_call_binds_to_the_type_its_last_segment_names() {
-    let src = "mod writer {\n    pub struct Minify;\n    impl Minify {\n        pub fn new() -> Self {\n            Minify\n        }\n    }\n    pub struct Plain;\n    impl Plain {\n        pub fn new() -> Self {\n            Plain\n        }\n    }\n}\n\nfn build() -> writer::Minify {\n    writer::Minify::new()\n}\n";
-    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
-    assert_eq!(
-        call_edges("src/lib.rs", Lang::Rust, src),
-        vec![edge("build", "Minify::new")]
-    );
-}
-
-#[test]
-fn test_a_receiver_typed_by_its_constructor_binds_only_that_types_method() {
-    let src = "struct Minify;\nimpl Minify {\n    fn new() -> Self {\n        Minify\n    }\n    fn flush(&self) {}\n}\n\nstruct Plain;\nimpl Plain {\n    fn flush(&self) {}\n}\n\nfn emit() {\n    let out = Minify::new();\n    out.flush();\n}\n";
-    let edge = |a: &str, b: &str| (a.to_string(), b.to_string());
-    assert_eq!(
-        call_edges("src/lib.rs", Lang::Rust, src),
-        vec![edge("emit", "Minify::flush"), edge("emit", "Minify::new")]
-    );
+fn single_file_call_edges_bind_by_receiver_type_and_path() {
+    let cases = [
+        EdgeCase {
+            name: "method_named_like_a_container_method_needs_its_type_on_an_unknown_receiver",
+            path: "src/jar.py",
+            lang: Lang::Python,
+            source: "class Jar:\n    def get(self, name):\n        return name\n\n    def lookup(self, name):\n        return self.get(name)\n\n\ndef read(headers):\n    return headers.get(\"Host\")\n",
+            edges: &[("Jar::lookup", "Jar::get")],
+        },
+        EdgeCase {
+            name: "property_reads_bind_to_the_property_but_plain_and_standard_names_need_evidence",
+            path: "src/jar.py",
+            lang: Lang::Python,
+            source: "class Jar:\n    @property\n    def contents(self):\n        return 1\n\n    @property\n    def name(self):\n        return \"jar\"\n\n    def label(self):\n        return self.name\n\n\ndef inspect(jar, path):\n    return (jar.contents, jar.other, path.name)\n",
+            edges: &[("Jar::label", "Jar::name"), ("inspect", "Jar::contents")],
+        },
+        EdgeCase {
+            name: "receiver_typed_through_a_field_or_a_free_function_binds_one_owner",
+            path: "src/lib.rs",
+            lang: Lang::Rust,
+            source: "struct Graph;\nimpl Graph {\n    fn gauges(&self) {}\n}\nstruct Other;\nimpl Other {\n    fn gauges(&self) {}\n}\nstruct Ctx<'a> {\n    graph: &'a Graph,\n}\nmod build {\n    pub fn make() -> super::Graph {\n        super::Graph\n    }\n}\nfn by_field(ctx: &Ctx) {\n    ctx.graph.gauges();\n}\nfn by_path() {\n    build::make().gauges();\n}\n",
+            edges: &[
+                ("by_field", "Graph::gauges"),
+                ("by_path", "Graph::gauges"),
+                ("by_path", "build::make"),
+            ],
+        },
+        EdgeCase {
+            name: "std_named_call_on_a_field_does_not_bind_to_the_callers_own_method",
+            path: "src/lib.rs",
+            lang: Lang::Rust,
+            source: "struct Heap {\n    items: Vec<u8>,\n}\nimpl Heap {\n    fn is_empty(&self) -> bool {\n        true\n    }\n    fn drained(&self) -> bool {\n        self.items.is_empty()\n    }\n    fn idle(&self) -> bool {\n        self.is_empty()\n    }\n}\n",
+            edges: &[("Heap::idle", "Heap::is_empty")],
+        },
+        EdgeCase {
+            name: "path_qualified_call_binds_to_the_type_its_last_segment_names",
+            path: "src/lib.rs",
+            lang: Lang::Rust,
+            source: "mod writer {\n    pub struct Minify;\n    impl Minify {\n        pub fn new() -> Self {\n            Minify\n        }\n    }\n    pub struct Plain;\n    impl Plain {\n        pub fn new() -> Self {\n            Plain\n        }\n    }\n}\n\nfn build() -> writer::Minify {\n    writer::Minify::new()\n}\n",
+            edges: &[("build", "Minify::new")],
+        },
+        EdgeCase {
+            name: "receiver_typed_by_its_constructor_binds_only_that_types_method",
+            path: "src/lib.rs",
+            lang: Lang::Rust,
+            source: "struct Minify;\nimpl Minify {\n    fn new() -> Self {\n        Minify\n    }\n    fn flush(&self) {}\n}\n\nstruct Plain;\nimpl Plain {\n    fn flush(&self) {}\n}\n\nfn emit() {\n    let out = Minify::new();\n    out.flush();\n}\n",
+            edges: &[("emit", "Minify::flush"), ("emit", "Minify::new")],
+        },
+    ];
+    for case in cases {
+        let expected: Vec<(String, String)> = case
+            .edges
+            .iter()
+            .map(|&(a, b)| (a.to_string(), b.to_string()))
+            .collect();
+        assert_eq!(
+            call_edges(case.path, case.lang, case.source),
+            expected,
+            "{}",
+            case.name
+        );
+    }
 }

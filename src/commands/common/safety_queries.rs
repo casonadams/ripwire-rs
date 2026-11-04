@@ -475,15 +475,15 @@ pub fn compute_plan_lanes_from_facts(
         ctx.root,
         crate::git::history::resolve_cutoff_timestamp(None, 12),
     )
-    .ok()
-    .map(|commits| crate::git::history::file_commit_counts(&commits));
+    .map(|commits| crate::git::history::file_commit_counts(&commits))
+    .map_err(|e| e.to_string());
     let corpus = crate::gate::lanes::LaneCorpus {
         root: ctx.root,
         ingest: ctx.ingest,
         graph: ctx.graph,
         pr: &pr,
         interner: ctx.interner,
-        churn: churn.as_ref(),
+        churn: churn.as_ref().map_err(String::as_str),
     };
     if let Some(lines) = brief_lines {
         crate::gate::lanes::compute_plan_lanes_with_brief(corpus, lines, page)

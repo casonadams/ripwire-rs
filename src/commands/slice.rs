@@ -1,6 +1,6 @@
 //! `--slice SYM[:VAR]` and the `slice` subcommand: ARISE intra-procedural def-use variable slice; MCP `slice`.
 use super::common::mcp::mcp_tool;
-use super::{Command, SharedOption, decode_subcommand};
+use super::{Command, SharedOption, run_named_subcommand};
 use crate::cli::Cli;
 use crate::commands::context::{OutputDialect, load_repo_analysis_for_cli};
 use crate::ingest::LanguageRegistry;
@@ -153,13 +153,10 @@ impl Command for Slice {
         matches: &clap::ArgMatches,
         root: &str,
     ) -> Option<io::Result<()>> {
-        if name != "slice" {
-            return None;
-        }
-        Some(decode_subcommand::<SliceArgs>(matches).and_then(|args| {
+        run_named_subcommand::<SliceArgs>(name, "slice", matches, |args| {
             let depth = cli.plugins.decode::<SliceFlags>().unwrap_or_default().slice_depth;
             execute_slice_for_cli(cli, root, args.target.as_deref(), &args.flow, depth)
-        }))
+        })
     }
 
     fn tools(&self) -> &'static [&'static CommandDescriptor] {

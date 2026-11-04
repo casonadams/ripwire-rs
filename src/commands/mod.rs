@@ -261,6 +261,16 @@ pub fn decode_subcommand<A: clap::FromArgMatches>(
     A::from_arg_matches(matches).map_err(std::io::Error::other)
 }
 
+/// Runs `run` on `name`'s decoded arguments when `name` is `expected`; `None` for any other subcommand.
+pub fn run_named_subcommand<A: clap::FromArgMatches>(
+    name: &str,
+    expected: &str,
+    matches: &clap::ArgMatches,
+    run: impl FnOnce(&A) -> std::io::Result<()>,
+) -> Option<std::io::Result<()>> {
+    (name == expected).then(|| decode_subcommand::<A>(matches).and_then(|args| run(&args)))
+}
+
 /// Every plugin's MCP tools, sorted by name; each carries the parameters its command's shared options add.
 pub fn tools() -> &'static [&'static CommandDescriptor] {
     static OWNED: std::sync::LazyLock<Vec<CommandDescriptor>> = std::sync::LazyLock::new(|| {

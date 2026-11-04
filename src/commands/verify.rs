@@ -1,5 +1,5 @@
 //! `--verify CLAIM`: formally checks a code relationship claim such as `calls(A,B)`.
-use super::common::retrieval::report_query;
+use super::common::retrieval::report_text_query;
 use super::{Plugin, Run};
 use crate::query::commands::QueryContext;
 use crate::serialize::PageRequest;
@@ -20,8 +20,9 @@ pub fn execute<W: Write>(query: &QueryContext<'_>, claim: &str, page: PageReques
 }
 
 fn run(run: &Run<'_>, args: &VerifyArgs) -> io::Result<()> {
-    let claim = args.verify.as_deref().unwrap_or_default();
-    report_query(run, |query, out| execute(query, claim, run.page(), out))
+    report_text_query(run, args.verify.as_deref(), |query, claim, page, out| {
+        execute(query, claim, page, out)
+    })
 }
 
 pub static VERIFY: Plugin<VerifyArgs> = Plugin {

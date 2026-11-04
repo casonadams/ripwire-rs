@@ -1,3 +1,7 @@
+#[path = "support/b_ingest.rs"]
+mod b_ingest;
+#[path = "support/b_state.rs"]
+mod b_state;
 #[path = "support/nonlocal.rs"]
 mod nonlocal_support;
 

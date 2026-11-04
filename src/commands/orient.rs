@@ -1,6 +1,6 @@
 //! `orient` subcommand: repository orientation, optionally ranked for a task.
 use super::common::retrieval::report_query;
-use super::{Command, Run, SharedOption, decode_subcommand, for_task};
+use super::{Command, Run, SharedOption, for_task, run_named_subcommand};
 use crate::cli::Cli;
 use crate::commands::map::dispatch_default_run;
 use clap::{Args, Command as ClapCommand};
@@ -43,13 +43,7 @@ impl Command for Orient {
         matches: &clap::ArgMatches,
         root: &str,
     ) -> Option<io::Result<()>> {
-        if name != "orient" {
-            return None;
-        }
-        Some(
-            decode_subcommand::<OrientArgs>(matches)
-                .and_then(|args| execute(cli, &args, root)),
-        )
+        run_named_subcommand::<OrientArgs>(name, "orient", matches, |args| execute(cli, args, root))
     }
 }
 

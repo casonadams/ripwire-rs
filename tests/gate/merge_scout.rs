@@ -38,74 +38,44 @@ fn xml(arms: &[ArmChanges]) -> String {
     String::from_utf8(out).expect("utf-8")
 }
 
-#[test]
-fn test_arms_touching_same_symbol_conflict() {
-    let a = arm(
-        "feat-a",
-        "b1b1b1",
-        files(&[(LIB, &["alpha"])]),
-        ChangedFiles::new(),
-    );
-    let b = arm(
-        "feat-b",
-        "b1b1b1",
-        files(&[(LIB, &["alpha"])]),
-        ChangedFiles::new(),
-    );
-    let rep = evaluate_merge_scout("abc123def", "abc123def", &[a, b]);
-    assert_eq!(rep.pairs.len(), 1);
-    assert_eq!(rep.pairs[0].conflicts.len(), 1);
-    assert_eq!(rep.pairs[0].conflicts[0].name, "alpha");
-    assert_eq!(rep.pairs[0].risks, 0);
-    let text = xml(&[
+/// The two arms of one merge pair on the shared base, touching the given symbols of `LIB`.
+fn two_arms(first: &[&str], second: &[&str]) -> [ArmChanges; 2] {
+    [
         arm(
             "feat-a",
             "b1b1b1",
-            files(&[(LIB, &["alpha"])]),
+            files(&[(LIB, first)]),
             ChangedFiles::new(),
         ),
         arm(
             "feat-b",
             "b1b1b1",
-            files(&[(LIB, &["alpha"])]),
+            files(&[(LIB, second)]),
             ChangedFiles::new(),
         ),
-    ]);
+    ]
+}
+
+#[test]
+fn test_arms_touching_same_symbol_conflict() {
+    let arms = two_arms(&["alpha"], &["alpha"]);
+    let rep = evaluate_merge_scout("abc123def", "abc123def", &arms);
+    assert_eq!(rep.pairs.len(), 1);
+    assert_eq!(rep.pairs[0].conflicts.len(), 1);
+    assert_eq!(rep.pairs[0].conflicts[0].name, "alpha");
+    assert_eq!(rep.pairs[0].risks, 0);
+    let text = xml(&arms);
     assert!(text.contains("<pair a=\"feat-a\" b=\"feat-b\" conflicts=\"1\" risks=\"0\">"));
     assert!(text.contains("<sym p=\"src/lib.rs\" n=\"alpha\"/>"));
 }
 
 #[test]
 fn test_disjoint_symbols_in_same_file_are_risk_not_conflict() {
-    let a = arm(
-        "feat-a",
-        "b1b1b1",
-        files(&[(LIB, &["alpha"])]),
-        ChangedFiles::new(),
-    );
-    let b = arm(
-        "feat-b",
-        "b1b1b1",
-        files(&[(LIB, &["beta"])]),
-        ChangedFiles::new(),
-    );
-    let rep = evaluate_merge_scout("abc123def", "abc123def", &[a, b]);
+    let arms = two_arms(&["alpha"], &["beta"]);
+    let rep = evaluate_merge_scout("abc123def", "abc123def", &arms);
     assert!(rep.pairs[0].conflicts.is_empty());
     assert_eq!(rep.pairs[0].risks, 1, "same file, different symbols");
-    let text = xml(&[
-        arm(
-            "feat-a",
-            "b1b1b1",
-            files(&[(LIB, &["alpha"])]),
-            ChangedFiles::new(),
-        ),
-        arm(
-            "feat-b",
-            "b1b1b1",
-            files(&[(LIB, &["beta"])]),
-            ChangedFiles::new(),
-        ),
-    ]);
+    let text = xml(&arms);
     assert!(text.contains("<pair a=\"feat-a\" b=\"feat-b\" conflicts=\"0\" risks=\"1\"/>"));
 }
 

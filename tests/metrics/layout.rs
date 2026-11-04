@@ -60,3 +60,32 @@ fn test_field_affinity_lists_offsets_only_for_a_named_struct() {
     .to_xml_string();
     assert!(!summary.contains("<f n="));
 }
+
+#[test]
+fn test_field_affinity_marks_unmodelled_structs() {
+    let unmodelled = StructLayoutDef {
+        path: "src/test.rs".into(),
+        line: 3,
+        agg_kind: "struct",
+        fields: Vec::new(),
+    };
+    let report = FieldAffinityReport {
+        layout: StructLayoutReport {
+            sym: "Bar".into(),
+            defs: vec![unmodelled],
+        },
+        page: PageRequest::default(),
+    }
+    .to_xml_string();
+    assert!(report.contains("modeled=\"0\""));
+    assert!(!report.contains("modeled=\"1\""));
+    assert!(!report.contains(" size=\""));
+
+    let modelled = FieldAffinityReport {
+        layout: foo_layout("Foo"),
+        page: PageRequest::default(),
+    }
+    .to_xml_string();
+    assert!(modelled.contains("modeled=\"1\" fields=\"2\""));
+    assert!(modelled.contains(" size=\"16\" align=\"8\" lines=\"1\""));
+}
