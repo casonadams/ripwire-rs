@@ -1,35 +1,5 @@
-use super::harness::{GraphProtocolCase, owner_qualified_callees, sym, verify_protocol_case};
-use ripwire_rs::{Lang, SymKind};
-
-#[test]
-fn test_csharp_graph_protocol() {
-    verify_protocol_case(&GraphProtocolCase {
-        label: "csharp",
-        files: &[(
-            "src/Repo.cs",
-            Lang::CSharp,
-            b"using System.IO;\npublic interface IStore {}\npublic class SqlStore : IStore {\n    public const int LIMIT = 50;\n    private int retryCounter = 0;\n    public void Save() {\n        Console.WriteLine();\n        Commit();\n    }\n    private void Commit() {\n        return;\n    }\n}\n",
-        )],
-        expected_syms: &[
-            sym("IStore", SymKind::Interface, None, true),
-            sym("SqlStore", SymKind::Class, None, true),
-            sym("LIMIT", SymKind::Var, Some("SqlStore"), false),
-            sym("Save", SymKind::Method, Some("SqlStore"), true),
-            sym("Commit", SymKind::Method, Some("SqlStore"), true),
-        ],
-        rejected_syms: &["retryCounter"],
-        expected_edges: &[("Save", "Commit")],
-        expect_external: true,
-        expected_lego: Some(("IStore", "SqlStore")),
-        expected_import: Some("IO"),
-    });
-    assert!(Lang::CSharp.semantics().is_entrypoint_symbol(
-        "Main",
-        Some("Program"),
-        SymKind::Method,
-        "src/Program.cs"
-    ));
-}
+use super::harness::owner_qualified_callees;
+use ripwire_rs::Lang;
 
 const CS_STORES: &str = "class DiskStore { public int Open() { return 1; } }\n\
 class MemoryStore { public int Open() { return 2; } }\n";

@@ -243,24 +243,43 @@ fn confusable_budget_keeps_late_lexical_neighbors() {
     assert!(xml(&result, PageRequest::default()).contains("count_capped=\"1\""));
 }
 
+const BUDGET_TS: &str = "declare function signature{i}(): void;\nclass Surface{i} {}\nconst marker{i} = 0;\nfunction marker() {}\n";
+const BUDGET_PY: &str = "class Surface{i}:\n    def marker{i}(self): pass\n";
+
 #[test]
-fn confusable_budget_filters_and_deduplicates_subject_names_first() {
-    let mut source = String::new();
-    for i in 0..520 {
-        source.push_str(&format!(
-            "declare function signature{i}(): void;\nclass Surface{i} {{}}\nconst marker{i} = 0;\nfunction marker() {{}}\n"
-        ));
+fn confusable_budget_is_filtered_deduplicated_and_scoped_per_language() {
+    let cases = [
+        (
+            "pkg/track.ts",
+            Lang::TypeScript,
+            BUDGET_TS,
+            "function gatherRecord() {}\nfunction satherRecord() {}\n",
+        ),
+        (
+            "pkg/track.py",
+            Lang::Python,
+            BUDGET_PY,
+            "def gather_record(): pass\ndef sather_record(): pass\n",
+        ),
+    ];
+    for (path, lang, filler, tail) in cases {
+        let mut source: String = (0..520)
+            .map(|i| filler.replace("{i}", &i.to_string()))
+            .collect();
+        source.push_str(tail);
+        let result = scan(
+            &[(path, lang, &source)],
+            LintOptions {
+                select: vec!["naming-confusable".into()],
+                ..LintOptions::default()
+            },
+        );
+        assert_eq!(count(&result, "naming-confusable"), 1, "{path}");
+        assert!(
+            !xml(&result, PageRequest::default()).contains("count_capped=\"1\""),
+            "{path}"
+        );
     }
-    source.push_str("function gatherRecord() {}\nfunction satherRecord() {}\n");
-    let result = scan(
-        &[("pkg/track.ts", Lang::TypeScript, &source)],
-        LintOptions {
-            select: vec!["naming-confusable".into()],
-            ..LintOptions::default()
-        },
-    );
-    assert_eq!(count(&result, "naming-confusable"), 1);
-    assert!(!xml(&result, PageRequest::default()).contains("count_capped=\"1\""));
 }
 
 #[test]
@@ -300,26 +319,6 @@ fn confusable_global_variables_use_the_same_lexical_budget() {
             fillers == 511
         );
     }
-}
-
-#[test]
-fn confusable_budget_is_local_to_each_language_namespace() {
-    let mut source = String::new();
-    for i in 0..520 {
-        source.push_str(&format!(
-            "class Surface{i}:\n    def marker{i}(self): pass\n"
-        ));
-    }
-    source.push_str("def gather_record(): pass\ndef sather_record(): pass\n");
-    let result = scan(
-        &[("pkg/track.py", Lang::Python, &source)],
-        LintOptions {
-            select: vec!["naming-confusable".into()],
-            ..LintOptions::default()
-        },
-    );
-    assert_eq!(count(&result, "naming-confusable"), 1);
-    assert!(!xml(&result, PageRequest::default()).contains("count_capped=\"1\""));
 }
 
 #[test]

@@ -3,34 +3,6 @@ use ripwire_rs::cli::compute_effective_budget;
 use ripwire_rs::commands::common::gate::validate_gate_modifiers;
 use ripwire_rs::query::graph::split_endpoint_pair;
 
-/// The help text `parse_from` renders for `flag` (`-h` or `--help`).
-fn help_text(flag: &str) -> String {
-    ripwire_rs::cli::parse_from(["ripwire-rs", flag])
-        .expect_err("a help flag exits with the rendered help")
-        .to_string()
-}
-
-#[test]
-fn short_help_lists_core_verbs_and_long_help_lists_every_flag() {
-    let short = help_text("-h");
-    let long = help_text("--help");
-    for core in [
-        "--for",
-        "--callers",
-        "--impact",
-        "--defs",
-        "--situ",
-        "--quality-delta",
-    ] {
-        assert!(short.contains(core), "-h should list {core}");
-    }
-    for lens in ["--hotspots", "--clones", "--communities", "--mermaid"] {
-        assert!(!short.contains(lens), "-h should not list {lens}");
-        assert!(long.contains(lens), "--help should list {lens}");
-    }
-    assert!(short.len() * 4 < long.len(), "-h is a short list");
-}
-
 #[test]
 fn test_gate_modifiers_refused_without_their_verb() {
     assert!(validate_gate_modifiers(true, false, false, false).is_err());

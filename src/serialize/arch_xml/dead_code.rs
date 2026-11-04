@@ -48,7 +48,10 @@ fn write_dead_rows<W: Write>(tag: &str, rows: &[DeadRow<'_>], out: &mut W) -> io
         .try_for_each(|row| write_dead_row(tag, row, out))
 }
 
-fn write_test_only_attrs<W: Write>(out: &mut W, to: crate::serialize::PageWindow) -> io::Result<()> {
+fn write_test_only_attrs<W: Write>(
+    out: &mut W,
+    to: crate::serialize::PageWindow,
+) -> io::Result<()> {
     if to.total > 0 {
         write!(out, " to=\"{}\"", to.total)?;
         if to.capped {

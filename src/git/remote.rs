@@ -1,5 +1,5 @@
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const URL_PREFIXES: [&str; 5] = ["https://", "http://", "ssh://", "git://", "git@"];
@@ -11,20 +11,18 @@ pub fn is_remote_git_url(root: &str) -> bool {
         || (root.ends_with(".git") && root.contains('@') && root.contains(':'))
 }
 
-/// Cache directory a remote root is shallow-cloned into: `$TMPDIR/ripwire-rs/remote-<fnv1a64(url)>`.
+/// Cache directory under `base` a remote root is shallow-cloned into: `<base>/ripwire-rs/remote-<fnv1a64(url)>`.
 #[must_use]
-pub fn remote_cache_dir(url: &str) -> PathBuf {
+pub fn remote_cache_dir(base: &Path, url: &str) -> PathBuf {
     let hash = url.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
         (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
     });
-    std::env::temp_dir()
-        .join("ripwire-rs")
-        .join(format!("remote-{hash:016x}"))
+    base.join("ripwire-rs").join(format!("remote-{hash:016x}"))
 }
 
 /// Local checkout of `url`: the cached shallow clone, or a fresh one when absent or `refetch`.
 pub fn checkout_remote_root(url: &str, refetch: bool) -> io::Result<PathBuf> {
-    let dir = remote_cache_dir(url);
+    let dir = remote_cache_dir(&std::env::temp_dir(), url);
     if !refetch && dir.join(".git").is_dir() {
         let days = cache_age_days(&dir);
         eprintln!(

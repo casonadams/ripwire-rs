@@ -1,3 +1,5 @@
+use ripwire_rs::cli::TopModifierArgs;
+use ripwire_rs::commands::dead_code::{DeadCodeContext, execute_dead_code_query_paged};
 use ripwire_rs::commands::external_surface::execute_external_surface_query;
 use ripwire_rs::commands::nav::{NavigateArgs, execute_navigate_with};
 use ripwire_rs::metrics::architecture::{build_community_module, compute_deps_report};
@@ -414,204 +416,99 @@ fn mermaid_aggregates_cross_directory_calls_without_internal_or_isolated_edges()
     assert!(!diagram.contains("unused"));
 }
 
-#[test]
-fn dead_code_excludes_public_called_and_header_functions() {
-    let source_c = b"static int unused_helper(void) {\nreturn 1;\n}\nint public_entry(void) {\nreturn 2;\n}\nstatic int used_helper(void) {\nreturn 3;\n}\nint caller(void) {\nreturn used_helper();\n}\n";
-    let source_h = b"static int header_helper(void) {\nreturn 4;\n}\n";
-    let (ingest, graph, interner) = corpus(&[
-        ("src/main.c", Lang::C, source_c.as_slice()),
-        ("src/header.h", Lang::C, source_h.as_slice()),
-    ]);
-    let sources: &[(&str, &[u8])] = &[("src/main.c", source_c), ("src/header.h", source_h)];
-    let page = ripwire_rs::cli::TopModifierArgs {
-        limit: Some(10),
-        offset: Some(0),
-        ..Default::default()
-    };
-    let mut out = Vec::new();
-    let ctx = ripwire_rs::commands::dead_code::DeadCodeContext {
+fn dead_code_names(files: &[(&str, Lang, &[u8])], page: &TopModifierArgs) -> Vec<String> {
+    let (ingest, graph, interner) = corpus(files);
+    let sources: Vec<(&str, &[u8])> = files.iter().map(|&(path, _, src)| (path, src)).collect();
+    let ctx = DeadCodeContext {
         root: ":memory:",
-        sources: &sources,
+        sources: &sources.as_slice(),
         ingest: &ingest,
         graph: &graph,
         interner: &interner,
-        page: &page,
+        page,
     };
-    ripwire_rs::commands::dead_code::execute_dead_code_query_paged(&ctx, &mut out).unwrap();
+    let mut out = Vec::new();
+    execute_dead_code_query_paged(&ctx, &mut out).unwrap();
     let xml = String::from_utf8(out).unwrap();
-    assert!(xml.contains("schema=\"ripwire-rs.dead-code/v1\""), "{xml}");
-    assert!(xml.contains("n=\"unused_helper\""), "{xml}");
-    assert!(!xml.contains("n=\"public_entry\""), "{xml}");
-    assert!(!xml.contains("n=\"used_helper\""), "{xml}");
-    assert!(!xml.contains("n=\"header_helper\""), "{xml}");
+    let report = roxmltree::Document::parse(&xml).unwrap();
+    report
+        .descendants()
+        .filter(|node| node.has_tag_name("d"))
+        .map(|node| node.attribute("n").unwrap().to_string())
+        .collect()
 }
 
 #[test]
-fn dead_code_ignores_comments_containing_static_and_detects_multiline_declaration() {
-    let source_c = b"/* static function */\nint comment_fake_static(void) {\nreturn 10;\n}\n// static int line_fake_static(void)\nint line_fake_static(void) {\nreturn 20;\n}\nstatic\nint\nmultiline_unused(void) {\nreturn 30;\n}\n";
-    let (ingest, graph, interner) = corpus(&[("src/lib.c", Lang::C, source_c.as_slice())]);
-    let sources: &[(&str, &[u8])] = &[("src/lib.c", source_c)];
-    let page = ripwire_rs::cli::TopModifierArgs::default();
-    let mut out = Vec::new();
-    let ctx = ripwire_rs::commands::dead_code::DeadCodeContext {
-        root: ":memory:",
-        sources: &sources,
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-        page: &page,
-    };
-    ripwire_rs::commands::dead_code::execute_dead_code_query_paged(&ctx, &mut out).unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    assert!(xml.contains("n=\"multiline_unused\""), "{xml}");
-    assert!(!xml.contains("n=\"comment_fake_static\""), "{xml}");
-    assert!(!xml.contains("n=\"line_fake_static\""), "{xml}");
+fn dead_code_reports_only_unreferenced_functions_under_each_linkage_rule() {
+    let default_page = TopModifierArgs::default();
+    type Sources<'a> = &'a [(&'a str, Lang, &'a [u8])];
+    let cases: [(Sources, &[&str]); 6] = [
+        (
+            &[
+                ("src/main.c", Lang::C, b"static int unused_helper(void) {\nreturn 1;\n}\nint public_entry(void) {\nreturn 2;\n}\nstatic int used_helper(void) {\nreturn 3;\n}\nint caller(void) {\nreturn used_helper();\n}\n"),
+                ("src/header.h", Lang::C, b"static int header_helper(void) {\nreturn 4;\n}\n"),
+            ],
+            &["unused_helper"],
+        ),
+        (
+            &[(
+                "src/lib.c",
+                Lang::C,
+                b"/* static function */\nint comment_fake_static(void) {\nreturn 10;\n}\n// static int line_fake_static(void)\nint line_fake_static(void) {\nreturn 20;\n}\nstatic\nint\nmultiline_unused(void) {\nreturn 30;\n}\n",
+            )],
+            &["multiline_unused"],
+        ),
+        (
+            &[(
+                "src/inherited.c",
+                Lang::C,
+                b"static int inherited_helper(void);\n\nint inherited_helper(void) {\nreturn 42;\n}\n",
+            )],
+            &["inherited_helper"],
+        ),
+        (
+            &[
+                ("src/linkage.c", Lang::C, b"static int unrelated(int public_worker);\nint public_worker(void) {\nreturn 1;\n}\nstatic int c_dead(void) {\nreturn 2;\n}\n"),
+                ("src/linkage.cpp", Lang::Cpp, b"static int select_value(int value);\nint select_value(double value) {\nreturn 0;\n}\nstatic int cpp_dead(void) {\nreturn 2;\n}\n"),
+            ],
+            &["c_dead", "cpp_dead"],
+        ),
+        (
+            &[(
+                "src/lib.rs",
+                Lang::Rust,
+                b"fn private_unused() -> u8 {\n    1\n}\npub fn public_api() -> u8 {\n    2\n}\npub(crate) fn crate_api() -> u8 {\n    3\n}\nfn helper_used() -> u8 {\n    4\n}\ntrait Runner {\n    fn run(&self) -> u8;\n}\nstruct Engine;\nimpl Runner for Engine {\n    fn run(&self) -> u8 {\n        5\n    }\n}\n#[test]\nfn checks_engine() {\n    assert_eq!(1, 1);\n}\n#[no_mangle]\nfn plain_hook() -> u8 {\n    6\n}\n#[no_mangle]\nextern \"C\" fn c_hook() -> u8 {\n    7\n}\n#[cfg(test)]\nmod tests {\n    fn fixture_unused() -> u8 {\n        8\n    }\n}\nfn main() {\n    let _ = helper_used();\n}\n",
+            )],
+            &["private_unused"],
+        ),
+        (
+            &[(
+                "src/lib.rs",
+                Lang::Rust,
+                b"struct Plugin {\n    run: fn() -> u8,\n}\nimpl Plugin {\n    fn method_unused(&self) -> u8 {\n        5\n    }\n}\nfn run() -> u8 {\n    1\n}\nfn helper() -> u8 {\n    2\n}\nfn unused_free() -> u8 {\n    3\n}\nfn plugin() -> Plugin {\n    Plugin { run }\n}\nfn pointer_user() -> u8 {\n    let f = helper;\n    f()\n}\nfn main() {\n    let _ = plugin();\n    let _ = pointer_user();\n}\n",
+            )],
+            &["unused_free"],
+        ),
+    ];
+    for (files, expected) in cases {
+        assert_eq!(dead_code_names(files, &default_page), expected);
+    }
 }
 
 #[test]
 fn dead_code_pagination_selects_expected_slice_of_static_functions() {
-    let source_c = b"static int first_unused(void) {\nreturn 1;\n}\nstatic int second_unused(void) {\nreturn 2;\n}\nstatic int third_unused(void) {\nreturn 3;\n}\n";
-    let (ingest, graph, interner) = corpus(&[("src/paged.c", Lang::C, source_c.as_slice())]);
-    let sources: &[(&str, &[u8])] = &[("src/paged.c", source_c)];
-    let query_page = |offset, limit| {
-        let page = ripwire_rs::cli::TopModifierArgs {
-            limit: Some(limit),
-            offset: Some(offset),
-            ..Default::default()
-        };
-        let mut out = Vec::new();
-        let ctx = ripwire_rs::commands::dead_code::DeadCodeContext {
-            root: ":memory:",
-            sources: &sources,
-            ingest: &ingest,
-            graph: &graph,
-            interner: &interner,
-            page: &page,
-        };
-        ripwire_rs::commands::dead_code::execute_dead_code_query_paged(&ctx, &mut out).unwrap();
-        String::from_utf8(out).unwrap()
+    let files = [(
+        "src/paged.c",
+        Lang::C,
+        b"static int first_unused(void) {\nreturn 1;\n}\nstatic int second_unused(void) {\nreturn 2;\n}\nstatic int third_unused(void) {\nreturn 3;\n}\n".as_slice(),
+    )];
+    let page_at = |offset: usize| TopModifierArgs {
+        limit: Some(1),
+        offset: Some(offset),
+        ..Default::default()
     };
-
-    let xml_p1 = query_page(0, 1);
-    let xml_p2 = query_page(1, 1);
-    let xml_p3 = query_page(2, 1);
-    let xml_p4 = query_page(3, 1);
-
-    assert!(xml_p1.contains("n=\"first_unused\""), "{xml_p1}");
-    assert!(!xml_p1.contains("n=\"second_unused\""), "{xml_p1}");
-    assert!(!xml_p1.contains("n=\"third_unused\""), "{xml_p1}");
-
-    assert!(xml_p2.contains("n=\"second_unused\""), "{xml_p2}");
-    assert!(!xml_p2.contains("n=\"first_unused\""), "{xml_p2}");
-    assert!(!xml_p2.contains("n=\"third_unused\""), "{xml_p2}");
-
-    assert!(xml_p3.contains("n=\"third_unused\""), "{xml_p3}");
-    assert!(!xml_p3.contains("n=\"first_unused\""), "{xml_p3}");
-    assert!(!xml_p3.contains("n=\"second_unused\""), "{xml_p3}");
-
-    let exhausted = roxmltree::Document::parse(&xml_p4).unwrap();
-    assert!(!exhausted.descendants().any(|node| node.has_tag_name("d")));
-}
-
-#[test]
-fn dead_code_detects_static_prototype_linkage_inheritance() {
-    let source_c =
-        b"static int inherited_helper(void);\n\nint inherited_helper(void) {\nreturn 42;\n}\n";
-    let (ingest, graph, interner) = corpus(&[("src/inherited.c", Lang::C, source_c.as_slice())]);
-    let sources: &[(&str, &[u8])] = &[("src/inherited.c", source_c)];
-    let page = ripwire_rs::cli::TopModifierArgs::default();
-    let mut out = Vec::new();
-    let ctx = ripwire_rs::commands::dead_code::DeadCodeContext {
-        root: ":memory:",
-        sources: &sources,
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-        page: &page,
-    };
-    ripwire_rs::commands::dead_code::execute_dead_code_query_paged(&ctx, &mut out).unwrap();
-    let xml = String::from_utf8(out).unwrap();
-    assert!(xml.contains("n=\"inherited_helper\""), "{xml}");
-}
-
-#[test]
-fn dead_code_does_not_inherit_linkage_from_parameter_names_or_other_overloads() {
-    let c = b"static int unrelated(int public_worker);\nint public_worker(void) {\nreturn 1;\n}\nstatic int c_dead(void) {\nreturn 2;\n}\n";
-    let cpp = b"static int select_value(int value);\nint select_value(double value) {\nreturn 0;\n}\nstatic int cpp_dead(void) {\nreturn 2;\n}\n";
-    let (ingest, graph, interner) = corpus(&[
-        ("src/linkage.c", Lang::C, c.as_slice()),
-        ("src/linkage.cpp", Lang::Cpp, cpp.as_slice()),
-    ]);
-    let sources = [
-        ("src/linkage.c", c.as_slice()),
-        ("src/linkage.cpp", cpp.as_slice()),
-    ];
-    let page = ripwire_rs::cli::TopModifierArgs::default();
-    let context = ripwire_rs::commands::dead_code::DeadCodeContext {
-        root: ":memory:",
-        sources: &sources,
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-        page: &page,
-    };
-    let mut out = Vec::new();
-    ripwire_rs::commands::dead_code::execute_dead_code_query_paged(&context, &mut out).unwrap();
-    let report = roxmltree::Document::parse(std::str::from_utf8(&out).unwrap()).unwrap();
-    let dead: Vec<_> = report
-        .descendants()
-        .filter(|node| node.has_tag_name("d"))
-        .map(|node| node.attribute("n").unwrap())
-        .collect();
-    assert_eq!(dead, ["c_dead", "cpp_dead"]);
-}
-
-#[test]
-fn dead_code_reports_only_private_unused_rust_functions() {
-    let source_rs = b"fn private_unused() -> u8 {\n    1\n}\npub fn public_api() -> u8 {\n    2\n}\npub(crate) fn crate_api() -> u8 {\n    3\n}\nfn helper_used() -> u8 {\n    4\n}\ntrait Runner {\n    fn run(&self) -> u8;\n}\nstruct Engine;\nimpl Runner for Engine {\n    fn run(&self) -> u8 {\n        5\n    }\n}\n#[test]\nfn checks_engine() {\n    assert_eq!(1, 1);\n}\n#[no_mangle]\nfn plain_hook() -> u8 {\n    6\n}\n#[no_mangle]\nextern \"C\" fn c_hook() -> u8 {\n    7\n}\n#[cfg(test)]\nmod tests {\n    fn fixture_unused() -> u8 {\n        8\n    }\n}\nfn main() {\n    let _ = helper_used();\n}\n";
-    let (ingest, graph, interner) = corpus(&[("src/lib.rs", Lang::Rust, source_rs.as_slice())]);
-    let sources: &[(&str, &[u8])] = &[("src/lib.rs", source_rs)];
-    let page = ripwire_rs::cli::TopModifierArgs::default();
-    let ctx = ripwire_rs::commands::dead_code::DeadCodeContext {
-        root: ":memory:",
-        sources: &sources,
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-        page: &page,
-    };
-    let mut out = Vec::new();
-    ripwire_rs::commands::dead_code::execute_dead_code_query_paged(&ctx, &mut out).unwrap();
-    let report = roxmltree::Document::parse(std::str::from_utf8(&out).unwrap()).unwrap();
-    let dead: Vec<_> = report
-        .descendants()
-        .filter(|node| node.has_tag_name("d"))
-        .map(|node| node.attribute("n").unwrap())
-        .collect();
-    assert_eq!(dead, ["private_unused"]);
-}
-
-#[test]
-fn dead_code_keeps_rust_functions_referenced_by_value_or_method_shape() {
-    let source_rs = b"struct Plugin {\n    run: fn() -> u8,\n}\nimpl Plugin {\n    fn method_unused(&self) -> u8 {\n        5\n    }\n}\nfn run() -> u8 {\n    1\n}\nfn helper() -> u8 {\n    2\n}\nfn unused_free() -> u8 {\n    3\n}\nfn plugin() -> Plugin {\n    Plugin { run }\n}\nfn pointer_user() -> u8 {\n    let f = helper;\n    f()\n}\nfn main() {\n    let _ = plugin();\n    let _ = pointer_user();\n}\n";
-    let sources: &[(&str, &[u8])] = &[("src/lib.rs", source_rs)];
-    let (ingest, graph, interner) = corpus(&[("src/lib.rs", Lang::Rust, source_rs.as_slice())]);
-    let page = ripwire_rs::cli::TopModifierArgs::default();
-    let ctx = ripwire_rs::commands::dead_code::DeadCodeContext {
-        root: ":memory:",
-        sources: &sources,
-        ingest: &ingest,
-        graph: &graph,
-        interner: &interner,
-        page: &page,
-    };
-    let mut out = Vec::new();
-    ripwire_rs::commands::dead_code::execute_dead_code_query_paged(&ctx, &mut out).unwrap();
-    let report = roxmltree::Document::parse(std::str::from_utf8(&out).unwrap()).unwrap();
-    let dead: Vec<_> = report
-        .descendants()
-        .filter(|node| node.has_tag_name("d"))
-        .map(|node| node.attribute("n").unwrap())
-        .collect();
-    assert_eq!(dead, ["unused_free"]);
+    assert_eq!(dead_code_names(&files, &page_at(0)), ["first_unused"]);
+    assert_eq!(dead_code_names(&files, &page_at(1)), ["second_unused"]);
+    assert_eq!(dead_code_names(&files, &page_at(2)), ["third_unused"]);
+    assert!(dead_code_names(&files, &page_at(3)).is_empty());
 }
