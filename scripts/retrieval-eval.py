@@ -106,50 +106,109 @@ def score(question, rows, first_auth_pos, auth_targets):
     }
 
 
+def _evaluate_question(binary, q, budget, runs):
+    repo = q["repo"]
+    auth = [t for t in q["targets"] if t["label"] == AUTH]
+    text, code, _ = run_query(binary, repo, q["query"], budget)
+    timings = [run_query(binary, repo, q["query"], budget)[2] for _ in range(runs)]
+    rows = parse_rows(text)
+    auth_keys = {(t["name"], t["path"]) for t in auth}
+    pos = next((i + 1 for i, r in enumerate(rows) if r in auth_keys), None)
+    res = score(q, rows, pos, auth)
+    res["bytes"] = len(text.encode("utf-8"))
+    res["ms"] = statistics.median(timings)
+    res["exit"] = code
+    res["first_row"] = rows[0][0] if rows else None
+    return res
+
+
 def evaluate(binary, questions, budget, runs):
-    results = []
-    for q in questions:
-        repo = q["repo"]
-        auth = [t for t in q["targets"] if t["label"] == AUTH]
-        text, code, _ = run_query(binary, repo, q["query"], budget)
-        timings = []
-        for _ in range(runs):
-            _, _, ms = run_query(binary, repo, q["query"], budget)
-            timings.append(ms)
-        rows = parse_rows(text)
-        auth_keys = {(t["name"], t["path"]) for t in auth}
-        pos = next((i + 1 for i, r in enumerate(rows) if r in auth_keys), None)
-        res = score(q, rows, pos, auth)
-        res["bytes"] = len(text.encode("utf-8"))
-        res["ms"] = statistics.median(timings)
-        res["exit"] = code
-        res["first_row"] = rows[0][0] if rows else None
-        results.append(res)
-    return results
+    return [_evaluate_question(binary, q, budget, runs) for q in questions]
+
+
+def _hits_within(ranks, k):
+    return sum(1 for r in ranks if r is not None and r <= k)
+
+
+def _rank_metrics(ranks, n):
+    return {
+        "top1": sum(1 for k in ranks if k == 1) / n,
+        "hit@3": _hits_within(ranks, 3) / n,
+        "hit@10": _hits_within(ranks, 10) / n,
+        "mrr": sum(1.0 / k for k in ranks if k) / n,
+    }
+
+
+def _split_summary(rs):
+    n = len(rs)
+    summary = {"n": n}
+    summary.update(_rank_metrics([r["rank"] for r in rs], n))
+    summary["pres"] = sum(1 for r in rs if r["present"]) / n
+    summary["rec"] = sum(r["recall"] for r in rs) / n
+    summary["bytes"] = statistics.median(r["bytes"] for r in rs)
+    summary["ms"] = statistics.median(r["ms"] for r in rs)
+    summary["rows"] = statistics.mean(r["rows"] for r in rs)
+    summary["exit_nonzero"] = sum(1 for r in rs if r["exit"] != 0)
+    return summary
 
 
 def summarize(results, questions_by_id):
     out = {}
     for split in SPLITS + ("all",):
         rs = [r for r in results if split == "all" or r["split"] == split]
-        if not rs:
-            continue
-        n = len(rs)
-        ranks = [r["rank"] for r in rs]
-        out[split] = {
-            "n": n,
-            "top1": sum(1 for k in ranks if k == 1) / n,
-            "hit@3": sum(1 for k in ranks if k is not None and k <= 3) / n,
-            "hit@10": sum(1 for k in ranks if k is not None and k <= 10) / n,
-            "mrr": sum(1.0 / k for k in ranks if k) / n,
-            "pres": sum(1 for r in rs if r["present"]) / n,
-            "rec": sum(r["recall"] for r in rs) / n,
-            "bytes": statistics.median(r["bytes"] for r in rs),
-            "ms": statistics.median(r["ms"] for r in rs),
-            "rows": statistics.mean(r["rows"] for r in rs),
-            "exit_nonzero": sum(1 for r in rs if r["exit"] != 0),
-        }
+        if rs:
+            out[split] = _split_summary(rs)
     return out
+
+
+def _load_questions(split):
+    with open(FIXTURE, encoding="utf-8") as fh:
+        fixture = json.load(fh)
+    extra = []
+    for path in (FIXTURE_HELD2, FIXTURE_HELD3, FIXTURE_REGRESSION):
+        with open(path, encoding="utf-8") as fh:
+            extra += json.load(fh)["questions"]
+    repos = fixture["repos"]
+    questions = [
+        q for q in fixture["questions"] + extra
+        if split == "all" or q["split"] == split
+    ]
+    for q in questions:
+        q["repo"] = repos[q["repo"]]
+    return questions
+
+
+def _parse_bins(specs):
+    bins = {}
+    for spec in specs or ["ours=" + os.path.join(HERE, "..", "target", "debug", "ripwire-rs")]:
+        name, _, path = spec.partition("=")
+        bins[name] = path
+    return bins
+
+
+def _print_split_tables(bins, report, budget):
+    for split in SPLITS + ("all",):
+        print(f"== {split} (budget={budget}) ==")
+        print(f"{'tool':8} {'n':>3} {'top1':>6} {'hit@3':>6} {'hit@10':>7} {'mrr':>6} "
+              f"{'pres':>6} {'rec':>6} {'rows':>5} {'bytes':>8} {'ms':>7} {'exit!=0':>7}")
+        for name in bins:
+            s = report[name]["summary"].get(split)
+            if not s:
+                continue
+            print(f"{name:8} {s['n']:>3} {s['top1']:>6.2f} {s['hit@3']:>6.2f} {s['hit@10']:>7.2f} "
+                  f"{s['mrr']:>6.3f} {s['pres']:>6.2f} {s['rec']:>6.2f} {s['rows']:>5.1f} "
+                  f"{s['bytes']:>8.0f} {s['ms']:>7.1f} {s['exit_nonzero']:>7}")
+    print()
+
+
+def _print_question_ranks(questions, bins, report):
+    print("per-question rank of first authoritative row (None = absent):")
+    for q in questions:
+        cells = []
+        for name in bins:
+            r = next(x for x in report[name]["results"] if x["id"] == q["id"])
+            cells.append(f"{name}={r['rank']}/{r['bytes']}B")
+        print(f"  {q['id']:8} {q['split']:5} {'  '.join(cells)}")
 
 
 def main():
@@ -162,24 +221,8 @@ def main():
     ap.add_argument("--json", metavar="OUT")
     args = ap.parse_args()
 
-    with open(FIXTURE, encoding="utf-8") as fh:
-        fixture = json.load(fh)
-    extra = []
-    for path in (FIXTURE_HELD2, FIXTURE_HELD3, FIXTURE_REGRESSION):
-        with open(path, encoding="utf-8") as fh:
-            extra += json.load(fh)["questions"]
-    repos = fixture["repos"]
-    questions = [
-        q for q in fixture["questions"] + extra
-        if args.split == "all" or q["split"] == args.split
-    ]
-    for q in questions:
-        q["repo"] = repos[q["repo"]]
-
-    bins = {}
-    for spec in args.bin or ["ours=" + os.path.join(HERE, "..", "target", "debug", "ripwire-rs")]:
-        name, _, path = spec.partition("=")
-        bins[name] = path
+    questions = _load_questions(args.split)
+    bins = _parse_bins(args.bin)
 
     report = {}
     for name, path in bins.items():
@@ -187,25 +230,8 @@ def main():
         report[name] = {"summary": summarize(results, {q["id"]: q for q in questions}),
                         "results": results}
 
-    for split in SPLITS + ("all",):
-        print(f"== {split} (budget={args.budget}) ==")
-        print(f"{'tool':8} {'n':>3} {'top1':>6} {'hit@3':>6} {'hit@10':>7} {'mrr':>6} "
-              f"{'pres':>6} {'rec':>6} {'rows':>5} {'bytes':>8} {'ms':>7} {'exit!=0':>7}")
-        for name in bins:
-            s = report[name]["summary"].get(split)
-            if not s:
-                continue
-            print(f"{name:8} {s['n']:>3} {s['top1']:>6.2f} {s['hit@3']:>6.2f} {s['hit@10']:>7.2f} "
-                  f"{s['mrr']:>6.3f} {s['pres']:>6.2f} {s['rec']:>6.2f} {s['rows']:>5.1f} "
-                  f"{s['bytes']:>8.0f} {s['ms']:>7.1f} {s['exit_nonzero']:>7}")
-    print()
-    print("per-question rank of first authoritative row (None = absent):")
-    for q in questions:
-        cells = []
-        for name in bins:
-            r = next(x for x in report[name]["results"] if x["id"] == q["id"])
-            cells.append(f"{name}={r['rank']}/{r['bytes']}B")
-        print(f"  {q['id']:8} {q['split']:5} {'  '.join(cells)}")
+    _print_split_tables(bins, report, args.budget)
+    _print_question_ranks(questions, bins, report)
     if args.confusion:
         for name, path in bins.items():
             print(f"== confidence vs top-1 ({name}, budget={args.budget}) ==")

@@ -1,163 +1,56 @@
 ---
 name: ripwire-rs-orient
-description: >
-  Orient on unfamiliar repositories, codebases, or subsystems. Generate architecture
-  summaries, entry points, and task-relevant maps before reading whole files.
+description: Entry point for ripwire-rs: orient on an unfamiliar repo, route the current moment to the right skill, and map before reading whole files.
 allowed-tools: Bash, Read
 ---
 
 <identity>
-You are a codebase orientation specialist. Your goal is to guide agents cold-starting on a repository to understand key subsystems, high-leverage entry points, and architectural structure with minimal token consumption.
+You orient a coding agent cold-starting on a repository, with the fewest tokens, and send it to the one skill that fits its moment.
 </identity>
 
-<investigate_before_reading>
-Before reading any whole files:
-1. Check for prior design documents and planning notes: `ripwire-rs <dir> --recall="<task>"`
-2. Generate the high-level architecture summary: `ripwire-rs <dir> --report`
-3. Query the task-relevance lens: `ripwire-rs <dir> --for="<task in words>"`
-</investigate_before_reading>
-
-<instructions>
 # Orient with ripwire
 
-> Routing — pick the right door:
-> • Tracing one call graph / locating a literal → **ripwire-rs-navigate**.
-> • Vetting your OWN diff before you push → **ripwire-rs-change-check**.
-> • Risk in code you did NOT write / an unfamiliar subsystem → **ripwire-rs-fresh-eyes**.
-> • Map-before-you-read token discipline (any info need, mid-task) → this skill's companion **[`map-before-you-read.md`](map-before-you-read.md)** (folded in from the former `efficient` skill, 2026-09-07).
-> • Deep architecture-health read (deps metrics, layering rules, --arch gate) → **ripwire-rs-layers**.
-> • Not sure which skill? → **ripwire-rs-router**.
+`ripwire-rs` is on PATH. `<dir>` = repo root or the subsystem you work in. The first call on a tree parses; later calls are warm, so chain freely. Several roots (`ripwire-rs dir1 dir2 --report`) give one merged map for a split checkout.
 
-`ripwire-rs` is on your PATH. First call on a tree parses (~1s even at 1500 files); every call after is warm
-(auto-cached, ~instant), so chaining several rungs is nearly free. `<dir>` = the repo root or the specific
-subsystem you're working in — also accepts a remote `ripwire-rs <git-url>` (shallow-clones to a temp cache, so
-you can orient in a dependency before ever cloning it) — or several roots for a split checkout,
-`ripwire-rs dir1 dir2 --report`: ONE merged, root-labeled map instead of two separate mental models.
+## Orient once, then look up lean
 
-**Orient ONCE per session, then look up lean.** Plain `ripwire-rs <dir>` is the one-call orient: the ranked map with
-the subsystems, the program entries and every file the ranking left out (`<inv>`). Only that call carries `<inv>`:
-a `--for`, `--expand` or `--max-tokens` map does not, and `--max-tokens` drops the tier (use `--top-k` to keep it).
-After it, `--expand` / `--outline` / `--whereis` / `--callers` answer with no ride-along map. If you skipped the
-orient step, the `map_next=` on an `--expand` root is the call that prints it.
+1. `ripwire-rs <dir> --recall="<task>"` - full bodies of relevant design docs. If a doc answers the question, stop.
+2. `ripwire-rs <dir> --report` - modules, god-files (ranked by `afferent`), cycles, top PageRank symbols.
+3. `ripwire-rs <dir> --for="<task in words>"` - ranked signatures with `cx=` and `in=`. A name-exact query (`--for=buildGraph`) gets exact matching; a phrase gets subtoken+body ranking.
+4. `ripwire-rs <dir> --hotspots --legend=compact` - churn x complexity. Read these files first.
 
-## The escalation ladder — climb only until you feel oriented
+Only the plain `ripwire-rs <dir>` map carries `<inv>` (unshown files and entry points). Read it before concluding a file is absent. `--expand`, `--callers` and other lookups need no map.
 
-**0. Recall what you already KNOW** — `ripwire-rs <dir> --recall="<the task>"`
-The most relevant DOCS' FULL bodies (docs only, so code never swamps them — markdown memory notes,
-planning/design docs, skills, READMEs, plus `.rst`/`.adoc`/`.org`/`.html`/`.csv`/`.ipynb`). Point it at the
-**memory dir** for what past sessions learned, or the **repo root** for
-plans/designs — ~47× fewer tokens than loading everything. A design doc may already answer the question; if
-so, stop here. It also works unmodified as a zero-setup knowledge base over a scratch dir of dumped tool
-output (a git log, fetched docs, `--help` text) — not just a source repo. Two conditions are yours to meet
-when you WRITE the dump: dump it as `.md` (`.txt`/`.log`/`.json` are not documents to `--recall`, and a dir
-of them answers `0 relevant of 0 document files`), and keep `##` headings in it, so a deep answer is served
-as a ranked section instead of waiting behind a front-first cut. Raising `--max-tokens` then grows what ONE
-already-served document gets — that per-document guarantee is not global: dump several documents into one
-dir and admitting another one re-divides the shared budget, which can shrink an already-served document's
-own slice (`share_bytes=` in the header discloses it). Full form in
-[`map-before-you-read.md`](map-before-you-read.md).
+Budget: `--top-k=50` or `--max-tokens=8000` shape the map. On `--for`, bound output with `--signatures-only` or `--token-budget=N`. A thin answer (`coverage=` under 50, or `weak="1"`) means widen: `--for="<task>" --limit=40`, then `--offset` for the next page. For fan-out, `--pack-task="<task>" --partition=N`.
 
-**1. Architecture summary** — `ripwire-rs <dir> --report`
-Plain markdown: file + symbol count, call-graph modules (Leiden clusters with lead symbol), god-files
-ranked by `afferent` (dependents), cycle list, top PageRank symbols. **Read the god-file list carefully** —
-highest-leverage, highest-risk files. For most "orient me" asks this one rung is enough.
+## Route the moment
 
-**2. Task-relevant code** — `ripwire-rs <dir> --for="<the task in your own words>"`
-Ranked signatures + doc-comments + cx/in metrics by relevance (matches names, docs, AND bodies — not just
-identifiers). This is the rung that answers "where's the code for X".
-**What the bundle serves depends on which way the query routed, and the root says which.**
-*Named a symbol* (`bundle="auto" bodies="N"`): the anchor's FULL body rides inline, CDATA plus callee
-signatures — **read it here instead of opening the file the map named**, that follow-up read is the cost
-this default deletes. `bodies="0" reason="budget"` means it did not fit whole; `follow="--expand=path:name"` is the command that fetches the first row without a body. `reason="signatures-only"` is `--signatures-only` at work; `--detail=N` serves N bodies regardless of budget.
-*Conceptual phrase* (`bundle="compact" bodies="0" reason="compact-route"`): no bodies — you get the ranked
-map plus a `<hops>` section, one row per top-ranked symbol with its one-hop callee names. **Read the map,
-pick ONE symbol, then `--expand=path:name`** (paste the row's own `p=` and `n=`; a bare name that is not
-unique serves every definition, still without the map). That is the flow, and it is cheaper than the bodies were: half the bytes
-of the old bundle on conceptual queries, and the edges tell you which symbol is worth the second call.
-`--auto-bodies` restores inline bodies on that route if you want them; `--signatures-only` drops both
-shapes; `--detail=N` picks the body count explicitly.
-**Composing a selector out of a row** (the map's rows and `--for`'s alike): a scoped row carries `sc=`, its
-enclosing scope, instead of repeating its whole id — the canonical id is `p::sc::n`, assembled from the
-row's own `p=` (or the `<f p=>` it sits under), `sc=` and `n=`. Every selector (`--expand`, `--callers`,
-`--impact`, `--uses`) accepts that composed `path::scope::name`, so paste the three parts, not a bare name.
-`--for` **auto-routes** (default, no flag needed): a query that *names a symbol* (`--for="buildGraph"`) gets
-name-exact BM25 (recall@1 ~99% vs ~77% generic) — **know the name, query it verbatim**; a conceptual phrase
-uses subtoken+body BM25 instead. The header prints which ranker fired; `--no-route` forces the plain ranker.
-A name-exact answer for ONE definition also carries `<callers of= total=>`: up to 8 direct callers
-(`via="name"` marks a hedge) with `next=--callers=SYM` for the rest — no follow-up `--callers` for the common case.
-It also **anchors query mentions** by default — a file/module/`Type.method` literally named in the task text
-gets lifted near the top (+4.9pp held-out; a task naming nothing indexed is byte-identical); disable with
-`--no-mention-boost`. It also surfaces DOCS: a markdown design/plan doc that `backtick`-names one of the
-query's top-resolved symbols is lifted into the bundle too (strictly below that symbol's own score) — the
-doc explains it even when its own prose shares no words with your query; disable with `--no-doc-mention`.
-**When the answer comes back THIN, widen before you read.** A thin `--for` answer — the head spread over
-fewer than three files, or `coverage=` under 50 — says so on the root: `coverage="N"` is the IDF-weighted
-share (whole percent) of your query's subtokens found in the top-ranked symbol's name, doc or body, and it
-rides the root **only** on a thin answer (a confident one carries neither the attribute nor its clause).
-The step then is not a body, it is a wider net: `ripwire-rs <dir> --for="<task>" --limit=40` serves the
-FILE-GRAIN page — one row per file holding any positive-score symbol, `score=`/`n=`/`sym=` per row,
-`--offset=M` for the next page. A thin answer's own `next=` names that page for you; reach for it on the
-FIRST call when the task is vague enough that one ranked head is unlikely to hold the answer.
-`--adaptive` cuts the result at the relevance cliff instead of a fixed top-k. Same
-routing in the MCP `for` verb.
-**3. File-by-file map** — `ripwire-rs <dir> --tree --legend=compact` — each file with its top symbols, a quick "what's where".
+| Moment | Skill |
+|---|---|
+| Who calls X, what X calls, a body, a literal, a flow | ripwire-rs-navigate |
+| Symptom, stack trace, compiler error, regression | ripwire-rs-navigate (bug branches) |
+| About to write a function, class, feature, or dependency | ripwire-rs-before-you-build |
+| Edited a symbol, reviewing a diff, which tests, writing tests | ripwire-rs-change-check |
+| Did my change make things worse, unfamiliar risk, layering | ripwire-rs-quality-bar |
+| Brief someone else on a subsystem | ripwire-rs-handoff |
+| Measured slow path (benchmark, profile) | ripwire-rs-perf-target |
+| Untrusted skill or MCP config, security-sensitive code | ripwire-rs-security-scan |
+| Run ripwire as an MCP server, or check its health | ripwire-rs-mcp |
 
-**4. Cohesive modules** — `ripwire-rs <dir> --communities --legend=compact` — `<communities modules="N">`, each cluster with its
-dominant directory and lead symbols; `<bridge>` edges show tight coupling between clusters. Use it to decide
-where a new feature belongs. Each row shows only its top five members — to see one module in full,
-`ripwire-rs <dir> --community=ID --legend=compact` (the `id=` from a row, or from `--zoom`): its complete ranked member list
-(`--limit`/`--offset` page it) plus every bridge edge that module has. That is the call to make when a
-cluster looks like the one you'll be working in and five names aren't enough to judge it.
+Unsure? `ripwire-rs <dir> --help-task="<task in words>"` names one verb, or abstains.
 
-**5. Maintenance pain** — `ripwire-rs <dir> --hotspots --legend=compact` — files ranked by `score = churn × ccx`; `top=` names
-the gnarliest function. Plan edits around this list.
+## Honesty signals
 
-**6. Budget it** if the map is large — `--max-tokens=8000` or `--top-k=50`. Both shape the default map;
-a positive, explicit `--top-k` is inert on plain `--for` (it warns on stderr and emits the full bundle) —
-bound a `--for` call with `--signatures-only`, `--token-budget=N` or `--detail=N` instead.
-Budget flags are shaping ceilings, never hard gates: output is shaped to fit, and `over_budget="1"` (`--pack-task`) or `over_ceiling=1` (`--recall`) appears only when the minimal unit alone cannot fit. `--for` is windowed by its token budget (default 4000 tokens); page it with `--limit` / `--offset` and follow the `next` route when `capped="1"`. `--report` is bounded to 16 KiB and each list states `(showing S of T)`; a capped list prints a `next: --report --limit=N --offset=M` route.
-When the ranked rows leave files out, the map ends with `<inv>`: the program entries (`<entry>`, by each language's entry convention)
-and every unshown file, named or counted per directory (`<ls>`). Read it before concluding a file or entry point is
-not there; `--no-inventory` drops it (the rows are unchanged), and so does `--max-tokens` — `--top-k` keeps it.
+Rows marked `via="name"` are name-based hedges, not proven edges. `declined`, `unresolved`, `amb="K"` (K ambiguous calls), `counts_floor` and `capped="1"` name what was left out. Read the source at that site before a decision depends on it. `skipped_oversize=N` means N files fell to a size ceiling (`--skipped` lists them). A git root drops `.gitignore`d paths unless `--no-ignore` is passed.
 
-Orienting N agents at once (`--pack-task --partition=N`), zooming out on big repos, field notes (`--note-add`), and resuming after a compaction: see [`reference.md`](reference.md).
+## Notes
 
-## Then read, and trust the honesty signals
-
-**Read the specific files ripwire surfaces** (god-files + hotspots first) — don't grep blindly. A symbol's
-`amb="K"` means K of its calls are ambiguous (the resolver guessed) → read the source if which-target
-matters. A map header showing `skipped_oversize=N` means N otherwise-indexable files were dropped for
-exceeding a size ceiling — they are absent from `files=` and every ranking; `ripwire-rs <dir> --skipped --legend=compact`
-names them (path + bytes + the ceiling that dropped each), so you know what the index cannot show you
-before you trust a "not found". A git root also drops every `.gitignore`d path by default (header `ignored_files=N`, absent when 0; `--skipped` lists them); `ripwire-rs <dir> --no-ignore --legend=compact` restores the full walk when the symbol you want lives in an ignored tree. Caveat: *broad, common-word* questions can still favor plain `rg` —
-ripwire shines on specific technical asks. CI-enforceable module boundaries graduate to
-`--arch=rules.txt` (see **ripwire-rs-layers**).
-
-## Output
-
-Orientation summary: the 3–5 most important files (from god-files + hotspots), the main architectural
-modules (from `--communities` / `--zoom`), any cycles (from `--report`), and one sentence on overall shape.
-Use it to decide where a change belongs and which boundary a refactor should respect.
-
-## Mid-task: about to open several files for one question
-
-The same skill, a different rung: run the cheapest verb that answers the question (`--for`, `--grep`, `--expand`,
-`--pack-task` under a `--token-budget`), then read only the 2-3 files it ranks highest. Less context is measurably
-MORE accurate, not just cheaper. The full discipline — the read ladder, `--pack-task --partition=N` for fan-out,
-whole-symbol edits without a whole-file Read, the portable `--cache=FILE` one-liner — is
-**[`map-before-you-read.md`](map-before-you-read.md)**; the detail/token squeeze once you are reading a body is
-**[`compress-ladder.md`](compress-ladder.md)**. Both load on demand; neither is a separate skill.
-
-<example title="Landing cold on a new project">
-Good: Run `ripwire-rs <dir> --report` to get high-level Leiden modules and entry points without reading thousands of lines.
-Bad: Opening random source files or running recursive grep searches.
-</example>
-</instructions>
+`--notes` lists gotchas pinned by earlier sessions. `--note-add="SYM_or_path: what went wrong"` pins one for the next agent.
 
 <output_format>
 ### Architecture Orientation
-- **Subsystem Overview**: [Core modules and entry points from --report]
-- **Task-Relevant Symbols**: [Top ranked symbols and signatures from --for]
-- **Key God-Files & Hotspots**: [High-leverage files to inspect]
-- **Recommended Next Step**: [Specific symbol to expand or test to run]
+- **Subsystem Overview**: [modules and entry points from --report]
+- **Task-Relevant Symbols**: [top --for hits]
+- **Key God-Files & Hotspots**: [files to inspect first]
+- **Recommended Next Step**: [skill and command]
 </output_format>

@@ -35,7 +35,7 @@ def report_violations(data):
 
 def main():
     paths = sys.argv[1:] or ["."]
-    command = ["cccc", "--max-cognitive", str(MAX_COGNITIVE), "--lang", "rust", *paths]
+    command = ["cccc", "--max-cognitive", str(MAX_COGNITIVE), "--lang", "rust,python,javascript", *paths]
     try:
         result = subprocess.run(command, capture_output=True, text=True)
     except FileNotFoundError:

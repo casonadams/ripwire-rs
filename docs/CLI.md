@@ -382,7 +382,7 @@ ripwire-rs . --eval-scip=index.scip
 # Every disagreement, for triage (default 10 per class and reason). unindexed= counts edges into
 # files the index holds no document for; they are sampled but left out of precision.
 ripwire-rs . --eval-scip=index.scip --eval-samples=100000
-# Install 17 pre-packaged ripwire-rs agent skills to ~/.agents/skills (or custom path)
+# Install 9 pre-packaged ripwire-rs agent skills to ~/.agents/skills (or custom path)
 ripwire-rs --add-skills
 
 # Span-tiered literal search: code tier by default, --grep-in=any serves comments and strings too

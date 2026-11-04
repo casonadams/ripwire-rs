@@ -1,169 +1,51 @@
 ---
 name: ripwire-rs-security-scan
-description: >
-  Security review: (1) vet an untrusted SKILL.md or .mcp.json BEFORE installing it — the
-  injection/exfiltration scanner; CRITICAL blocks the install; (2) audit code on an untrusted-input
-  path (a deserializer, parser, exec of user data, network endpoint): taint reach, untested seams. One
-  scan pass is the verdict.
+description: Security review: vet an untrusted SKILL.md or .mcp.json before install (scanner verdict; CRITICAL blocks), and triage untrusted-input code paths with structural signal, not taint proof.
 allowed-tools: Bash, Read
 ---
 
 <identity>
-You are a software security auditor. Your goal is to detect untrusted input flows, unsafe language primitives, and prompt injection vulnerabilities in agent configurations.
+You are a software security auditor. You vet untrusted agent configuration and produce a prioritized structural reading list for code, never a clean bill of health.
 </identity>
 
-<investigate_before_scanning>
-Before scanning code or skills:
-1. Scan skill directories for prompt injection: `ripwire-rs <dir> --scan-skills`
-2. Run AST code smell linter for unsafe constructs: `ripwire-rs <dir> --lint --legend=compact`
-3. Inspect external stdlib/dependency attack surface: `ripwire-rs <dir> --external-surface`
-</investigate_before_scanning>
-
-<instructions>
 # Security scan with ripwire
 
-> Nearest neighbour: wiring ripwire ITSELF into an agent as an MCP server (not auditing someone else's) →
-> **ripwire-rs-mcp**. General diff risk/coupling, not specifically security → **ripwire-rs-change-check**.
+Wiring ripwire itself into an agent as an MCP server is ripwire-rs-mcp. General diff risk is ripwire-rs-change-check.
 
-Trigger (config scanning): you've received a `SKILL.md`, a skills folder, or an `.mcp.json` from an external
-source and want to verify it's safe before installing or activating it.
+## Skill files: the scanner
 
-Trigger (code scanning): you're reviewing or about to write security-sensitive code — anything that parses
-untrusted input, deserializes, execs/evals, does raw pointer/buffer arithmetic, or sits on a network-facing
-boundary — and want structural signal on where the risk concentrates before you read line-by-line.
+`ripwire-rs --scan-skills=PATH` (bare `--scan-skills` scans `./skills` or `~/.agents/skills`). It flags prompt injection (`ignore-previous-instructions`, `system-prompt-override`), piped downloads (`curl`/`wget` into `sh`), and credential paths (`~/.ssh`, `~/.aws`). Output is `<skillscan verdict="clean|warn|critical">` with `<f p="file:line" rule= sev=/>` rows.
 
-## Skill files — the built-in scanner
+Exit codes: `0` clean, `1` warn (review before installing), `2` critical (do not install). A directory scan exits with its worst severity.
 
-**Scan a skill file or directory:**
-```bash
-ripwire-rs --scan-skills=skills          # bare --scan-skills scans ./skills or ~/.agents/skills
-ripwire-rs --scan-skills=PATH/TO/DIR
-```
-Output: `<skillscan schema="ripwire-rs.scan-skills/v1" files="N" findings="M" verdict="clean|warn|critical">` with `<f p="file:line" rule="…" sev="warn|critical"/>` rows detecting prompt injection (`ignore-previous-instructions`, `system-prompt-override`), shell exfiltration (`curl`/`wget` piped to `sh`/`bash`), and credential path traversal (`~/.ssh`, `~/.aws`). Run this before adopting external skills.
-**Exit codes:** `0` = clean · `1` = WARN (review before installing) · `2` = CRITICAL (do not install). The
-exit code for a directory scan is the worst severity found. A CRITICAL exit is a hard block.
+## MCP configs: the manual checklist
 
-## MCP configs — the manual checklist
+`--scan-skills` does not read `.mcp.json`. Retrieval is automated; the judgment is yours.
 
-`--scan-skill` targets SKILL.md-shaped markdown; it does not apply skill-injection rules to `.mcp.json`.
-ripwire does index JSON config keys and `--grep` can retrieve their raw context, but it does not understand
-the security semantics of an MCP stanza. Retrieval is automated; the semantic decision remains manual.
+1. Locate and read the files: `ripwire-rs <dir> --grep-in=any --grep='"command"' --grep-context=6 --legend=compact`, plus `find <dir> -maxdepth 3 -name "*mcp*.json"`. `--grep-in=any` is required: without it, a code-tier hit suppresses config files and the empty result looks clean.
+2. Per server entry:
+   - **Command origin**: a known binary (`npx`, `node`, `python`, `uvx`)? A path in a temp or user-writable directory is a red flag.
+   - **Shell injection**: `args` containing `;`, `&&`, `|`, `$(...)` or backticks.
+   - **Path traversal**: `..`, `~/.ssh`, `~/.aws/credentials`, `~/.config/`.
+   - **Secret leakage**: `env` passing `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` or similar to a third-party binary.
+   - **Scope creep**: filesystem, shell or network access beyond the stated purpose.
 
-**Step 1 — locate and read the config** with ripwire or the shell + Read tool:
-```
-ripwire-rs <dir> --grep-in=any --grep='"command"' --grep-context=6 --legend=compact
-ls <dir>/.mcp.json 2>/dev/null
-find <dir> -maxdepth 3 \( -name ".mcp.json" -o -name "mcp*.json" \) 2>/dev/null
-```
-Read each file, then scan every `"command"` / `"args"` / `"env"` stanza.
+## Code on an untrusted-input path: structural triage
 
-**`--grep-in=any` is not optional here — it is the whole recipe.** A JSON/TOML/YAML file parses entirely to
-string-tier nodes, so on any mixed repo a single code-tier hit for `"command"` anywhere (a C++ identifier, a
-gate script) suppresses **every config file** and serves you prose instead. Measured on ripwire's own tree:
-default → **2** files, all markdown prose, `.mcp.json` absent, `suppressed_string="38"`; `--grep-in=any` →
-**12** files including `.mcp.json`. The count is disclosed, not hidden — but an auditor who trusts the
-default reviews zero MCP stanzas and is told nothing is there. The empty-code-tier collapse (comment and
-string served together) does **not** rescue this: it only fires when the code tier is empty, and here it is
-not. Always pass `--grep-in=any` when the target is config.
+ripwire has no taint engine. It gives structural signal: risky constructs, reachability, untested seams. Use it to decide where a real analyzer (CodeQL, Semgrep with dataflow, clang static analyzer) should look.
 
-**Step 2 — checklist, one pass per server entry:**
-- **Command origin** — is `command` a known binary (`npx`, `node`, `python`, `uvx`)? An unknown path in a
-  temp or user-writable dir is a red flag.
-- **Shell injection** — do `args` values contain `;`, `&&`, `|`, `$(...)`, or backticks? These execute extra
-  commands when the MCP host spawns the server.
-- **Path traversal** — do `args`/`env` reference `..`, `~/.ssh`, `~/.aws/credentials`, `~/.config/`? Reading
-  those = potential secret exfiltration.
-- **Secret leakage** — does `env` pass `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, or similar to a third-party
-  binary? Secrets passed to untrusted servers leave your control.
-- **Scope creep** — does the server claim filesystem/shell/network access beyond its stated purpose? Apply
-  least privilege.
+1. **Unsafe constructs** - `ripwire-rs <dir> --lint --legend=compact`. Security rules: `unsafe-c-fn` (`strcpy`, `gets`, `system`), `c-style-cast`, `weak-crypto`. Check the header: `capped="1"` and each rule's `shown_rows=`/`rows_capped="1"` mean hits exist unprinted. Raise `--limit=N` or narrow the path before concluding there are none.
+2. **Forward reach from the entry point** - `ripwire-rs <dir> --graph-query='callees(name("ENTRY"),6)' --legend=compact`. This is "what a malicious input could influence", not "these are vulnerable". Do not use `--impact` here: it is the opposite direction (callers).
+3. **Untested seams** - `ripwire-rs <dir> --seams --legend=compact`. An untested parser or auth boundary has no regression net.
+4. **Sinks** - `ripwire-rs <dir> --grep-in=any --grep='system(' --legend=compact` for a census (string hits included on purpose), and `--uses=SYM` for call sites. `external="1"` marks a sink with no in-corpus definition. Treat sites as a floor (`counts_floor`), not proof of absence.
 
-## Security-sensitive CODE — the structural pass
-
-**Be honest about what this is**: ripwire has no dataflow/taint engine — it does not trace whether a value
-*actually* flows from an untrusted source to a dangerous sink through variable assignments and returns.
-What it gives you is **structural signal**: risky-construct hits, call-graph reachability, and untested
-seams — a map of where to spend your reading time, not a proof of exploitability. Cede real taint tracking
-to the compiler/a real static analyzer (clang static analyzer, CodeQL, Semgrep with dataflow) when the
-finding matters enough to need one; use this to decide fast where to point that tool, or when none is
-available.
-
-1. **Unsafe constructs** — `ripwire-rs <dir> --lint --legend=compact`
-   Output: `<lint findings="N">` with a per-rule count block, then one `<f rule=... p=file:line in=enclosing>`
-   per hit. The security-relevant rules: `unsafe-c-fn` (banned/dangerous libc calls — `strcpy`/`gets`/`system`
-   class), `c-style-cast` (masks a `reinterpret_cast` as an implicit conversion — hides type-safety holes),
-   `weak-crypto` (MD5/SHA1/DES-class primitives). A nonzero count on any of these in a file that touches
-   untrusted input is the starting read list, ranked by rule severity not just count.
-   **Read `shown=` before you read the rows — then check the RULE's own `shown_rows=`.** The default
-   payload is capped at ~100 KB, and the header discloses it: `<lint findings="N" shown="M" capped="1">`
-   means the per-rule `count=` totals are complete but only `M` locator rows printed in total — the cap
-   keeps a sorted path *prefix*, so whole rules can report a truthful nonzero `count=` with **zero** `<f>`
-   rows of their own. Each `<rule>` row now carries its own `shown_rows=`/`rows_capped=` pair naming exactly
-   that: `<rule name="unsafe-c-fn" count="4" shown_rows="0" rows_capped="1"/>` means all 4 hits exist but
-   none printed — don't read the absence of `<f rule="unsafe-c-fn" ...>` rows as "nothing here" without
-   checking this first. (`rows_capped=` is a DIFFERENT fact from that row's own bare `capped=`, if present —
-   that one means the rule's own raw-capture stream hit its per-rule match budget, so `count=` itself is a
-   floor; the two can disagree on the same row.) If the rule you care about shows `rows_capped="1"`, raise
-   the cap with `--limit=N` (or narrow the scan to the subsystem) before concluding the hits are elsewhere.
-   Root `capped="0"` means you are seeing everything.
-
-2. **Taint-reach (structural, not real taint)** — `ripwire-rs <dir> --graph-query='callees(name("SYM"),6)' --legend=compact`
-   where SYM is the parse/deserialize/handler entry point that receives untrusted input (the number bounds
-   the hop depth; `--callees=SYM` is the 1-hop version for a quick first look).
-   Output: `<query expr=... count="N">` — everything transitively reachable FROM that entry point via the
-   call graph, ranked by importance and capped at `--top-k` (default 200 — raise it when you need the full
-   set). Read this as "the set of code a malicious input could influence if it flows unchecked," not as
-   "these N functions are vulnerable" — the call graph doesn't know which arguments actually carry the
-   tainted value.
-   **Direction check — do NOT use `--impact` here.** `--impact=SYM` is the OPPOSITE arrow: everything that
-   REACHES SYM (transitive callers), i.e. the blast radius of *changing* SYM. Reach for it when you're about
-   to modify the handler and need to know who depends on it — for forward taint-reach it's a false negative
-   (on an entry point like `main` it returns an empty set).
-
-3. **Untested integration seams** — `ripwire-rs <dir> --seams --legend=compact`
-   Output: `<seams>` — cross-module call edges no test file reaches. A parser/deserializer/auth boundary
-   that shows up as an untested seam is doubly worth attention: it's both attack-surface-adjacent and has
-   no regression net if you (or an attacker-triggered path) breaks it.
-
-4. **Find the sinks and their call sites** — `ripwire-rs <dir> --grep-in=any --grep=STR --legend=compact` (literal, e.g.
-   `system(`, `eval`, `exec`, `pickle.loads`, `deserialize`) for a quick census, or `ripwire-rs <dir> --uses=SYM --legend=compact` (e.g.
-   `--uses=deserialize`) once you know the exact symbol name — gives the statically-resolvable call/read/write sites by role (a floor: dynamic dispatch/callbacks/macros are unmodelled — counts_floor=) and
-   file:line, and flags `external="1"` when the sink is a stdlib/third-party name with no in-corpus
-   definition (the common case for `system`/`eval`-class calls). Treat the site list as a floor, not
-   proof of absence — and remember ripwire cannot show you the sink's own body.
-   `--grep-in=any` is deliberate on a SECURITY census: the default span tiering serves the code tier and
-   holds string/comment hits back, and a sink name inside a string literal (a shelled-out command line, an
-   `eval`'d payload, a config value) is exactly the hit a security review must not lose. Pay the extra rows.
-
-**Chain**: `--grep-in=any --grep=`/`--uses` to find the sink call sites → `--graph-query='callees(name("ENTRY"),6)'` on
-the untrusted-input entry point to see what's structurally downstream of it → `--lint` to flag unsafe
-constructs inside that reachable set → `--seams` to flag which of those paths have no test coverage. That
-ordering is the structural triage; the actual taint judgment (does the value truly reach the sink
-unsanitized) still needs a human or a real dataflow tool reading the code ripwire pointed at.
-
-## Output
-
-**Config scan** — per file / per server entry: **CLEAN** / **WARN** / **CRITICAL**, with the specific
-finding (rule + line + text for a skill; the offending stanza for an MCP entry). Do not install/activate a
-CRITICAL. For WARN, quote the suspicious text and ask the user to confirm intent before proceeding.
-
-**Code scan** — a ranked list of concerns: sink call sites (from `--grep-in=any --grep=`/`--uses`), the entry
-point's forward reach (from the `callees(...)` graph-query), any unsafe-construct hits inside that reach (from
-`--lint`, and say whether it reported `capped="1"`), and any untested seam among them (from `--seams`).
-If any `--grep` in the report was run WITHOUT `--grep-in=any`, say so — a tiered answer is a filtered one,
-and a security finding list must state its own filter. Label the whole thing "structural triage,
-not a taint proof" — don't let the output read as a clean bill of health; it's a prioritized reading list.
-
-<example title="Scanning an untrusted agent skill">
-Good: Run `ripwire-rs <dir> --scan-skills` to detect command injection patterns or exfiltration curls in a third-party SKILL.md.
-Bad: Copying unreviewed skills directly into ~/.agents/skills.
-</example>
-</instructions>
+Chain: sinks, then forward reach from the entry, then `--lint` inside that reach, then `--seams` for what lacks tests.
 
 <output_format>
 ### Security Audit Summary
-- **Untrusted Input Paths**: [Flows crossing trust boundaries]
-- **Unsafe Primitives Found**: [AST lint findings with line numbers]
-- **Skill & MCP Audit**: [Clean / Critical findings in .agent/skills]
-- **Required Remediation**: [Specific defensive actions]
+- **Skill & MCP Audit**: [per file or entry: CLEAN / WARN / CRITICAL, with rule and line]
+- **Untrusted Input Paths**: [entry point and its forward reach, count=]
+- **Unsafe Primitives**: [lint hits with file:line; note capped= and shown_rows=]
+- **Untested Seams**: [from --seams on those paths]
+- **Caveat**: "structural triage, not a taint proof"; name any grep run without --grep-in=any
 </output_format>

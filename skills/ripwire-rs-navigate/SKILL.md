@@ -1,217 +1,60 @@
 ---
 name: ripwire-rs-navigate
-description: >
-  Navigate code symbols: direct callers, callees, transitive blast radius, execution paths,
-  and literal searches. Use when tracing symbol impact before renaming or modifying code.
+description: Trace callers, callees, blast radius, call paths and literals; root-cause bugs from symptoms, stack traces or regressions; combine graph filters with --graph-query.
 allowed-tools: Bash, Read
 ---
 
 <identity>
-You are a code navigation and dependency tracing expert. Your goal is to trace callers, callees, transitive blast radii, and execution paths without hallucinating unverified connections.
+You trace code structure with ripwire and never present an unverified edge as fact.
 </identity>
 
-<investigate_before_navigating>
-Before modifying a named symbol:
-1. Query direct 1-hop callers: `ripwire-rs <dir> --callers=SYMBOL --legend=compact`
-2. Query outgoing dependencies: `ripwire-rs <dir> --callees=SYMBOL --legend=compact`
-3. Check transitive blast radius: `ripwire-rs <dir> --impact=SYMBOL --legend=compact`
-</investigate_before_navigating>
-
-<instructions>
 # Navigate with ripwire
 
-> Nearest neighbours:
-> • You DON'T know the symbol yet — orienting on a whole repo/subsystem → **ripwire-rs-orient**.
-> • You have a symptom and need to FIND the buggy code → **ripwire-rs-find-bug**.
-> • Your question needs to COMBINE conditions (cx + fanin + file + reachability) → **ripwire-rs-graph-query**.
-> • "Is this diff safe to merge" (not "is it safe to touch this symbol") → **ripwire-rs-change-check**.
+`<dir>` = repo or subsystem. Add `--legend=compact` on every call after the first; the first answer already taught the legend.
 
-`<dir>` = the repo or subsystem. Calls are warm after the first parse. Tracing across a split
-service+client checkout — pass every root, `ripwire-rs dir1 dir2 --impact=SYM` — the merged graph carries the
-cross-root evidence edges (include/import/FFI) a single-root call would never see.
+## Pick the verb for the question
 
-## Keep the legend on the FIRST call, drop it on every call after
+- **Who calls it, one hop** - `--callers=SYM` (a sanity check, not a safety judgment). `--callees=SYM` is the outgoing side.
+- **Is it safe to change or delete X** - run `--impact=SYM` (transitive reach) and `--uses=SYM` (call/read/write/import sites). `--callers` alone misses both non-call references and depth. Rows carry `tested="1"`; the root gives `radius_tested=` and `radius_untested=`.
+- **Body and callee signatures** - `--expand=SYM` or `--expand=path:name`.
+- **Several definitions share a name** - `--defs=A,B` returns a `sel=` that pins one. Any selector also takes `@FILE:LINE`; `--at=FILE:LINE` gives the enclosing chain.
+- **How does A reach B** - `--path=A,B` (directed). For N>2 symbols, or a pair `--path` calls unreachable, use `--connect=A,B,C` (undirected; finds shared callers).
+- **Literal or pattern** - `--grep=STR` or `--regex=PAT`, with `--grep-context=N`. Config and string hits need `--grep-in=any`. Narrow with `--and=B` / `--not=C`.
+- **Verify a claim** - `--verify='calls(A,B)'` (also `uses`, `unused`, `contains`, `defines`, `reaches`). `not-established` means the index cannot prove it, not that it is false.
+- **Variable in one function** - `--slice=SYM:VAR`; add `--slice-flow=back|fwd` for transitive flow.
 
-Every XML verb prefixes its answer with a legend defining the attributes. You need it once. After that
-you are paying for prose you have already read — and the cost is worst on exactly the verbs you call
-most, because the legend is a fixed size while these answers are small. Measured on ripwire's own repo:
+An `amb="K"` edge (K calls matched several definitions) needs a source read at that call site before you rely on it.
 
-| verb | saved by `--legend=compact` |
-| --- | --- |
-| `--callers=SYM` | **~70%** |
-| `--uses=SYM` | **~65%** |
-| `--impact=SYM` | **~50%** |
-| `--affected=F1,F2` | **~67%** |
-| `--for="..."` | ~4% |
+## Bug branches
 
-**The payload is byte-identical** — the entire difference is legend prose. (Percentages, not byte counts:
-an exact byte total goes stale the next time anyone edits a legend, and a stale number in a skill is worse
-than no number. `ripwire-rs --help` carries the range, and a gate holds it to it.) So:
+Pick the branch that matches what you know.
 
-- **Orientation** (`--for`, `--pack-task`): leave the legend on. It is ~4% there, and it is where you
-  learn what `amb=`, `cx=` and `counts_floor=` mean. Reading a map whose legend you skipped is how
-  confident misreadings happen.
-- **Every navigation call after** (`--callers`, `--uses`, `--impact`, `--expand`): add
-  `--legend=compact`. Across a seven-call session that is ~34% fewer bytes, ~2,900 tokens.
+- **Symptom, no location** - `--for="<symptom>"`, preferring high-`cx`, high-`in` hits. Then `--hotspots`; a symbol in both lists is the prime suspect. Then `--impact` on the top 2-3.
+- **Known subsystem** - note the recurring `p=` directories in `--for`, then `--grep="ERROR_TEXT"` for the emit site and `--callers` upward.
+- **Regression** - `--situ` (or `--situ=a.c,b.h`) gives blast radius, tests, and co-change partners missing from the diff. Then `--callers=SYM` and `--cochange=FILE` (`surprising="1"` = no static link).
+- **Stack trace, sanitizer, compiler error** - `--from-trace=FILE` (or `-` for stdin). Frames map innermost-first; read rank 1. `--run-trace="make -j"` runs the command and maps its failure output; the exit code is disclosed.
+- **Wrong value** - `--slice=SYM:VAR --slice-flow=back`, then read the statements it names.
 
-The MCP server already defaults to compact for this reason — the tool description carries the schema, so
-the legend would be redundant on every call. The CLI defaults to `full` because a human reading one map
-needs it. If you are an agent making repeated calls, you are the case the CLI default is not tuned for.
+Stop once source confirms one candidate. Slices and graphs are name-based and stop at the function boundary: use them to focus reading, not as proof. Pin the root cause with `--note-add="SYM: what went wrong"`.
 
-## `--callers` is 1-hop — don't let it answer "is it safe to change X?"
+## Combined filters: `--graph-query`
 
-`--callers=SYM` gives direct in-edges only. It under-counts on purpose (it's the *cheap* verb) — a caller
-two hops away, a read/write that never calls SYM, or an `#include` that pulls it in all fall outside a
-1-hop answer. Match the verb to the question:
+Use only when conditions must combine.
 
-- **"Is it safe to change/delete X?"** → `ripwire-rs <dir> --impact=SYM --legend=compact` (transitive blast radius: everything
-  that transitively reaches SYM through the call graph, not just direct callers) **+**
-  `ripwire-rs <dir> --uses=SYM --legend=compact` (the resolvable use-sites by role — `call|read|write|import|extends` — file:line; catches
-  non-call references `--callers` never sees, e.g. a struct read or a header import). Run both — `--impact`
-  gives depth (the call chain), `--uses` gives breadth (kinds of reference). `--callers` alone is the wrong
-  tool for this question; reach for it only when you already know the change is local. A `via="name"` row in
-  `--impact` was first reached through an edge bound by name alone: a hedge, not a proven caller — verify it
-  at the call site before trusting it.
-- **"Who breaks, AND which of those a test already reaches"** — `--impact`/`--callers`/`--callees` rows
-  carry `tested="1"` when an indexed test transitively reaches that row (omitted, never a literal `0`, when
-  none does); `--impact`'s root adds `radius_tested=`/`radius_untested=` over its transitive reach,
-  `--callers`/`--callees`'s root adds `hop_tested=`/`hop_untested=` over their 1-hop count — one call
-  answers both "what breaks" and "what's covered" instead of a second `--test-gate` round-trip.
-- **"Who calls this, one hop"** (quick sanity check, not a safety judgment) → `--callers=SYM`.
-- **"Where is this VARIABLE defined and used inside one function"** → `--slice=SYM:VAR` — per-line
-  def/use rows (declaration/assignment/param vs read) inside the one resolved definition; bare
-  `--slice=SYM` lists the sliceable locals first. Name-based and intra-procedural — the legend states
-  the limits — so it answers "what touches this variable here" without reading the whole body.
-- **"Where did this variable's VALUE come from / what does it flow into"** (still inside one function)
-  → add `--slice-flow=back|fwd|both` — the transitive cross-statement data-flow slice over
-  reaching-definition def-use edges: `back` = the statements whose values feed the seed variable,
-  `fwd` = the statements its value reaches; each flow row carries the variable (`v=`), the BFS depth
-  (`d=`) and the line it was reached from (`f=`). `--slice-depth=N` bounds the walk (default 8; a
-  bound that cuts is disclosed as `flow_truncated="1"`). Stops at the function boundary by design —
-  the inter-procedural half is `--callers`/`--impact`. Data dependence only — the guard deciding
-  whether a def executes is never a row.
-- **"I have a FILE:LINE, not a name"** (a compiler error, a diff hunk, a stack frame) →
-  `ripwire-rs <dir> --at=FILE:LINE --legend=compact` — the enclosing-definition chain at that location, outermost→innermost;
-  `sym=` names the innermost. The SAME seed composes into the symbol selectors as `@FILE:LINE`
-  (`--callers=@src/f.rs:120`, `--expand=@…`, `--edit-check=@…`) and resolves to that innermost definition, pinned by
-  location so a shared name cannot bind the wrong one. A location on a blank top-level line, an ambiguous path, or
-  no definition spanning the line is refused with a specific diagnosis, never guessed. `--slice` does not take seeds.
-- **"Trace a FLOW: how does A reach B"** → `--path=A,B` (shortest call-path) or `--around=SYM
-  [--around-depth=2]` (bounded neighborhood). Not `--for` — `--for` returns a ranked *set* of relevant
-  signatures for a task, it does not trace a path between two named points.
-- **"N task symbols — how do A, B and C RELATE, which intermediaries join them?"** →
-  `ripwire-rs <dir> --connect=A,B,C --legend=compact [--connect-radius=N]` — the minimal connecting subgraph: your terminals,
-  the fewest joining intermediaries (with signatures), and the call edges in true caller→callee direction.
-  Reach for `--connect` over `--path` in two cases: **N>2 symbols** (`--path` only ever takes SRC,DST — it
-  has no notion of a third point), or **a pair `--path` calls unreachable**. The search is undirected, so it
-  finds the *shared caller* joining two symbols — the most common way task symbols relate, which a directed
-  `--path` can never see (`--path=A,B` says `reachable="0"` even when `main` calls both). Symbols that can't
-  meet within the radius appear honestly in `<unconnected>`.
+`ripwire-rs <dir> --graph-query='EXPR' --legend=compact`. Operators: `all`, `name("X")`, `kind(E,K)` (fn, method, cls, struct, iface, var, sec), `cx(E,N)`, `fanin(E,N)`, `file(E,"RE")`, `callers(E[,D])`, `callees(E[,D])`, `and`, `or`, `not`.
 
-## Trace the call graph / locate code
+```
+ripwire-rs <dir> --graph-query='and(callers(name("buildGraph"),2),kind(all,fn))' --legend=compact
+ripwire-rs <dir> --graph-query='and(cx(all,15),file(all,"src/"))' --legend=compact
+```
 
-- **Who calls / what it calls** — `ripwire-rs <dir> --callers=SYM --legend=compact` · `ripwire-rs <dir> --callees=SYM --legend=compact`
-- **The resolvable use-sites of a name** (role=call|read|write|import|extends, file:line; `counts_floor="1"` — the count is a floor) — `ripwire-rs <dir> --uses=SYM --legend=compact`
-- **Who reads/writes a MEMBER VARIABLE** (`t="field"` symbols; per-site owner resolution, `owner_candidates=K` where several owners could match, never a silent pin) — `ripwire-rs <dir> --uses=Owner.field --legend=compact`
-- **Transitive blast radius** — `ripwire-rs <dir> --impact=SYM --legend=compact`
-- `--uses` lists all indexed sites unless `--limit=N` or `--offset=M` requests a window; continue at `next_offset`.
-  `--impact` keeps unbound candidate calls in separate `<dc>` rows. They are not edges or reached symbols;
-  `dc_shown` of `declined_calls` says how many are printed; raise `--token-budget` to see every candidate site.
-- Python, JavaScript/TypeScript, and Rust index bare non-local variable reads.
-  Grep's `reads=` / `reads_at=` are indexed sites, not text estimates; locals,
-  assignment targets, and unsupported binding forms are not reconstructed.
-- **Neighborhood** (bounded k-hop ego graph) — `ripwire-rs <dir> --around=SYM --legend=compact [--around-depth=2] [--around-fanout=32]`
-- **How does X reach Y** (shortest call-path) — `ripwire-rs <dir> --path=SRC,DST --legend=compact`
-- **How do N symbols relate** (minimal connecting subgraph, shared-caller joins) — `ripwire-rs <dir> --connect=A,B,C --legend=compact [--connect-radius=N]`
-- **Which definitions does a name bind, and how do I pin one** — `ripwire-rs <dir> --defs=A,B,C --legend=compact` — one `<d>` row per definition (owner, kind, `file:line`, language, `test=1`, `in=` callers) and a `sel=` spelling that binds exactly that definition when passed to any symbol verb; names that bind nothing come back as `<nf>`.
-- **Verify a CLAIM in one call** — "does X really call Y?", "is Z ever used?", "does this file contain/define A?" →
-  `ripwire-rs <dir> --verify='calls(A,B)' --legend=compact` (also `uses(SYM)` / `unused(SYM)` / `contains(FILE, "LIT")` /
-  `defines(FILE, SYM)` / `reaches(SYM, "FILE")`): one three-valued verdict with the evidence inline —
-  `confirmed` (witness printed) · `refuted` (only with complete evidence; a clean literal-scan no carries
-  `complete="1"`) · `not-established` (`limit=` names the floor: dynamic dispatch and string-keyed references
-  are invisible to the index, so this verdict is honest "the index cannot prove it", never "false").
-  Replaces the grep-then-read chain you would otherwise run to check the claim yourself.
-- **Find a literal / regex / structural shape** —
-  `ripwire-rs <dir> --grep=STR --legend=compact` (literal + enclosing symbol) ·
-  `ripwire-rs <dir> --regex=PAT --legend=compact` ·
-  `ripwire-rs <dir> --match='(<tree-sitter query>)' --legend=compact` (e.g. `(call_expression function: (identifier) @c)`) ·
-  **`ripwire-rs <dir> --pattern='foo($X, ...)' --legend=compact`** — the same structural search written in CODE instead of in
-  node kinds, so you do not have to know whether this grammar calls it `call_expression`, `call`,
-  `method_invocation` or `invocation_expression`. `$NAME` binds one node (repeat it and both sites must
-  match), `$_` binds nothing, `...` (or `$$$`) is an ellipsis over siblings. ONE pattern searches every
-  served language at once — c, cpp, objc, java, csharp, javascript, typescript, python, go, rust, swift —
-  and `grammars=`/`shapes=` on the result name which ones it resolved for and what node kind it became in
-  each. Reach for `--pattern` when you can WRITE the shape and for `--match` when you need a constraint the
-  pattern language cannot express (a field name, a `#match?` predicate). Ruby, bash and the data tiers are
-  refused by name, never answered with a zero.
-  — add `--grep-context=N` (or `--grep-before=N`/`--grep-after=N`) for ripgrep-style N lines of source
-  around each hit, so you see the call site's shape without a follow-up `--expand`.
-  When one grep answers a two-term question ("cache staleness check for the MCP index"), narrow it in the
-  SAME call instead of grepping again and eyeballing the intersection: `--and=B` (repeatable) keeps only
-  hits where B is ALSO present, `--not=C` (repeatable) drops hits where C IS present — literal-only, so
-  they pair with `--grep=`, not `--regex=`. `--grep-scope=line` (default) requires the extra term on the
-  SAME matched line; `--grep-scope=file` widens that to anywhere in the same file.
-  Hits are SPAN-TIERED: comments are suppressed while code hits exist; string hits ride along only
-  when fewer than eight code hits exist. With no code, comments and strings are served together.
-  `suppressed_comment=`/`suppressed_string=` disclose withheld mentions. Off-index text hits are
-  listed separately in `<unindexed>`. When the mention IS what you were
-  after (an error-message string, a design note), re-ask with `--grep-in=any` for every tier.
-
-`--callers`/`--callees` answer from the call graph directly — no separate index step. Edges are name-based:
-a high-rank symbol with no callees may be a dispatch hub (virtual/callback/macro), not a leaf — read it.
-A `t="modscope" n="&lt;file-scope&gt;" p="FILE:1"` row is that file's module scope (top-level statements and
-anonymous callback bodies): a real caller with no body to expand — its `sites_at=` lines are the call sites.
-
-**What a high `amb=` should CHANGE about your next action**: `amb="K"` on a symbol means K of its outgoing
-calls matched more than one same-named definition and the resolver guessed. Before relying on an ambiguous
-edge to judge safety or trace a flow, inspect the source at that call site (`--expand=SYM`) to confirm which
-definition it resolves to.
-## Deep-dive ONE symbol — understand it before editing
-
-When you need to understand a specific function/class/concept in full (its body, contract, and rationale):
-
-1. **Full body + callee signatures** — `ripwire-rs <dir> --expand=SYM --legend=compact`
-   `<bodies>` with SYM's full source in CDATA and a `<calls>` block of inline one-line signatures for
-   everything it calls — read the body with the callee signatures beside it. No ranked map rides along (orient
-   ONCE per session with `ripwire-rs <dir>`, then look symbols up lean); a bare name with several definitions
-   serves them all, still map-free — `map_next=` on the root is the call that prints the map if you skipped
-   orienting, and `unserved_next=` is the call serving the definitions a byte budget cut (the first `unserved_listed=` of
-   them when that attribute is present; `unserved_total=` is the true count). (No `<doc>` block
-   here; SYM's own doc-comment is in the CDATA body if it sits inside the definition — otherwise read the
-   source lines just above `l=`.)
-   About to Edit what you just expanded? If your edit tool needs a fresh native Read of the file first,
-   the served body doesn't satisfy that — but the
-   read doesn't need to start at line 1: Read at `l=`, not the whole file. Same for a `--for` hit before
-   you've expanded it — its `<d>` row carries `l=` too. Over MCP, skip the Read requirement altogether —
-   see ripwire-rs-mcp's edit verbs.
-2. **Who calls it** — `ripwire-rs <dir> --callers=SYM --legend=compact` → `<callers of="SYM" count="N">` with type, name,
-   file:line. Callers reveal SYM's contract from the outside — expected preconditions.
-3. **What it calls** — `ripwire-rs <dir> --callees=SYM --legend=compact` → cross with the `--expand` body to understand the flow.
-4. **Design docs that mention it** — `ripwire-rs <dir> --mentions=SYM --legend=compact` → `<mentions of="SYM" defs="D" docs="N">`
-   listing markdown files that backtick-name SYM: the design decisions and rationale around this symbol.
-5. **Neighborhood** (optional, when callers+callees don't close the picture) — `ripwire-rs <dir> --around=SYM --legend=compact
-   [--around-depth=2]`.
-   → **Explanation:** what SYM does (from the body + `<calls>`), who calls it and why, what it coordinates,
-   and any design rationale (from `--mentions`). Note `amb="K"` if call edges are ambiguous — verify in source.
-
-Editing a struct whose bytes cross a boundary (`--layout=STRUCT`), and `--query` versus `--for`: see [`reference.md`](reference.md).
-
-## When the fixed verbs can't phrase the question
-
-Compose filters over the call graph with `--graph-query=EXPR` — see **ripwire-rs-graph-query** for the
-mini-language (sources · kind/cx/fanin/file filters · bounded callers/callees closure · and/or/not joins).
-
-<example title="Tracing blast radius before refactoring">
-Good: Run `ripwire-rs <dir> --impact=Interner` to see all 25 transitive callers across the repository before renaming a method.
-Bad: Grep for 'Interner' and assume only local file usages exist.
-</example>
-</instructions>
+Results are ranked and capped at `--top-k` (default 200): compare `count=` with `shown=`. Closures use name-based edges. A malformed expression returns a parse error, never a partial answer.
 
 <output_format>
 ### Navigation Trace
-- **Target Symbol**: [Symbol name and file:line]
-- **Direct Callers**: [1-hop callers and signatures]
-- **Outgoing Callees**: [Key functions invoked]
-- **Transitive Blast Radius**: [Symbol count and impacted files]
-- **Safety Assessment**: [Local vs architectural blast radius]
+- **Target Symbol**: [name and file:line]
+- **Direct Callers / Callees**: [1-hop, with tested= where present]
+- **Transitive Blast Radius**: [impact reaches=, radius_untested=]
+- **Root Cause or Flow**: [branch taken, evidence, file:line]
+- **Safety Assessment**: [local vs architectural; note via=, amb=, declined=]
 </output_format>

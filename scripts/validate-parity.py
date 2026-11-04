@@ -210,22 +210,31 @@ def detect_merge_ref(repo_dir):
 PINNED_TARGETS = ("row_bytes", "fit_rows")
 
 
-def discover_repo_targets(rw_bin, repo_dir):
-    proc = subprocess.run([rw_bin, repo_dir, "--top-k=50"], capture_output=True, text=True)
-    files = re.findall(r'<f p="([^"]+)"', proc.stdout)
-    fn_syms = re.findall(r'<s t="fn" n="([a-zA-Z_][a-zA-Z0-9_]*)"', proc.stdout)
-    if not fn_syms:
-        fn_syms = re.findall(r'<s t="method" n="([a-zA-Z_][a-zA-Z0-9_]*)"', proc.stdout)
-    if not fn_syms:
-        fn_syms = re.findall(r'<s [^>]*n="([a-zA-Z_][a-zA-Z0-9_]*)"', proc.stdout)
-    counts = {}
-    for s in fn_syms:
-        counts[s] = counts.get(s, 0) + 1
+def function_symbols(stdout):
+    for pattern in (
+        r'<s t="fn" n="([a-zA-Z_][a-zA-Z0-9_]*)"',
+        r'<s t="method" n="([a-zA-Z_][a-zA-Z0-9_]*)"',
+        r'<s [^>]*n="([a-zA-Z_][a-zA-Z0-9_]*)"',
+    ):
+        found = re.findall(pattern, stdout)
+        if found:
+            return found
+    return []
+
+
+def symbol_pool(fn_syms):
+    counts = collections.Counter(fn_syms)
     unique_fns = [s for s in fn_syms if counts[s] == 1 and s not in ("new", "main", "name", "init")]
     pool = unique_fns if unique_fns else fn_syms
     # The ledger's per-symbol entries are measured on these two; a near-tie in PageRank must not swap them.
     pinned = [s for s in PINNED_TARGETS if s in pool]
-    pool = pinned + [s for s in pool if s not in pinned]
+    return pinned + [s for s in pool if s not in pinned]
+
+
+def discover_repo_targets(rw_bin, repo_dir):
+    proc = subprocess.run([rw_bin, repo_dir, "--top-k=50"], capture_output=True, text=True)
+    files = re.findall(r'<f p="([^"]+)"', proc.stdout)
+    pool = symbol_pool(function_symbols(proc.stdout))
     target_file = files[0] if files else "src/main.rs"
     target_sym = pool[0] if pool else "main"
     second_sym = pool[1] if len(pool) > 1 else target_sym
@@ -335,6 +344,43 @@ def required_attrs(el):
     return set(el.attrib) - OPTIONAL_ATTRS
 
 
+def check_ranked_rows(tag, rip_rows, rw_rows):
+    for ch_rip, ch_rw in zip(rip_rows, rw_rows):
+        missing = required_attrs(ch_rip) - set(ch_rw.attrib)
+        if missing:
+            return f"ranked <{tag}> row missing required attrs {sorted(missing)}"
+    return None
+
+
+def row_gap(tag, ch_rip, rw_attrs, declared, used):
+    need = required_attrs(ch_rip)
+    if any(need <= have for have in rw_attrs):
+        return None
+    row = ch_rip.attrib.get("n", "")
+    named = {attr for attr in need if f"{row}:{attr}" in declared}
+    if not any(need - named <= have for have in rw_attrs):
+        return f"child <{tag}> has no row with required attrs {sorted(need - named)}"
+    used.update(f"{row}:{attr}" for attr in named)
+    return None
+
+
+def check_unranked_rows(tag, rip_rows, rw_rows, declared, used):
+    rw_attrs = [set(ch.attrib) for ch in rw_rows]
+    for ch_rip in rip_rows:
+        err = row_gap(tag, ch_rip, rw_attrs, declared, used)
+        if err:
+            return err
+    return None
+
+
+def check_tag_rows(tag, root_rw, root_rip, ranked, declared, used):
+    rip_rows = [ch for ch in root_rip if ch.tag == tag]
+    rw_rows = [ch for ch in root_rw if ch.tag == tag]
+    if ranked:
+        return check_ranked_rows(tag, rip_rows, rw_rows)
+    return check_unranked_rows(tag, rip_rows, rw_rows, declared, used)
+
+
 def compare_xml_children(root_rw, root_rip, ranked, declared=frozenset(), used=None):
     """Check each upstream row has a same-tag row carrying its required attrs.
 
@@ -342,24 +388,9 @@ def compare_xml_children(root_rw, root_rip, ranked, declared=frozenset(), used=N
     in `used` only when the row would otherwise fail, so unneeded omissions stay detectable."""
     used = set() if used is None else used
     for tag in sorted({ch.tag for ch in root_rip} & {ch.tag for ch in root_rw}):
-        rip_rows = [ch for ch in root_rip if ch.tag == tag]
-        rw_rows = [ch for ch in root_rw if ch.tag == tag]
-        if ranked:
-            for ch_rip, ch_rw in zip(rip_rows, rw_rows):
-                missing = required_attrs(ch_rip) - set(ch_rw.attrib)
-                if missing:
-                    return f"ranked <{tag}> row missing required attrs {sorted(missing)}"
-            continue
-        rw_attrs = [set(ch.attrib) for ch in rw_rows]
-        for ch_rip in rip_rows:
-            need = required_attrs(ch_rip)
-            if any(need <= have for have in rw_attrs):
-                continue
-            row = ch_rip.attrib.get("n", "")
-            named = {attr for attr in need if f"{row}:{attr}" in declared}
-            if not any(need - named <= have for have in rw_attrs):
-                return f"child <{tag}> has no row with required attrs {sorted(need - named)}"
-            used.update(f"{row}:{attr}" for attr in named)
+        err = check_tag_rows(tag, root_rw, root_rip, ranked, declared, used)
+        if err:
+            return err
     return None
 
 
@@ -449,13 +480,8 @@ def check_xml_data_invariants(cmd, root_rw, root_rip):
             or check_caller_window_invariants(root_rw)
             or check_computed_metric_invariants(cmd, root_rw))
 
-def check_xml_parity(cmd, out_rw, out_rip, allow_extra_root=False, omits=None):
-    root_rw, err_rw = parse_xml_dom(out_rw)
-    if err_rw:
-        return f"ripwire-rs {err_rw}"
-    root_rip, err_rip = parse_xml_dom(out_rip)
-    if err_rip:
-        return f"ripwire {err_rip}"
+
+def root_identity_error(root_rw, root_rip):
     if root_rw.tag != root_rip.tag:
         return f"root tag mismatch: rw=<{root_rw.tag}> vs rip=<{root_rip.tag}>"
     schema_rw = root_rw.attrib.get("schema", "")
@@ -465,6 +491,10 @@ def check_xml_parity(cmd, out_rw, out_rip, allow_extra_root=False, omits=None):
         or schema_rw.replace("ripwire-rs.", "ripwire.", 1) != schema_rip
     ):
         return f"schema mismatch: rw={schema_rw} vs rip={schema_rip}"
+    return None
+
+
+def root_attr_error(root_rw, root_rip, allow_extra_root):
     req_rip = set(root_rip.attrib.keys()) - OPTIONAL_ATTRS
     req_rw = set(root_rw.attrib.keys()) - OPTIONAL_ATTRS
     if allow_extra_root:
@@ -475,11 +505,30 @@ def check_xml_parity(cmd, out_rw, out_rip, allow_extra_root=False, omits=None):
         missing_root = sorted(req_rip - req_rw)
         extra_root = sorted(req_rw - req_rip)
         return f"root attr keys mismatch: missing={missing_root} extra={extra_root}"
+    return None
+
+
+def budget_error(cmd, out_rw, out_rip):
     if "--max-tokens=2000" in cmd and len(out_rw) > max(len(out_rip) * 3, 10000):
         return f"budget overrun: rw={len(out_rw)}B vs rip={len(out_rip)}B"
-    inv_err = check_xml_data_invariants(cmd, root_rw, root_rip)
-    if inv_err:
-        return inv_err
+    return None
+
+
+def check_xml_parity(cmd, out_rw, out_rip, allow_extra_root=False, omits=None):
+    root_rw, err_rw = parse_xml_dom(out_rw)
+    if err_rw:
+        return f"ripwire-rs {err_rw}"
+    root_rip, err_rip = parse_xml_dom(out_rip)
+    if err_rip:
+        return f"ripwire {err_rip}"
+    err = (
+        root_identity_error(root_rw, root_rip)
+        or root_attr_error(root_rw, root_rip, allow_extra_root)
+        or budget_error(cmd, out_rw, out_rip)
+        or check_xml_data_invariants(cmd, root_rw, root_rip)
+    )
+    if err:
+        return err
     declared = set(omits or ())
     used = set()
     err = compare_xml_children(root_rw, root_rip, is_ranked(cmd), declared, used)
@@ -570,43 +619,63 @@ def full_window_outputs(rw_bin, rip_bin, repo, cmd, out_rw, out_rip):
     return full_rw.stdout, full_rip.stdout
 
 
+def command_argv(rw_bin, rip_bin, repo, cmd):
+    if cmd == "-v":
+        return [rw_bin, "-v"], [rip_bin, "-v"]
+    args = shlex.split(cmd)
+    return [rw_bin, repo] + args, [rip_bin, repo] + args
+
+
+def timeout_outcome(cmd, text, p_rw):
+    print(
+        f"note: upstream {cmd or 'default map'} exceeded {UPSTREAM_TIMEOUT}s; not compared "
+        "(raise PARITY_UPSTREAM_TIMEOUT to measure it)"
+    )
+    if text:
+        return Outcome(check_text_timeout(cmd, p_rw.stdout), None, None, text)
+    return Outcome(check_xml_timeout(p_rw.stdout), None, None, text)
+
+
+def exit_mismatch_tolerated(repo, cmd, p_rw, p_rip):
+    if p_rw.returncode != 0 and p_rip.returncode != 0:
+        return True
+    if any(flag in cmd for flag in ("--quality-delta", "--test-gate", "--scan-skills")):
+        return True
+    return repo != "." and any(k in cmd for k in ("--slice=", "--edit-check=", "--at=", "--doctor"))
+
+
+def exit_code_outcome(repo, cmd, text, p_rw, p_rip):
+    """Outcome when the two exit codes disagree, or None to keep judging the outputs."""
+    if p_rw.returncode == p_rip.returncode:
+        return None
+    if not exit_mismatch_tolerated(repo, cmd, p_rw, p_rip):
+        return Outcome(f"exit code mismatch: rw={p_rw.returncode} vs rip={p_rip.returncode}", p_rw.stdout, p_rip.stdout, text)
+    if not p_rw.stdout.strip() or not p_rip.stdout.strip():
+        return Outcome(None, None, None, text)
+    return None
+
+
+def compare_outputs(rw_bin, rip_bin, repo, cmd, text, p_rw, p_rip, allow_extra_root, omits):
+    if text:
+        return check_non_xml_parity(cmd, p_rw.stdout, p_rip.stdout)
+    rw_out, rip_out = full_window_outputs(rw_bin, rip_bin, repo, cmd, p_rw.stdout, p_rip.stdout)
+    return check_xml_parity(cmd, rw_out, rip_out, allow_extra_root, omits)
+
+
 def run_one_check(rw_bin, rip_bin, repo, cmd, allow_extra_root=False, omits=None):
     text = is_text_cmd(cmd)
-    if cmd == "-v":
-        c_rw, c_rip = [rw_bin, "-v"], [rip_bin, "-v"]
-    else:
-        args = shlex.split(cmd)
-        c_rw, c_rip = [rw_bin, repo] + args, [rip_bin, repo] + args
+    c_rw, c_rip = command_argv(rw_bin, rip_bin, repo, cmd)
     p_rw = subprocess.run(c_rw, capture_output=True, text=True, timeout=20)
     try:
         p_rip = subprocess.run(c_rip, capture_output=True, text=True, timeout=UPSTREAM_TIMEOUT)
     except subprocess.TimeoutExpired:
-        print(
-            f"note: upstream {cmd or 'default map'} exceeded {UPSTREAM_TIMEOUT}s; not compared "
-            "(raise PARITY_UPSTREAM_TIMEOUT to measure it)"
-        )
-        if text:
-            return Outcome(check_text_timeout(cmd, p_rw.stdout), None, None, text)
-        return Outcome(check_xml_timeout(p_rw.stdout), None, None, text)
-    if p_rw.returncode != p_rip.returncode:
-        if (
-            (p_rw.returncode != 0 and p_rip.returncode != 0)
-            or "--quality-delta" in cmd
-            or "--test-gate" in cmd
-            or "--scan-skills" in cmd
-            or (repo != "." and any(k in cmd for k in ("--slice=", "--edit-check=", "--at=", "--doctor")))
-        ):
-            if not p_rw.stdout.strip() or not p_rip.stdout.strip():
-                return Outcome(None, None, None, text)
-        else:
-            return Outcome(f"exit code mismatch: rw={p_rw.returncode} vs rip={p_rip.returncode}", p_rw.stdout, p_rip.stdout, text)
+        return timeout_outcome(cmd, text, p_rw)
+    early = exit_code_outcome(repo, cmd, text, p_rw, p_rip)
+    if early is not None:
+        return early
     if p_rw.returncode != 0 and not p_rip.stdout.strip():
         return Outcome(None, None, None, text)
-    if text:
-        reason = check_non_xml_parity(cmd, p_rw.stdout, p_rip.stdout)
-    else:
-        rw_out, rip_out = full_window_outputs(rw_bin, rip_bin, repo, cmd, p_rw.stdout, p_rip.stdout)
-        reason = check_xml_parity(cmd, rw_out, rip_out, allow_extra_root, omits)
+    reason = compare_outputs(rw_bin, rip_bin, repo, cmd, text, p_rw, p_rip, allow_extra_root, omits)
     return Outcome(reason, p_rw.stdout, p_rip.stdout, text)
 
 
@@ -640,31 +709,37 @@ def entry_key(entry):
     return f"{entry['command']}={case}" if case else entry["command"]
 
 
+def ledger_entry_errors(entry, ids, keys):
+    ident = entry.get("id", "?")
+    missing = [f for f in LEDGER_FIELDS if f not in entry]
+    if missing:
+        return [f"ledger entry {ident} missing {missing}"]
+    errors = []
+    if "omits" in entry:
+        errors.extend(omit_declaration_errors(entry))
+    if entry["kind"] not in KINDS:
+        errors.append(f"ledger entry {ident} has unknown kind {entry['kind']!r}")
+    if ident in ids:
+        errors.append(f"duplicate ledger id {ident}")
+    ids.add(ident)
+    if "files" not in entry:
+        key = entry_key(entry)
+        if key in keys:
+            errors.append(f"duplicate ledger command {key}")
+        keys.add(key)
+    return errors
+
+
 def load_ledger():
     with LEDGER.open("rb") as fh:
         data = tomllib.load(fh)
     entries = data.get("divergence", [])
-    errors, ids, keys = [], set(), set()
+    errors = []
     if not isinstance(data.get("defect_budget"), int):
         errors.append("ledger header must set defect_budget to the number of defect entries")
+    ids, keys = set(), set()
     for entry in entries:
-        ident = entry.get("id", "?")
-        missing = [f for f in LEDGER_FIELDS if f not in entry]
-        if missing:
-            errors.append(f"ledger entry {ident} missing {missing}")
-            continue
-        if "omits" in entry:
-            errors.extend(omit_declaration_errors(entry))
-        if entry["kind"] not in KINDS:
-            errors.append(f"ledger entry {ident} has unknown kind {entry['kind']!r}")
-        if ident in ids:
-            errors.append(f"duplicate ledger id {ident}")
-        ids.add(ident)
-        if "files" not in entry:
-            key = entry_key(entry)
-            if key in keys:
-                errors.append(f"duplicate ledger command {key}")
-            keys.add(key)
+        errors.extend(ledger_entry_errors(entry, ids, keys))
     return entries, data.get("defect_budget", 0), errors
 
 
@@ -768,35 +843,56 @@ def is_subsequence(part, whole):
     return all(any(x == y for y in it) for x in part)
 
 
-def paged_verdict(rw_bin, rip_bin, repo, cmd, out_rw, out_rip, root_rw, root_rip):
-    try:
-        full_rw = subprocess.run(
-            [rw_bin, repo] + shlex.split(cmd) + [FULL_ROWS_FLAG], capture_output=True, text=True, timeout=20
-        )
-        full_rip = subprocess.run(
-            [rip_bin, repo] + shlex.split(cmd) + [FULL_ROWS_FLAG], capture_output=True, text=True, timeout=FULL_TIMEOUT
-        )
-    except subprocess.TimeoutExpired:
-        return "paged list: full row set timed out"
-    root_full_rw, err_rw = parse_xml_dom(full_rw.stdout)
-    root_full_rip, err_rip = parse_xml_dom(full_rip.stdout)
-    if err_rw or err_rip:
-        return "paged list: full row set not comparable"
-    rows_full_rw, rows_full_rip = row_groups(root_full_rw), row_groups(root_full_rip)
+def run_full_rows(rw_bin, rip_bin, repo, cmd):
+    full_rw = subprocess.run(
+        [rw_bin, repo] + shlex.split(cmd) + [FULL_ROWS_FLAG], capture_output=True, text=True, timeout=20
+    )
+    full_rip = subprocess.run(
+        [rip_bin, repo] + shlex.split(cmd) + [FULL_ROWS_FLAG], capture_output=True, text=True, timeout=FULL_TIMEOUT
+    )
+    return full_rw.stdout, full_rip.stdout
+
+
+def paged_row_error(root_rw, rows_full_rw, rows_full_rip):
     for tag, keys in sorted(row_groups(root_rw).items()):
         if not is_subsequence(keys, rows_full_rw.get(tag, [])):
             return f"paged <{tag}> rows are out of our ranking order"
         extra = sorted(set(keys) - set(rows_full_rip.get(tag, [])))
         if extra:
             return f"paged <{tag}> row absent from upstream's full set: {extra[0]}"
+    return None
+
+
+def paged_count_error(root_rw, root_rip):
     for attr in ("total", "count"):
         if attr in root_rw.attrib and attr in root_rip.attrib and root_rw.attrib[attr] != root_rip.attrib[attr]:
             return f"paged {attr} mismatch: rw={root_rw.attrib[attr]} vs rip={root_rip.attrib[attr]}"
+    return None
+
+
+def paged_offset_error(root_rw):
     if "next_offset" in root_rw.attrib and "shown" in root_rw.attrib:
         expected = int(root_rw.attrib.get("offset", "0")) + int(root_rw.attrib["shown"])
         if int(root_rw.attrib["next_offset"]) != expected:
             return "paged next_offset does not follow the shown rows"
-    return size_verdict(out_rw, out_rip, root_rw, root_rip)
+    return None
+
+
+def paged_verdict(rw_bin, rip_bin, repo, cmd, out_rw, out_rip, root_rw, root_rip):
+    try:
+        full_out_rw, full_out_rip = run_full_rows(rw_bin, rip_bin, repo, cmd)
+    except subprocess.TimeoutExpired:
+        return "paged list: full row set timed out"
+    root_full_rw, err_rw = parse_xml_dom(full_out_rw)
+    root_full_rip, err_rip = parse_xml_dom(full_out_rip)
+    if err_rw or err_rip:
+        return "paged list: full row set not comparable"
+    return (
+        paged_row_error(root_rw, row_groups(root_full_rw), row_groups(root_full_rip))
+        or paged_count_error(root_rw, root_rip)
+        or paged_offset_error(root_rw)
+        or size_verdict(out_rw, out_rip, root_rw, root_rip)
+    )
 
 
 def generic_covers(rw_bin, rip_bin, repo, cmd, outcome, roots):
@@ -867,26 +963,19 @@ def check_one(rw_bin, rip_bin, where, cmd, desc, entry, run_cmd=None):
     return 1
 
 
-def main():
-    repo = sys.argv[1] if len(sys.argv) > 1 else "."
-    if not os.path.exists(repo):
-        report_error(f"Repository path '{repo}' does not exist")
-        sys.exit(1)
+def load_checked_ledger():
     entries, budget, errors = load_ledger()
-    defects = [e for e in entries if e["kind"] == "defect"]
-    if len(defects) != budget:
-        errors.append(f"ledger has {len(defects)} defect entries but defect_budget is {budget}; set defect_budget to the entry count, and review any increase")
+    defect_count = sum(1 for entry in entries if entry["kind"] == "defect")
+    if defect_count != budget:
+        errors.append(f"ledger has {defect_count} defect entries but defect_budget is {budget}; set defect_budget to the entry count, and review any increase")
     if errors:
         for err in errors:
             report_error(err)
         sys.exit(1)
-    rw_bin, rip_bin = find_binaries()
-    merge_ref = detect_merge_ref(repo)
-    target_file, target_sym, second_sym = discover_repo_targets(rw_bin, repo)
-    commands = build_command_list(target_file, target_sym, second_sym)
-    builtin = {cmd for cmd, _ in commands}
-    tree_entries = {entry_key(e): e for e in entries if "files" not in e}
-    fixture_entries = [e for e in entries if "files" in e]
+    return entries, budget
+
+
+def run_builtin_checks(rw_bin, rip_bin, repo, merge_ref, commands, tree_entries):
     failures = 0
     for cmd, desc in commands:
         run_cmd = cmd
@@ -896,15 +985,45 @@ def main():
                 continue
             run_cmd = f"--merge-scout={merge_ref}"
         failures += check_one(rw_bin, rip_bin, repo, cmd, desc, tree_entries.get(cmd), run_cmd)
+    return failures
+
+
+def run_ledger_only_checks(rw_bin, rip_bin, repo, builtin, tree_entries):
+    failures = 0
     for key, entry in tree_entries.items():
         if key not in builtin:
             failures += check_one(rw_bin, rip_bin, repo, key, f"ledger {entry['id']}", entry)
+    return failures
+
+
+def run_fixture_checks(rw_bin, rip_bin, fixture_entries):
+    failures = 0
     for entry in fixture_entries:
         fixture = materialize_fixture(entry["files"])
         try:
             failures += check_one(rw_bin, rip_bin, fixture, entry_key(entry), f"ledger {entry['id']}", entry)
         finally:
             shutil.rmtree(fixture, ignore_errors=True)
+    return failures
+
+
+def main():
+    repo = sys.argv[1] if len(sys.argv) > 1 else "."
+    if not os.path.exists(repo):
+        report_error(f"Repository path '{repo}' does not exist")
+        sys.exit(1)
+    entries, budget = load_checked_ledger()
+    defects = [e for e in entries if e["kind"] == "defect"]
+    rw_bin, rip_bin = find_binaries()
+    merge_ref = detect_merge_ref(repo)
+    target_file, target_sym, second_sym = discover_repo_targets(rw_bin, repo)
+    commands = build_command_list(target_file, target_sym, second_sym)
+    builtin = {cmd for cmd, _ in commands}
+    tree_entries = {entry_key(e): e for e in entries if "files" not in e}
+    fixture_entries = [e for e in entries if "files" in e]
+    failures = run_builtin_checks(rw_bin, rip_bin, repo, merge_ref, commands, tree_entries)
+    failures += run_ledger_only_checks(rw_bin, rip_bin, repo, builtin, tree_entries)
+    failures += run_fixture_checks(rw_bin, rip_bin, fixture_entries)
     print(f"parity: {len(WARNINGS)} defect warnings, {len(defects)} defect entries (budget {budget})")
     sys.exit(0 if failures == 0 else 1)
 

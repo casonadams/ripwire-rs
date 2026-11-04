@@ -405,7 +405,7 @@ Emit JSON instead of XML for navigation and query commands, preserving hierarchy
 Execute at most 16 shared read sub-queries from \fIname:argument\fR or \fIname:{JSON arguments}\fR lines (\fI-\fR for stdin); ignore blank/comment lines. More than 16 is a whole-batch error. Individual failures emit \fB<error>\fR; recursive batches and writes (including quality baseline and quality-delta acknowledgment options) are rejected per item.
 .TP
 .BI \-\-add\-skills [=DIR]
-Install 17 pre-packaged ripwire-rs agent skills and active manifest (\fB.ripwire\-rs\-manifest\-v1\fR) to \fI~/.agents/skills\fR (or custom \fIDIR\fR). Replaces stale or broken symlinks safely. Alias: \fB\-\-install\-skills\fR.
+Install 9 pre-packaged ripwire-rs agent skills and active manifest (\fB.ripwire\-rs\-manifest\-v1\fR) to \fI~/.agents/skills\fR (or custom \fIDIR\fR). Replaces stale or broken symlinks safely. Alias: \fB\-\-install\-skills\fR.
 .TP
 .BI \-\-exclude= GLOB
 Exclude glob or directory pattern from crawling and indexing. Repeatable; each value may also be a comma-separated list. Crawler options are part of the auto-cache identity, so each option set keeps its own cache.
@@ -523,7 +523,7 @@ Overlapping tools return canonical CLI XML/text in \fBresult.content[0].text\fR,
 MCP batch success entries retain \fBtool/result/kind\fR (\fBxml|text|json\fR); malformed names fail per item. The CLI embeds XML and escapes text/JSON results. MCP \fBowners\fR accepts integer \fBdetail > 0\fR; \fBwhereis\fR accepts \fBlisting=defs|refs|all\fR and boolean \fBfull_text\fR, rejecting invalid listings. Detail 2 serves all requested bodies with accurate \fBshown/total\fR.
 .TP
 .B ripwire-rs skills \fR[\fIDIR\fR]
-Install and manage 17 ripwire-rs agent skills into the cross-agent discovery directory (default: \fI~/.agents/skills\fR).
+Install and manage 9 ripwire-rs agent skills into the cross-agent discovery directory (default: \fI~/.agents/skills\fR).
 .SH SYMBOL SELECTOR SYNTAX
 When querying symbols via \fB\-\-callers\fR, \fB\-\-callees\fR, \fB\-\-impact\fR, \fB\-\-uses\fR, \fB\-\-expand\fR, or \fB\-\-edit\-check\fR, \fBripwire-rs\fR accepts several selector formats:
 .TP

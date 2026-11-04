@@ -1,2 +1,4 @@
-languages = ["rust"]
+languages = ["rust", "python", "javascript"]
+# src/serialize/html_vis.js is excluded until its refactor lands (its owner removes this line).
+exclude = ["src/serialize/html_vis.js"]
 max-cognitive = 15

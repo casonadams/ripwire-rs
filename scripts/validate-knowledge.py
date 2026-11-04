@@ -65,17 +65,20 @@ def verify_deps_graph(r_rs):
     return None
 
 
+def _hardcoded_attr(r_rs, tag, attr):
+    elements = r_rs.findall(tag)
+    return len(elements) > 2 and len({e.attrib.get(attr) for e in elements}) == 1
+
+
 def verify_lens_xml_invariants(name, r_rs):
     if name == "warm-map":
         return verify_warm_map_graph(r_rs)
     if name == "deps":
         return verify_deps_graph(r_rs)
-    if name == "comment-coherence":
-        fns = r_rs.findall("fn")
-        return "comment-coherence <fn> words= is hardcoded" if len(fns) > 2 and len({f.attrib.get("words") for f in fns}) == 1 else None
-    if name == "context-ratio":
-        syms = r_rs.findall("s")
-        return "context-ratio <s> rtok= is hardcoded" if len(syms) > 2 and len({s.attrib.get("rtok") for s in syms}) == 1 else None
+    if name == "comment-coherence" and _hardcoded_attr(r_rs, "fn", "words"):
+        return "comment-coherence <fn> words= is hardcoded"
+    if name == "context-ratio" and _hardcoded_attr(r_rs, "s", "rtok"):
+        return "context-ratio <s> rtok= is hardcoded"
     if name == "handoff" and r_rs.attrib.get("subject") == "head":
         return "handoff subject= is hardcoded to 'head'"
     return None

@@ -40,7 +40,7 @@ const LEXICAL_ROUTES: &[LexicalRouteSpec] = &[
     ),
     (
         "reuse-one-symbol",
-        "ripwire-rs-reuse-first",
+        "ripwire-rs-before-you-build",
         "about-to-write one-symbol wording",
         "--exemplar",
         8,
@@ -56,7 +56,7 @@ const LEXICAL_ROUTES: &[LexicalRouteSpec] = &[
     ),
     (
         "write-tests",
-        "ripwire-rs-write-tests",
+        "ripwire-rs-change-check",
         "test-gap wording plus a test-writing action",
         "--test-gate",
         6,
@@ -72,7 +72,7 @@ const LEXICAL_ROUTES: &[LexicalRouteSpec] = &[
     ),
     (
         "find-clones",
-        "ripwire-rs-fresh-eyes",
+        "ripwire-rs-quality-bar",
         "duplicate or clone detection wording",
         "--clones",
         6,
@@ -111,7 +111,7 @@ const LEXICAL_ROUTES: &[LexicalRouteSpec] = &[
     ),
     (
         "locate-task",
-        "ripwire-rs-find-bug",
+        "ripwire-rs-navigate",
         "code-location or symptom wording",
         "--for",
         7,
@@ -307,7 +307,7 @@ fn check_direct_task_route(
     if trace {
         return Some(TaskChoice {
             intent: "trace-debug",
-            skill: "ripwire-rs-find-bug",
+            skill: "ripwire-rs-navigate",
             reason: "stack-trace shape; pass the trace on stdin",
             verb: "--from-trace",
             command: format!("ripwire-rs '{root}' --from-trace=-"),

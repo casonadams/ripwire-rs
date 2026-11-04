@@ -89,9 +89,9 @@ Builds the optimized release binaries (`ripwire-rs` and `rw`) and installs the m
 
 ## Post-Install: Agent Skills (Recommended) vs. MCP Server
 
-If your coding agent supports skills and shell execution, install the 17 embedded skills—**no MCP server configuration is required**, as the skills guide the agent to run `ripwire-rs` CLI flags directly:
+If your coding agent supports skills and shell execution, install the 9 embedded skills—**no MCP server configuration is required**, as the skills guide the agent to run `ripwire-rs` CLI flags directly:
 ```bash
-# Install 17 ripwire-rs agent skills
+# Install 9 ripwire-rs agent skills
 ripwire-rs --add-skills
 
 # Verify installation and environment health

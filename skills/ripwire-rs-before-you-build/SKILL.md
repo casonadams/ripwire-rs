@@ -1,129 +1,57 @@
 ---
 name: ripwire-rs-before-you-build
-description: >
-  Scope and architect multi-symbol features: define API boundaries, identify reusable components,
-  inspect interface contracts, and assess integration seams before writing code.
+description: Before writing code: find reusable symbols, copy the repo's exemplar shape, check interface implementors and clones, audit dependencies, and size a feature's blast radius.
 allowed-tools: Bash, Read
 ---
 
 <identity>
-You are a software architect. Your goal is to scope multi-symbol features, identify reusable building blocks, define clear API boundaries, and assess integration seams before writing code.
+You are a software architect and reuse specialist. You scope a feature, reuse what exists, and copy proven shapes before anyone writes a new line.
 </identity>
 
-<investigate_before_planning>
-Before designing or implementing a new feature:
-1. Package the task context bundle: `ripwire-rs <dir> --pack-task="FEATURE" --legend=compact`
-2. Check integration seams: `ripwire-rs <dir> --seams --legend=compact`
-3. If implementing an interface, query existing implementors: `ripwire-rs <dir> --lego=INTERFACE --legend=compact`
-</investigate_before_planning>
+# Before you build with ripwire
 
-<instructions>
-# Before you build — with ripwire
+`<dir>` = repo root. `FEATURE` = your task in 2-4 plain words; `SYM` = a representative symbol.
 
-> Routing:
-> • Writing ONE symbol (fn/class/helper) and want to reuse rather than reinvent → **ripwire-rs-reuse-first**.
-> • You've already written the change and want the pre-submit check → **ripwire-rs-change-check**.
-> • You want to judge whether the code you wrote got better/worse → **ripwire-rs-quality-bar**.
-> • Restructuring EXISTING code (not new work) → **ripwire-rs-fresh-eyes**.
-> • Not sure which skill? → **ripwire-rs-router**.
+## One bundle, then single calls
 
-`<dir>` = repo root. `FEATURE`/`APPROACH` = your task in 2–4 plain words; `SYM` = a representative symbol.
-Run only the sections your question needs — they share the same building blocks.
+`ripwire-rs <dir> --pack-task="FEATURE" --legend=compact` assembles recall, ranked signatures, bodies, callers, notes and `tests_to_run` under one budget. Use the calls below for one section in full.
 
-## Common first move — recall + reusable blocks
+- **Prior decisions** - `--recall="FEATURE"`. If a doc decided it, read it fully; look for "rejected" or "future work".
+- **Reusable blocks** - `--for="FEATURE"`. Rows carry `in=` (fan-in), `cx=`, `churn=`, `tested="1"`, `clone="1"`. Extend high-`in` symbols; touch high-`churn` or high-`amp` ones carefully.
+- **Shape per new symbol** - `--exemplar=fn|method|class|struct|iface|var` or `--exemplar="<sub-task>"`. Winners clear a complexity ceiling, then rank by `tested=1`, fan-in, lowest cognitive complexity. Copy structure, error handling and naming, not logic.
+- **Interface to satisfy** - `--lego=I` (or `--lego=file:I`): the method contract plus every same-language implementor. Read one as the template.
+- **Existing clones** - `--clones --legend=compact`. Follow the Rule of Three: extract a helper on the third occurrence.
 
-Almost every section starts here; do it once. **One-call shortcut:** `ripwire-rs <dir> --pack-task="FEATURE" --legend=compact`
-assembles the recall + `--for` ranking + top bodies + caller signatures + notes + `tests_to_run` into ONE
-bundle under one token budget — reach for it first instead of firing the calls below one at a time; drop to
-the individual calls only when you need a specific section's full output.
+## Adding a dependency
 
-- **Recall prior decisions** — `ripwire-rs <dir> --recall="FEATURE"` → full bodies of the most relevant
-  markdown docs (planning/design notes, READMEs) ranked by relevance. **If a doc already covers this, read
-  it fully — the decision may be made.** Look for explicit "rejected" / "future work" language.
-- **Reusable building blocks — the one-call write-mode bundle** — `ripwire-rs <dir> --for="FEATURE"` → `<sigs>`
-  ranked by task-relevance, each carrying the **quality lens** in the same call: `cx`/`ccx` (complexity),
-  `in`/`amp` (reuse count / change-amplification), `churn` (recent-commits), `clone="1"` (duplicated),
-  `tested="1"`, plus the inline `<doc>` block. That's read-context-and-quality-signal in ONE call — you learn
-  what to reuse AND what's fragile (high-churn, high-amp, cloned, or untested) before you write a line, not
-  after. High-`in` symbols are already widely composed — prefer extending them over reimplementing; treat a
-  high-`churn`/high-`amp` one as something to touch carefully and test around.
-- **The shape to imitate for each new symbol** — `ripwire-rs <dir> --exemplar=fn|method|class|struct|iface|var --legend=compact`
-  or `--exemplar="<the sub-task in words>"` (top match's kind inferred) → the repo's single best-in-class
-  instance of that shape — cognitive complexity must clear an eligibility ceiling first (a blob can never
-  win no matter how reused/tested), then among eligible candidates it's ranked `tested=1` first, highest
-  fan-in second, lowest cognitive-cx as the final tie-break — full body under
-  `<bodies>`. Run it per new symbol the feature adds so each one **copies a proven shape** (structure, error
-  handling, naming) instead of being invented from memory. (Deep-dive on exemplar-by-ROLE → **ripwire-rs-reuse-first**.)
-- **Implementing against an interface?** — `ripwire-rs <dir> --lego=I --legend=compact` (or `--lego=file:I` to disambiguate a
-  same-named type) → the interface's method contract (the exact signatures you must satisfy) **plus every
-  existing implementor**, own-language only. Read one existing impl as the template so your new one matches
-  the house pattern (method order, error handling, registration) instead of guessing the shape from the
-  interface alone. The single highest-value call when the thing you're building has to satisfy an `I`.
+1. `--for="<dependency purpose>"` to find capability already present.
+2. `--external-surface` lists the stdlib and external crates already in use. Check it before adding a second library for the same job.
+3. Prefer the standard library or an existing transitive dependency; check license and maintenance.
 
-## Feasibility spike — "is this approach even viable?"
+## Feasibility
 
-After the recall + `--for` above:
-1. If highly-relevant symbols already exist with `in > 0`, the approach is **partially implemented** — build
-   on it. If `--recall` shows it was decided against, stop.
-2. **Integration seams** — `ripwire-rs <dir> --seams --legend=compact` → `<seams>` (untested cross-module edges). If your
-   approach must connect two modules with no test-covered seam between them, that's an integration cost.
-3. **Coupling cost** — `ripwire-rs <dir> --deps --legend=compact` (skim `<godfiles>` + `shape=`). Adding a dependency on a
-   god-file adds coupling cost for every future change — flag it.
-   → **Verdict:** "build on existing" / "greenfield but seams exist" / "needs new seam, flag risk".
+1. Relevant symbols with `in > 0` mean the approach is partly built: build on them. A `--recall` decision against it means stop.
+2. `--seams --legend=compact` lists untested cross-module edges. A new connection without a test-covered seam is integration cost; add a test at each seam you create.
+3. `--deps --legend=compact`: a god-file (`<godfiles>`, `shape=`) you must depend on adds coupling for every future change. Flag it.
+4. `--impact=SYM --legend=compact` for each symbol you will modify. Large `reaches=` calls for a staged rollout or shim.
 
-## Plan — "give me the ordered implementation steps"
+Verdict: "build on existing" / "greenfield, seams exist" / "needs new seam, flag risk".
 
-1. Recall + `--for` (above) — check whether any existing symbol already solves part of the problem. Low `in=`
-   = an underused candidate to extend or replace; high `in=` = load-bearing, extend cautiously.
-2. **Integration seams** — `ripwire-rs <dir> --seams --legend=compact`. Each seam is a wiring point; your plan should name which
-   seam(s) the new code wires through, and add a test at each new seam it creates.
-3. **Impact of anything you'll modify** — `ripwire-rs <dir> --impact=SYM --legend=compact`. Large `reaches=` → plan a staged
-   rollout or a compatibility shim.
-   → **Plan:** ordered steps (recall → design → wire seams → write tests → implement), each naming the
-   specific file+symbol to touch, the blast radius of any modification, and its test gate (from
-   `--affected`). Flag any step that creates a new seam without a test.
+## Interface and sizing
 
-## Interface — "what should the boundary / API look like?"
-
-1. **Neighborhood of the subsystem** — `ripwire-rs <dir> --around=SYM --legend=compact --metrics [--around-depth=2]` → the ego
-   graph with ranks + call edges. `--metrics` is what adds the `in=` fan-in annotation (bare `--around`
-   emits none); **high-`in=` symbols are already acting as the de-facto API surface.**
-2. **The seam it lives on** — `ripwire-rs <dir> --seams --legend=compact`. If your subsystem straddles a `<seam from="X"
-   to="Y">`, that's where the interface belongs.
-3. **Who currently crosses the boundary** — `ripwire-rs <dir> --callers=SYM --legend=compact` for the top 2–3 in the ego graph.
-   Callers from *outside* the subsystem's directory are the external clients the interface must serve.
-4. **What to hide** — `ripwire-rs <dir> --deps --legend=compact`, skim `instab=`. High-instability internal files (leaves) stay
-   behind the interface; stable (low-instability) files may be safe to expose.
-   → **Proposal:** the 3–5 high-fan-in, called-from-outside symbols that form the natural API surface, the
-   seam they live on, and the internal symbols to hide. Write it in terms of callers' needs, not internals.
-
-## Sizing rubric — "how big is this change?"
-
-1. **Blast radius** — `ripwire-rs <dir> --impact=SYM --legend=compact` → `reaches="N"` is the blast-radius **symbol** count
-   (count distinct `p=` files for the file count); `defs="D">1` means overloads, each a separate blast root.
-2. **Affected tests** — `ripwire-rs <dir> --affected=fileA.cpp,fileB.h --legend=compact` (the files defining SYM, from
-   `--impact`). `tests="0"` = no test cover — flag it.
-3. **Caller-stack depth** — `ripwire-rs <dir> --callers=SYM --legend=compact`, then spot-check `--callers=<top-caller>` one level
-   up. A 2-hop caller graph is a tactical change; 5+ hops is architectural.
-4. **Hidden coupling** — `ripwire-rs <dir> --cochange=fileA.cpp --legend=compact`; `surprising="1"` partners must be verified
-   manually even if not in the blast radius.
-   → **Classify:** local (≤5 blast, tests exist) / moderate (5–20) / wide (>20 or no tests).
+- **API boundary** - `--around=SYM --metrics --legend=compact`. High `in=` marks the de-facto API. `--callers=SYM` on the top 2-3: callers outside the subsystem are the clients the interface must serve.
+- **Size** - `--impact=SYM` gives `reaches=` (symbols; count distinct `p=` for files). `defs="D">1` means overloads. `--affected=FILES` lists tests; `tests="0"` is a gap. Check `surprising="1"` partners from `--cochange=FILE` by hand.
+- Classify: local (<=5 blast radius, tests exist), moderate (5-20), wide (>20 or no tests).
 
 ## Honesty
 
-ripwire maps *structure*, not data flow; seams/impact are name-based (dynamic dispatch/callbacks/macros can
-be missing). Compose from what exists; note what's genuinely missing rather than reinventing it.
-
-<example title="Implementing a new storage backend against an existing interface">
-Good: Run `ripwire-rs <dir> --lego=StorageBackend` to inspect method contracts and existing templates before designing a new implementation.
-Bad: Inventing a custom storage interface that does not align with existing repository patterns.
-</example>
-</instructions>
+Edges and seams are name-based: dynamic dispatch, callbacks and macros can be missing. `via="name"` and `amb="K"` rows are guesses until confirmed at the call site. Say what is missing rather than reinventing it.
 
 <output_format>
 ### Feature Architecture Plan
-- **Reusable Components**: [Existing building blocks and exemplars]
-- **Interface Seams**: [Cross-module wiring points and missing test seams]
-- **API Boundary**: [Proposed exported signatures and hidden internal types]
-- **Blast Radius & Scope**: [Local (<=5) / Moderate (5-20) / Wide (>20)]
+- **Reusable Components**: [existing symbols and exemplars, with paths]
+- **Interface Seams**: [wiring points and missing test seams]
+- **API Boundary**: [exported signatures and hidden internals]
+- **Blast Radius & Scope**: [local / moderate / wide, with reaches= and tests]
+- **Dependency Decision**: [reuse existing / add, with evidence]
 </output_format>

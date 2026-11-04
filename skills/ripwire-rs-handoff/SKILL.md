@@ -1,137 +1,47 @@
 ---
 name: ripwire-rs-handoff
-description: >
-  Brief someone ELSE on a subsystem — 'hand this area off' to a successor, teammate or fresh session:
-  purpose, the 2-3 entry points with bodies, the design docs that say WHY, hotspot/bus-factor risk — a
-  compact pasteable brief, not a wall of source. Understanding it yourself → orient.
+description: Brief someone else on a subsystem or an interrupted session: entry points with bodies, design rationale, hotspot risk, pinned notes, and the commit each number was measured at.
 allowed-tools: Bash, Read
 ---
 
 <identity>
-You are a technical context handoff specialist. Your goal is to prepare concise, verified, fact-based engineering handoff briefs for successor agents or teammates.
+You write concise, verified handoff briefs for a successor agent or teammate. Facts only, each stamped with the commit it came from.
 </identity>
 
-<investigate_before_handoff>
-Before generating a handoff brief:
-1. For working sessions in flight: `ripwire-rs <dir> --handoff --legend=compact`
-2. For subsystem briefs: query task symbols with `ripwire-rs <dir> --for="SUBSYSTEM"` and expand top bodies with `--expand`.
-</investigate_before_handoff>
-
-<instructions>
 # Handoff with ripwire
 
-> Nearest neighbours:
-> • You need to UNDERSTAND the subsystem yourself first (not brief someone else) → **ripwire-rs-orient**.
-> • You need ONE symbol's full contract, not a whole-subsystem brief → **ripwire-rs-navigate** (`--expand`).
-> • The recipient needs an architecture/layering read specifically → **ripwire-rs-layers**.
+`<dir>` = repo root. `SUBSYSTEM` = the area in plain words. To understand the subsystem yourself, use ripwire-rs-orient instead.
 
-Trigger: you're handing a subsystem to another agent or developer and want to give them a
-fast, accurate brief — not a wall of source code.
+## Subsystem brief
 
-`<dir>` = repo root. `SUBSYSTEM` = the area in plain words (e.g. "ingest pipeline",
-"graph ranking", "MCP server loop").
+1. `ripwire-rs <dir> --for="SUBSYSTEM" --signatures-only`: the top 10 are what the recipient most needs. Note `cx=` and `in=`.
+2. `ripwire-rs <dir> --expand=SYM1,SYM2,SYM3 --legend=compact` for the top three. Paste bodies verbatim. Bodies are redacted by default; `--no-redact` only when auditing credential handling.
+3. `ripwire-rs <dir> --recall="SUBSYSTEM"`: summarize the design decisions the docs record. Docs are text, not verified fact; say "the docs claim".
+4. `ripwire-rs <dir> --notes --legend=compact`: fold this subsystem's pinned gotchas into the brief. Before handing off, add any trap you found with `--note-add="SYM_or_path: text"`.
+5. Risk: `ripwire-rs <subdir> --hotspots` scopes to the subsystem; compare against the repo-wide `--hotspots`. Frame it as "developers keep touching this; tread carefully", not "this has bugs".
 
-1. **Task-relevant symbols** — `ripwire-rs <dir> --for="SUBSYSTEM" --signatures-only`
-   Output: `<sigs>` ranked by relevance. The top 10 are the symbols the recipient most needs
-   to know. Note their file paths, complexity (`cx=`), and reuse count (`in=`).
-   (`--top-k` does not narrow `--for` — the binary says so on stderr and serves the whole list;
-   `--signatures-only` skips the inline bodies, since step 2 expands the ones you pick.)
+Flag any `amb="K"` symbol in `--expand`'s calls as uncertain.
 
-2. **Expand the key symbols** — `ripwire-rs <dir> --expand=SYM1,SYM2,SYM3 --legend=compact`
-   (Pick the top 3 by rank from step 1.)
-   Output: full bodies + callee signatures (no ranked map rides along; step 1 was your orient). This is the actual contract — paste it into the
-   handoff verbatim rather than paraphrasing. **Bodies are redacted by default** — high-confidence
-   credentials (API keys, tokens, connection strings) are masked before you see them, so pasting this
-   straight into a handoff doc is safe as-is; pass `--no-redact` only if you deliberately need the
-   verbatim secret (e.g. auditing the credential-handling code itself).
+## Interrupted session
 
-3. **Design rationale** — `ripwire-rs <dir> --recall="SUBSYSTEM"`
-   Output: most relevant markdown docs (planning/design notes, READMEs) in full. Read and
-   summarize the key decisions — why this design, not another. That's what the recipient most
-   needs and least gets from reading code.
-   Also read `ripwire-rs <dir> --notes --legend=compact` — it lists every gotcha a prior agent pinned (free-text
-   lines; ripwire does not attach them to other reports, so scan them for this subsystem's symbols/files yourself); fold it into the
-   brief instead of letting the recipient rediscover it. Before you hand off, `--note-add="SYM_or_path:
-   text"` any trap you found yourself that isn't already written down — the cheapest thing you can leave
-   the successor. If the same symbol has collected several notes across handoffs, that's a signal to
-   graduate it out of prose entirely, into a `--quality-ack` reason or a standing `--arch` deny rule.
+`ripwire-rs <dir> --handoff --legend=compact` emits a continuation packet: a `<verified>` section (branch, HEAD sha with `+dirty`, changed files and symbols, blast radius, tests to run) and a `<heuristic>` section (co-change partners, notes, plan pointers) labelled as suggestion. Single root only. Paste it as-is; `--token-budget=N` drops heuristic rows first and reports `withheld=`.
 
-4. **Maintenance risk, scoped to the subsystem** — point `--hotspots` straight at the subsystem instead of
-   filtering the whole-repo list: `ripwire-rs <subdir> --hotspots` (verified: subdir scoping works, same as
-   `--dead-code=DIR`). If the subsystem isn't a clean subdirectory, keep the repo root and `--exclude` the
-   rest (repeatable flag) to fence the scan to just the area you're briefing on.
-   Also worth a look: `ripwire-rs <dir> --hotspots --legend=compact` (whole-repo, no scoping) to see whether any subsystem file
-   also lands in the *global* top-10 — a file can be locally worst-in-subsystem and still unremarkable
-   repo-wide, or vice versa; that distinction matters to the recipient. Tell them: "this file is gnarly —
-   high churn, high complexity — be careful and run tests after any change here."
+## Stamp every number
 
-## Calibration — what's fact vs framing here
-
-- Steps 1–3 are direct reads (ranked signatures, full bodies, doc text) — trustworthy as far as the
-  underlying call graph goes (name-based edges; a symbol with high `amb=` in `--expand`'s `<calls>` block
-  means some of ITS calls were ambiguous — don't present those as certain in the brief, flag them).
-  `--recall` returns doc *text*, not a verified fact — summarize what the docs claim, not what's provably
-  still true; a stale design doc will still get picked up.
-- Step 4 (hotspots) is `churn × cognitive complexity` — a maintenance-pain *signal*, not a defect count.
-  Frame it to the recipient as "developers keep touching this, tread carefully," not "this file has bugs."
-
-## Stamp the commit you measured at — `at="<sha>[+dirty]"`
-
-A brief is read hours or days later, against a HEAD that has moved. **Every number you quote must carry
-the commit it was measured at**, or the recipient cannot tell a stale finding from a live one.
-
-Several repo-reading verbs now do this for you: the header carries `at="<sha>"`, and `at="<sha>+dirty"`
-when the working tree had uncommitted changes at measure time. Real output from this repo:
-
-```
-<quality-delta baseline="git-HEAD" regressions="0" … gating="0" at="f0a45e43d">
-```
-
-**`+dirty` is the important half.** A stamp ending in `+dirty` means the numbers describe a working tree
-that exists on exactly one machine and is not recoverable from the sha — it is *not* reproducible by the
-recipient. Either commit first and re-measure, or say so explicitly in the brief.
-
-**What actually carries a stamp today (verified by running each verb — do not assume it is universal):**
+A brief is read later, against a moved HEAD. Quote the commit each number was measured at.
 
 | verb | stamp |
 |---|---|
-| `--quality-delta` · `--pr-context` · `--test-gate` · `--map-diff` · `--doc-drift` | `at="<sha>[+dirty]"` |
-| `--stray-content` | `head="<sha>"` — different attribute name, and **no `+dirty` suffix** |
-| `--situ` · `--cochange` · `--owners` | **none** — record the sha yourself (`git rev-parse --short HEAD`) |
+| `--quality-delta`, `--pr-context`, `--test-gate`, `--map-diff`, `--doc-drift` | `at="<sha>[+dirty]"` |
+| `--stray-content` | `head="<sha>"` (no `+dirty`) |
+| `--situ`, `--cochange`, `--owners` | none: run `git rev-parse --short HEAD` yourself |
 
-Two traps: the attribute is `head=` rather than `at=` on `--stray-content`, so a script grepping only for
-`at=` silently gets nothing; and in `--doc-drift` the name `at=` is *overloaded* — the header `at=` is a
-git sha, but each drift ROW's `at=` is a **file path** (`at="src/mcp.h"`). Anchor on the header, not the
-first match.
-
-## Output
-
-Handoff brief: (1) what the subsystem does in 2 sentences, (2) the 3 key entry-point symbols
-with file:line and their signatures (from `--expand`), (3) the design decisions the recipient
-must know (from `--recall`), (4) any hotspot files to be careful with, flagged if churn/complexity data
-looks stale (no git history, non-git root). Aim for under 600 tokens.
-
-## Mid-task session handoff — `--handoff`
-
-Handing off an INTERRUPTED WORKING SESSION (not a subsystem summary)? `ripwire-rs <dir> --handoff --legend=compact` emits
-the whole continuation packet in one deterministic call: a `<verified>` section (branch, HEAD sha with
-`+dirty` marker, changed files + their symbols, transitive blast-radius size, tests-to-run) that is pure
-disk truth, and a `<heuristic>` section (co-change partners not in the diff, committed `--note-add`
-notes on the touched files, plan/design doc pointers ranked by a branch+commit-subject query) that is
-labeled suggestion, never presented as fact. Composes with `--token-budget=N` — heuristic rows drop
-tail-first and the header discloses `withheld=`; verified rows never drop. Single-root only; paste the
-packet to the next agent as-is.
-
-<example title="Handing off an interrupted session">
-Good: Run `ripwire-rs <dir> --handoff` to emit verified disk truth (branch, dirty diff, blast radius, tests-to-run).
-Bad: Dumping full unparsed chat logs or conversational summaries.
-</example>
-</instructions>
+`+dirty` numbers cannot be reproduced by anyone else: commit, re-measure, or say so in the brief. Traps: `--stray-content` uses `head=`, not `at=`; in `--doc-drift` the header `at=` is a sha but each row's `at=` is a file path.
 
 <output_format>
-### Subsystem Handoff Brief
-- **Core Purpose & Entry Points**: [Main entry symbols with full signatures]
-- **Design Rationale**: [Key decisions from --recall]
-- **Maintenance Risks**: [Hotspots and bus-factor alerts]
-- **Continuation Actions**: [Next concrete actions to perform]
+### Subsystem Handoff Brief (at="<sha>")
+- **Core Purpose & Entry Points**: [2 sentences; top symbols with file:line and signatures]
+- **Design Rationale**: [decisions from --recall, marked as doc claims]
+- **Maintenance Risks**: [hotspots, bus-factor alerts, pinned notes]
+- **Continuation Actions**: [next concrete steps]
 </output_format>

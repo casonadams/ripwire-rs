@@ -40,7 +40,7 @@ cargo binstall ripwire-rs
 cargo install ripwire-rs
 ```
 
-Install the 17 embedded agent skills with `ripwire-rs --add-skills`—agents with shell and skill support invoke the CLI directly and **do not need an MCP server**. See the **[Installation Guide](docs/INSTALL.md)** for standalone `.deb`/`.rpm` downloads and source builds, or **[MCP Configuration](docs/MCP.md)** if your client requires stdio MCP.
+Install the 9 embedded agent skills with `ripwire-rs --add-skills`—agents with shell and skill support invoke the CLI directly and **do not need an MCP server**. See the **[Installation Guide](docs/INSTALL.md)** for standalone `.deb`/`.rpm` downloads and source builds, or **[MCP Configuration](docs/MCP.md)** if your client requires stdio MCP.
 
 ---
 

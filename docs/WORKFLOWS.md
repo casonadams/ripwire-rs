@@ -311,7 +311,7 @@ listed. This is the default for all three parity targets and the
 `scripts/validate-parity.sh` launcher. Make still displays build output.
 
 `make complexity` also emits GitHub Actions `::error file=...,line=...::`
-annotations on stderr, one for each Rust function above cognitive complexity
+annotations on stderr, one for each Rust, Python or JavaScript function above cognitive complexity
 15, and exits nonzero. It is quiet when the gate passes. The
 `scripts/check-complexity.py` adapter converts `cccc` JSON output without
 capping the number of reported violations.
