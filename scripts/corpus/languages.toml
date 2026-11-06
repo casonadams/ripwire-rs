@@ -236,9 +236,10 @@ oracle = "scip"
 status = "template"
 indexer = "scip-php"
 indexer_version = "0.0.2"
-setup = "composer install --no-interaction --no-progress --no-scripts --no-security-blocking"
+setup = '''if [ -f composer.lock ]; then composer install --no-dev --no-interaction --no-progress --no-scripts --no-security-blocking; else composer dump-autoload --no-interaction && mkdir -p vendor/composer && php -r '$j = json_decode(file_get_contents("composer.json"), true); $r = trim((string) shell_exec("git rev-parse HEAD")); file_put_contents("vendor/composer/installed.php", "<?php return [\"root\" => [\"name\" => \"" . ($j["name"] ?? "root/root") . "\", \"reference\" => \"$r\"], \"versions\" => []];");'; fi'''
 index = "cd /src && scip-php && mv index.scip {out}"
 extensions = ["php", "phtml"]
+notes = "Without composer.lock, composer resolves require-dev and a dev dependency can name the root package (deepcopy), so the setup writes only the autoloader and a stub installed.php from composer.json and the checkout commit; scip-php reads the root reference from it, and an empty reference breaks in-tree symbol identity."
 
 [proto]
 oracle = "none"

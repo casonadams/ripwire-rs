@@ -241,14 +241,22 @@ class Rendering(unittest.TestCase):
                 if template["status"] in ("blocked", "none"):
                     self.assertTrue(template["reason"])
 
+    def test_every_language_is_listed_once(self):
+        self.assertEqual(len(add.load_languages()), 36)
+
+
+class Templates(unittest.TestCase):
     def test_scala_template_carries_no_repository_specific_setup(self):
         template = add.load_languages()["scala"]
         self.assertNotIn("setup", template)
         self.assertEqual(template["index"], "cd /src && scip-java index --output={out}")
         self.assertNotIn("scalacheck", "".join(str(value) for value in template.values()))
 
-    def test_every_language_is_listed_once(self):
-        self.assertEqual(len(add.load_languages()), 36)
+    def test_php_template_installs_runtime_deps_only_when_a_lock_exists(self):
+        setup = add.load_languages()["php"]["setup"]
+        self.assertIn("if [ -f composer.lock ]", setup)
+        self.assertIn("--no-dev", setup)
+        self.assertIn("installed.php", setup)
 
 
 class Manifest(unittest.TestCase):

@@ -122,5 +122,45 @@ class Manifest(unittest.TestCase):
         self.assertEqual(corpus.Entry.from_table(table()).image, corpus.IMAGE)
 
 
+def field(number, payload):
+    """One length-delimited protobuf field: the wire form SCIP uses for its documents."""
+    key = (number << 3) | 2
+    length, size = bytearray(), len(payload)
+    while True:
+        length.append((size & 0x7F) | (0x80 if size > 0x7F else 0))
+        size >>= 7
+        if not size:
+            break
+    return bytes([key]) + bytes(length) + payload
+
+
+def document(path):
+    return field(1, path.encode())
+
+
+class SubdirIndex(unittest.TestCase):
+    def test_keeps_only_documents_under_the_subdirectory(self):
+        index = field(1, b"meta") + field(2, document("src/a.php")) + field(2, document("tests/t.php")) + field(3, b"ext")
+        self.assertEqual(corpus.scip_subdir(index, "src"), field(1, b"meta") + field(2, document("src/a.php")) + field(3, b"ext"))
+
+    def test_prefix_matches_a_whole_path_component(self):
+        index = field(2, document("srcx/b.php")) + field(2, document("src/c.php"))
+        self.assertEqual(corpus.scip_subdir(index, "src/"), field(2, document("src/c.php")))
+
+    def test_long_paths_with_multi_byte_lengths_survive(self):
+        long_path = "src/" + "a" * 300 + ".php"
+        index = field(2, document(long_path)) + field(2, document("other/x.php"))
+        self.assertEqual(corpus.scip_subdir(index, "src"), field(2, document(long_path)))
+
+    def test_unsupported_wire_type_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "wire type 3"):
+            list(corpus.wire_fields(bytes([0x0B])))
+
+    def test_subdir_entry_mounts_the_whole_checkout(self):
+        entry = corpus.Entry.from_table(table(subdir="src"))
+        command = corpus.docker_command(entry, pathlib.Path("/checkout"), pathlib.Path("/out"))
+        self.assertIn("/checkout:/src", command)
+
+
 if __name__ == "__main__":
     unittest.main()

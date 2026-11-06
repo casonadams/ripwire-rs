@@ -200,11 +200,10 @@ def container_script(entry):
 
 
 def docker_command(entry, src, out):
-    mount = src / entry.subdir if entry.subdir else src
     return [
         "docker", "run", "--rm", "--platform", "linux/amd64", "--memory=3g",
         "--user", f"{os.getuid()}:{os.getgid()}",
-        "-v", f"{mount}:/src", "-v", f"{out}:/out", "-v", f"{CACHE / 'home'}:/corpus-home",
+        "-v", f"{src}:/src", "-v", f"{out}:/out", "-v", f"{CACHE / 'home'}:/corpus-home",
         "-w", "/src",
         "-e", "HOME=/corpus-home",
         "-e", "CARGO_HOME=/corpus-home/cargo",
@@ -213,6 +212,57 @@ def docker_command(entry, src, out):
         "-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=*",
         entry.image, "sh", "-ec", container_script(entry),
     ]
+
+
+def read_varint(buf, pos):
+    """The unsigned base-128 varint at POS, and the position just after it."""
+    end = pos
+    while buf[end] & 0x80:
+        end += 1
+    value = 0
+    for index, byte in enumerate(buf[pos:end + 1]):
+        value |= (byte & 0x7F) << (7 * index)
+    return value, end + 1
+
+
+def wire_fields(buf):
+    """Each top-level protobuf field as (number, wire type, its raw bytes, its payload when length-delimited)."""
+    pos = 0
+    while pos < len(buf):
+        start = pos
+        key, pos = read_varint(buf, pos)
+        number, wire = key >> 3, key & 7
+        payload = None
+        if wire == 0:
+            _, pos = read_varint(buf, pos)
+        elif wire == 1:
+            pos += 8
+        elif wire == 2:
+            length, pos = read_varint(buf, pos)
+            payload = buf[pos:pos + length]
+            pos += length
+        elif wire == 5:
+            pos += 4
+        else:
+            raise ValueError(f"unsupported protobuf wire type {wire}")
+        yield number, wire, buf[start:pos], payload
+
+
+def scip_document_path(document):
+    for number, wire, _raw, payload in wire_fields(document):
+        if number == 1 and wire == 2:
+            return payload.decode()
+    return ""
+
+
+def scip_subdir(index_bytes, subdir):
+    """The SCIP index with only the documents under SUBDIR kept; every other top-level field is copied byte for byte."""
+    prefix = subdir.strip("/") + "/"
+    kept = []
+    for number, _wire, raw, payload in wire_fields(index_bytes):
+        if number != 2 or scip_document_path(payload).startswith(prefix):
+            kept.append(raw)
+    return b"".join(kept)
 
 
 def build_index(entry, src, target):
@@ -230,7 +280,10 @@ def build_index(entry, src, target):
     if done.returncode or not produced.exists():
         raise Skip(f"indexer {entry.indexer} failed (exit {done.returncode}, log {log})")
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(produced, target)
+    if entry.subdir:
+        target.write_bytes(scip_subdir(produced.read_bytes(), entry.subdir))
+    else:
+        shutil.move(produced, target)
 
 
 def index_path(entry, key):
