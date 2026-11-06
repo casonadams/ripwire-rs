@@ -8,6 +8,9 @@ use std::collections::HashMap;
 pub struct ZigLanguage;
 pub static ZIG_LANG: ZigLanguage = ZigLanguage;
 
+/// Standard library member names. The names after `close` (`writeAll`, `allocator`, `unlock`, ...) were measured on
+/// the Zig corpus: each was bound by name to an in-tree method the call could not mean, and the corpus reached no
+/// in-tree target through it. Names the corpus did reach in-tree (`items`, `count`, `set`, `reset`) stay out.
 const ZIG_STD_MEMBERS: &[&str] = &[
     "init",
     "deinit",
@@ -22,6 +25,15 @@ const ZIG_STD_MEMBERS: &[&str] = &[
     "clearRetainingCapacity",
     "clearAndFree",
     "toOwnedSlice",
+    "writeAll",
+    "allocator",
+    "resize",
+    "clone",
+    "option",
+    "String",
+    "setColor",
+    "unlock",
+    "lockUncancelable",
     "get",
     "put",
     "remove",
@@ -92,6 +104,28 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
     ..SyntaxKinds::NONE
 };
 
+/// The node inside a `expression` wrapper, when a grammar version wraps the receiver in one.
+fn unwrap_expression(node: tree_sitter::Node<'_>) -> tree_sitter::Node<'_> {
+    match node.kind() {
+        "expression" => node.named_child(0).unwrap_or(node),
+        _ => node,
+    }
+}
+
+/// The identifier a field-access chain starts from (`std` in `std.testing.expectEqual`).
+fn leftmost_identifier<'s>(
+    mut node: tree_sitter::Node<'_>,
+    source_bytes: &'s [u8],
+) -> Option<&'s str> {
+    loop {
+        node = unwrap_expression(node);
+        match node.kind() {
+            "identifier" => return node.utf8_text(source_bytes).ok(),
+            "field_expression" => node = node.child_by_field_name("object")?,
+            _ => return None,
+        }
+    }
+}
 
 /// The module path and the name it binds in `const util = @import("util.zig");` (a bare `@import("x")` binds
 /// nothing). The text is the import node's source, or a plain path. None unless the path names a `.zig` file.
@@ -157,19 +191,24 @@ impl LanguageSemantics for ZigLanguage {
     }
 
     /// `util.log(v)` names its module by the receiver identifier, which binds an import (`const util = @import`).
-    /// A receiver that binds no module falls back to name resolution in the resolver.
-    fn call_qualifier(&self, name_node: tree_sitter::Node<'_>, source_bytes: &[u8]) -> Option<String> {
+    /// `std.testing.expectEqual(..)` names the standard library, whatever the chain. A receiver that binds no
+    /// module falls back to name resolution in the resolver.
+    fn call_qualifier(
+        &self,
+        name_node: tree_sitter::Node<'_>,
+        source_bytes: &[u8],
+    ) -> Option<String> {
         let access = name_node
             .parent()
             .filter(|p| p.kind() == "field_expression")?;
-        let object = access.child_by_field_name("object")?;
-        let object = match object.kind() {
-            "expression" => object.named_child(0)?,
-            _ => object,
-        };
-        (object.kind() == "identifier")
-            .then(|| object.utf8_text(source_bytes).ok().map(str::to_string))
-            .flatten()
+        let object = unwrap_expression(access.child_by_field_name("object")?);
+        match object.kind() {
+            "identifier" => object.utf8_text(source_bytes).ok().map(str::to_string),
+            "field_expression" if leftmost_identifier(object, source_bytes) == Some("std") => {
+                Some("std".to_string())
+            }
+            _ => None,
+        }
     }
 
     fn complexity_kinds(&self) -> &'static ComplexityKinds {

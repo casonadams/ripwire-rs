@@ -1,13 +1,14 @@
 //! The project-wide pass over every parsed file, run once the whole tree is parsed. Both cross-file passes read one
 //! table of the classes the tree declares, so a class name declared twice is never used to type a receiver.
 
-use super::types::FileParseResult;
+use super::types::{FileParseResult, RawDef};
 use crate::domain::{Lang, SymKind};
 use std::collections::{HashMap, HashSet};
 
 /// The class names the tree declares, and the template names it specializes.
 pub(super) struct Declared {
-    /// Classes, structs, and interfaces the tree declares exactly once: a name declared twice could name either.
+    /// Owner keys of the classes, structs, and interfaces the tree declares exactly once: a nested type is keyed by
+    /// its enclosing type (`Outer.Inner`) where its language scopes nested types, else by its name.
     pub(super) classes: HashSet<String>,
     /// Template names with an explicit specialization somewhere in the tree.
     pub(super) specialized: HashSet<String>,
@@ -24,19 +25,19 @@ pub fn resolve_project_types(parsed: &mut [Option<(Lang, FileParseResult)>]) {
 
 impl Declared {
     fn of(parsed: &[Option<(Lang, FileParseResult)>]) -> Self {
-        let mut class_count: HashMap<&str, usize> = HashMap::new();
+        let mut class_count: HashMap<String, usize> = HashMap::new();
         let mut specialized = HashSet::new();
         let mut exact = HashSet::new();
-        for def in parsed
+        for (lang, def) in parsed
             .iter()
             .flatten()
-            .flat_map(|(_, file)| file.defs.iter())
+            .flat_map(|(lang, file)| file.defs.iter().map(move |def| (*lang, def)))
         {
             if matches!(
                 def.kind,
                 SymKind::Class | SymKind::Struct | SymKind::Interface
             ) {
-                *class_count.entry(def.name.as_str()).or_default() += 1;
+                *class_count.entry(owner_key(lang, def)).or_default() += 1;
             }
             if let Some(scope) = def.scope.as_deref()
                 && let Some(base) = specialized_base(scope)
@@ -48,7 +49,7 @@ impl Declared {
         let classes = class_count
             .into_iter()
             .filter(|(_, count)| *count == 1)
-            .map(|(name, _)| name.to_string())
+            .map(|(key, _)| key)
             .collect();
         Self {
             classes,
@@ -67,6 +68,17 @@ impl Declared {
             return Some(ty.to_string());
         }
         (!self.specialized.contains(base)).then(|| base.to_string())
+    }
+}
+
+/// The key a class is recorded under: its name, qualified by the type that directly encloses it where the language
+/// scopes nested types (`Outer.Inner`).
+fn owner_key(lang: Lang, def: &RawDef) -> String {
+    match def.scope.as_deref() {
+        Some(outer) if lang.semantics().nested_types_are_scoped() => {
+            format!("{outer}.{}", def.name)
+        }
+        _ => def.name.clone(),
     }
 }
 

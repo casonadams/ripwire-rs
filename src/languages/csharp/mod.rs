@@ -161,9 +161,14 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
     declaration_name: None,
     class_params: &[],
     transparent_wrappers: &[],
+    scoped_nesting: true,
 };
 
 impl LanguageSemantics for CSharpLanguage {
+    fn nested_types_are_scoped(&self) -> bool {
+        true
+    }
+
     fn complexity_kinds(&self) -> &'static ComplexityKinds {
         &KINDS
     }

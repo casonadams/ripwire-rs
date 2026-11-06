@@ -56,9 +56,14 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
     declaration_name: Some("pattern"),
     class_params: &["class_parameter"],
     transparent_wrappers: &[],
+    scoped_nesting: true,
 };
 
 impl LanguageSemantics for ScalaLanguage {
+    fn nested_types_are_scoped(&self) -> bool {
+        true
+    }
+
     fn complexity_kinds(&self) -> &'static ComplexityKinds {
         &KINDS
     }

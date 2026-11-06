@@ -2,7 +2,7 @@ use crate::support::callees::callee_file_names;
 use ripwire_rs::{Interner, Lang, LanguageRegistry, SymKind, ingest_in_memory_files};
 
 /// Callee symbols of `caller`, as `file:name`, across an in-memory multi-file ingest.
-fn callee_locations(files: &[(&str, Lang, &[u8])], caller: &str) -> Vec<String> {
+pub(super) fn callee_locations(files: &[(&str, Lang, &[u8])], caller: &str) -> Vec<String> {
     callee_file_names(files, caller)
 }
 

@@ -1,3 +1,4 @@
+use super::harness::check_owner_callees;
 use crate::support::callees::callee_file_names;
 use ripwire_rs::Lang;
 
@@ -5,6 +6,24 @@ use ripwire_rs::Lang;
 fn test_lua_graph_protocol() {
     assert!(Lang::Lua.semantics().is_std_or_builtin_member("insert"));
 }
+
+const MODULE_TABLE: &[(&str, Lang, &[u8])] = &[
+    ("lua/options.lua", Lang::Lua, b"local options = {}\nfunction options.error(msg)\n  print(msg)\nend\nfunction options.run()\n  options.error(\"bad\")\nend\nreturn options\n"),
+    ("lua/other.lua", Lang::Lua, b"local other = {}\nfunction other.error(msg)\n  print(msg)\nend\nreturn other\n"),
+];
+
+const GLOBAL_BUILTIN: &[(&str, Lang, &[u8])] = &[
+    (
+        "lua/shape.lua",
+        Lang::Lua,
+        b"local shape = {}\nfunction shape.type(obj)\n  return obj\nend\nreturn shape\n",
+    ),
+    (
+        "lua/check.lua",
+        Lang::Lua,
+        b"local function check(x)\n  return type(x)\nend\nreturn check\n",
+    ),
+];
 
 const PL_URL: &[u8] = b"local url = {}\nfunction url.quote(s)\n    return s\nend\nreturn url\n";
 const PL_PRETTY: &[u8] =
@@ -62,4 +81,14 @@ fn lua_require_binds_the_module_its_local_names() {
             .collect();
         assert_eq!(callee_file_names(&files, "run"), *expected, "{label}");
     }
+}
+
+#[test]
+fn lua_module_table_call_binds_to_the_table_that_defines_it() {
+    check_owner_callees(MODULE_TABLE, "run", &["options.error"]);
+}
+
+#[test]
+fn lua_bare_builtin_call_does_not_bind_to_a_module_function_in_another_file() {
+    check_owner_callees(GLOBAL_BUILTIN, "check", &[]);
 }

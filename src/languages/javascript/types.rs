@@ -6,7 +6,7 @@
 
 use super::{javascript_binding_scope, javascript_binding_scope_in};
 use crate::languages::reads::{ReadBindings, enclosing_scope, nodes};
-use crate::languages::typed::construction_type;
+use crate::languages::typed::{agree, construction_type};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -159,14 +159,7 @@ struct FieldFacts(HashMap<(String, String), Option<String>>);
 
 impl FieldFacts {
     fn record(&mut self, owner: &str, field: &str, ty: Option<String>) {
-        self.0
-            .entry((owner.to_string(), field.to_string()))
-            .and_modify(|slot| {
-                if *slot != ty {
-                    *slot = None;
-                }
-            })
-            .or_insert(ty);
+        agree(&mut self.0, (owner.to_string(), field.to_string()), ty);
     }
 }
 

@@ -199,6 +199,12 @@ pub trait ResolutionLookup {
             && r.lang.semantics().member_call_targets_members_only()
     }
 
+    /// A member call `x.f()` on an untyped receiver names neither a free function nor a type where the language says so.
+    #[must_use]
+    fn is_excluded_member_call(&self, r: &Reference, sym: &Symbol) -> bool {
+        self.is_free_function_of_member_call(r, sym) || self.member_call_names_type(r, sym)
+    }
+
     #[must_use]
     fn is_compatible_target(&self, r: &Reference, sym: &Symbol) -> bool {
         if sym.constructor && r.qualifier != sym.scope {
@@ -225,8 +231,7 @@ pub trait ResolutionLookup {
             // `res.json()` calls a property of an unknown receiver; a same-named variable is no callee.
             return false;
         }
-        if self.is_free_function_of_member_call(r, sym) {
-            // `x.f()` on an untyped receiver never reaches a free function `f` of the same name.
+        if self.is_excluded_member_call(r, sym) {
             return false;
         }
         if r.role == RefRole::Call
@@ -246,6 +251,16 @@ pub trait ResolutionLookup {
             }
         }
         self.is_owner_compatible(r, sym)
+    }
+
+    /// A member call `x.f()` never names a type where the language says so: Go `r.Context()` on an untyped
+    /// receiver is a method, not the in-tree `type Context struct`.
+    #[must_use]
+    fn member_call_names_type(&self, r: &Reference, sym: &Symbol) -> bool {
+        r.member_call
+            && r.role == RefRole::Call
+            && sym.kind.is_type_container()
+            && r.lang.semantics().member_calls_skip_types()
     }
 
     #[must_use]

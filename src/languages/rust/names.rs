@@ -96,6 +96,22 @@ pub(super) const RUST_STD_MEMBERS: &[&str] = &[
     "peek",
 ];
 
+/// tree-sitter `Node` methods: no in-tree definition answers them, so an untyped call to one is external.
+pub(super) const RUST_TREE_SITTER_MEMBERS: &[&str] = &[
+    "child_by_field_name",
+    "named_child",
+    "named_children",
+    "named_child_count",
+    "child_count",
+    "children",
+    "utf8_text",
+    "kind",
+    "start_byte",
+    "end_byte",
+    "byte_range",
+    "is_named",
+];
+
 pub(super) const RUST_STD_QUALIFIERS: &[&str] = &[
     "std",
     "core",

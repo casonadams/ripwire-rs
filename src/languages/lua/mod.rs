@@ -5,10 +5,14 @@ use std::collections::HashMap;
 pub struct LuaLanguage;
 pub static LUA_LANG: LuaLanguage = LuaLanguage;
 
+/// Library members and global builtins. A bare `assert(..)`, `error(..)` or `type(..)` names the global builtin, so
+/// it binds an in-tree definition only in the file that declares it.
 const LUA_STD_MEMBERS: &[&str] = &[
     "insert", "remove", "concat", "sort", "unpack", "pack", "sub", "find", "match", "gmatch",
     "gsub", "rep", "reverse", "lower", "upper", "len", "byte", "char", "format", "floor", "ceil",
-    "max", "min", "abs", "sqrt", "open", "close", "read", "write", "lines", "flush",
+    "max", "min", "abs", "sqrt", "open", "close", "read", "write", "lines", "flush", "assert",
+    "error", "type", "setfenv", "getfenv", "setmetatable", "getmetatable", "rawget", "rawset",
+    "select",
 ];
 
 const LUA_STD_QUALIFIERS: &[&str] = &[
@@ -137,6 +141,25 @@ impl LanguageSemantics for LuaLanguage {
 
     fn is_symbol_name_public(&self, sym_name: &str) -> bool {
         !sym_name.starts_with('_') && !sym_name.starts_with('#')
+    }
+
+    /// `options.error(..)` and `shape.type(..)` name their module table by the receiver identifier, so the call binds
+    /// the function that table defines. `self` names the enclosing table and keeps name resolution.
+    fn call_qualifier(
+        &self,
+        name_node: tree_sitter::Node<'_>,
+        source_bytes: &[u8],
+    ) -> Option<String> {
+        let access = name_node.parent()?;
+        if !matches!(
+            access.kind(),
+            "dot_index_expression" | "method_index_expression"
+        ) {
+            return None;
+        }
+        let table = access.child_by_field_name("table")?;
+        let name = table.utf8_text(source_bytes).ok()?;
+        (table.kind() == "identifier" && name != "self").then(|| name.to_string())
     }
 
     fn extract_custom_scope(

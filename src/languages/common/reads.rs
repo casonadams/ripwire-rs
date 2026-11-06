@@ -7,6 +7,8 @@ pub struct BindingSpan {
     pub ty: Option<String>,
     /// The element type of a generic collection bound here (`List<Kids>` binds `Kids`).
     pub element: Option<String>,
+    /// The function whose result initializes this binding (`x := f()`), typed across files by the project pass.
+    pub call: Option<String>,
 }
 
 #[derive(Default)]
@@ -107,6 +109,7 @@ impl<'a> ReadBindings<'a> {
                     range,
                     ty: None,
                     element: None,
+                    call: None,
                 });
                 spans.len() - 1
             }
@@ -127,6 +130,16 @@ impl<'a> ReadBindings<'a> {
             Some(span) => span.ty.as_deref(),
             None => self.module.get(name)?.as_deref(),
         }
+    }
+
+    /// Records that the binding of `name` over `range` takes the result of the function `callee`.
+    pub fn insert_call(&mut self, name: &'a str, range: std::ops::Range<usize>, callee: String) {
+        self.span_over(name, range).call = Some(callee);
+    }
+
+    /// The function whose result initializes the innermost binding of `name` at `byte`.
+    pub fn call_at(&self, name: &str, byte: usize) -> Option<&str> {
+        self.span_at(name, byte)?.call.as_deref()
     }
 
     /// The element type of the collection `name` at `byte`, when its innermost binding records one.

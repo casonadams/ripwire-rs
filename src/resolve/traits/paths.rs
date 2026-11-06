@@ -54,6 +54,9 @@ impl TraitIndex {
         env: &TraitEnv<'_>,
         want: Want,
     ) -> Option<NodeId> {
+        if let Some(id) = self.qualified_nested(text, env) {
+            return Some(id);
+        }
         let (quals, leaf) = text.rsplit_once("::").unwrap_or(("", text));
         let leaf = env.interner.get(leaf)?;
         let symbols = env.symbols;
@@ -80,6 +83,9 @@ impl TraitIndex {
             }));
         }
         let admitted: Vec<NodeId> = admitted.collect();
+        if let Some(id) = self.lexically_nested(&admitted, file_id, byte, env) {
+            return Some(id);
+        }
         let mut scope = Some(site);
         while let Some(current) = scope {
             let found = only_or_ambiguous(admitted.iter().copied().filter(|&id| {

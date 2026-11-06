@@ -161,6 +161,7 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
     declaration_name: Some("declarator"),
     class_params: &[],
     transparent_wrappers: &["std::unique_ptr", "std::shared_ptr", "std::weak_ptr", "std::optional"],
+    scoped_nesting: false,
 };
 
 /// Scope of a member inside an explicit specialization keeps its template arguments

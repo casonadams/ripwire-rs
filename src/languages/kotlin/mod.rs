@@ -5,6 +5,17 @@ mod types;
 pub struct KotlinLanguage;
 pub static KOTLIN_LANG: KotlinLanguage = KotlinLanguage;
 
+/// Kotlin stdlib scope functions and JVM metadata accessors. Every kotlinpoet site where an untyped call of one of
+/// these bound to an in-tree method was a false edge, so an untyped receiver declines instead.
+const KOTLIN_STD_MEMBERS: &[&str] = &[
+    "apply",
+    "asType",
+    "getter",
+    "mutable",
+    "primaryConstructor",
+    "setter",
+];
+
 const KINDS: ComplexityKinds = ComplexityKinds {
     paths: &["when_entry"],
     flat: &[],
@@ -95,10 +106,22 @@ impl LanguageSemantics for KotlinLanguage {
         receiver: tree_sitter::Node<'_>,
         source: &'a [u8],
     ) -> Option<&'a str> {
-        let callee = receiver
-            .named_child(0)
-            .filter(|callee| receiver.kind() == "call_expression" && callee.kind() == "simple_identifier")?;
+        let callee = receiver.named_child(0).filter(|callee| {
+            receiver.kind() == "call_expression" && callee.kind() == "simple_identifier"
+        })?;
         callee.utf8_text(source).ok()
+    }
+
+    fn nested_types_are_scoped(&self) -> bool {
+        true
+    }
+
+    fn receiver_chain(&self, receiver: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
+        types::receiver_chain(receiver, source)
+    }
+
+    fn is_std_or_builtin_member(&self, name: &str) -> bool {
+        JVM_STD_MEMBERS.contains(&name) || KOTLIN_STD_MEMBERS.contains(&name)
     }
 
     fn tag(&self) -> &'static str {

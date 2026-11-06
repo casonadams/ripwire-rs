@@ -6,10 +6,41 @@ use ripwire_rs::{
 
 pub fn owner_qualified_callees(files: &[(&str, Lang, &[u8])], caller: &str) -> Vec<String> {
     crate::support::callees::callees_described(files, caller, |ingest, interner, id| {
-        let sym = &ingest.symbols[id as usize];
-        let owner = sym.scope.map_or("", |s| interner.resolve(&s));
-        format!("{owner}.{}", interner.resolve(&sym.name))
+        owner_label(ingest, interner, id, false)
     })
+}
+
+/// Callees labelled with their file as well, so two nested classes of one simple name stay apart.
+pub fn nested_owner_callees(files: &[(&str, Lang, &[u8])], caller: &str) -> Vec<String> {
+    crate::support::callees::callees_described(files, caller, |ingest, interner, id| {
+        owner_label(ingest, interner, id, true)
+    })
+}
+
+fn owner_label(
+    ingest: &ripwire_rs::IngestResult,
+    interner: &Interner,
+    id: ripwire_rs::NodeId,
+    with_file: bool,
+) -> String {
+    let sym = &ingest.symbols[id as usize];
+    let owner = sym.scope.map_or("", |s| interner.resolve(&s));
+    let name = interner.resolve(&sym.name);
+    if with_file {
+        let file = interner.resolve(&ingest.files[sym.file_id as usize].path);
+        return format!("{file}:{owner}.{name}");
+    }
+    format!("{owner}.{name}")
+}
+
+/// Asserts the owner-qualified callees of `caller` in an in-memory corpus, in sorted order.
+pub fn check_owner_callees(files: &[(&str, Lang, &[u8])], caller: &str, expected: &[&str]) {
+    let want: Vec<String> = expected.iter().map(|s| (*s).to_string()).collect();
+    assert_eq!(
+        owner_qualified_callees(files, caller),
+        want,
+        "callees of {caller}"
+    );
 }
 
 /// Every resolved `(from, to)` edge among the indexed files, by symbol name, sorted.

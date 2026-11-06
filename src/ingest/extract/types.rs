@@ -44,10 +44,12 @@ impl RawDef {
 }
 
 /// A receiver chain whose base type is bound in its own file, while its member steps may be declared in
-/// another: `doc.select()` has base `Document` and step `select()`. Typed once every file is parsed.
+/// another: `doc.select()` has base `Document` and step `select()`. Typed once every file is parsed. A chain whose
+/// base is the result of a function (`r := f()`, base `call`) takes that function's declared result type.
 #[derive(Debug, Clone)]
 pub struct PendingChain {
     pub base: String,
+    pub call: Option<String>,
     pub steps: Vec<String>,
 }
 
@@ -105,6 +107,9 @@ pub struct FileParseResult {
     /// Type aliases this file declares, as `(alias, declared target type)`; set only where the language types
     /// fields across files.
     pub aliases: Vec<(String, String)>,
+    /// Declared result types of the free functions this file declares, as `(name, result type)`, for the
+    /// cross-file pass to type the locals that take their results.
+    pub returns: Vec<(String, String)>,
 }
 
 /// A receiver `member` (or `this.member`) of `refs[ref_index]`, reached through `this` of class `class`, whose field

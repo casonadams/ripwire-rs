@@ -1,5 +1,8 @@
 use super::{ComplexityKinds, DialectGroup, LanguageSemantics, SyntaxKinds, VisibilityMode};
 use crate::domain::{Lang, SymKind};
+use crate::languages::reads::ReadBindings;
+
+mod types;
 
 pub struct GoLanguage;
 pub static GO_LANG: GoLanguage = GoLanguage;
@@ -195,6 +198,52 @@ impl LanguageSemantics for GoLanguage {
             }
         });
         (arity, orig_name.to_string())
+    }
+
+    fn member_calls_skip_types(&self) -> bool {
+        true
+    }
+
+    fn read_bindings<'a>(&self, root: tree_sitter::Node<'_>, source: &'a [u8]) -> ReadBindings<'a> {
+        types::typed_read_bindings(root, source)
+    }
+
+    fn function_return_types(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+    ) -> Vec<(String, String)> {
+        types::function_returns(root, source)
+    }
+
+    fn interface_calls_keep_declaration(&self) -> bool {
+        true
+    }
+
+    fn indexes_implementations(&self) -> bool {
+        true
+    }
+
+    fn methods_declare_their_receiver(&self) -> bool {
+        true
+    }
+
+    fn named_types_take_methods(&self) -> bool {
+        true
+    }
+
+    fn implementations(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+    ) -> Vec<crate::languages::Implementation> {
+        let mut out = types::method_implementations(root, source);
+        out.extend(types::embedded_implementations(root, source));
+        out
+    }
+
+    fn has_class_inheritance(&self) -> bool {
+        true
     }
 
     fn std_member_names(&self) -> &'static [&'static str] {

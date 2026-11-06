@@ -41,6 +41,9 @@ pub fn parse_file_tree(
         collect_items(cursor, query, &ctx, &mut defs, &mut refs);
         let bindings = lang.semantics().read_bindings(ctx.root, source_bytes);
         let aliases = declared_aliases(lang, ctx.root, source_bytes);
+        let returns = lang
+            .semantics()
+            .function_return_types(ctx.root, source_bytes);
         drop_shadowed_refs(&mut refs, &bindings);
         attach_receiver_types(&mut refs, &bindings, lang);
         let pending_fields = pending_facts(lang, &refs, &bindings);
@@ -58,6 +61,7 @@ pub fn parse_file_tree(
             members: member_types(&bindings),
             pending_fields,
             aliases,
+            returns,
         }
     })
 }

@@ -273,14 +273,14 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | erlang | LSP bridge (ELP 2026-10-14, erlydtl) | blocked: the ELP tarball has no pinned sha256 and its download was blocked; the repo has 34 source files | - | - |
 | fortran | LSP bridge (fortls) | measured | 0.9980 | 0.9845 |
 | gdscript | LSP bridge (Godot 4.7.2 language server, GDQuest steering framework) | unverified: image and pins prepared, not built or measured | - | - |
-| go | LSP bridge (gopls) | measured | 0.8053 | 0.8228 |
+| go | LSP bridge (gopls) | measured | 0.9534 | 0.9586 |
 | graphql | none wired | not attempted: no MIT repo with fragment-spread references found yet | - | - |
 | hcl | not applicable: reference edges are builtin function calls only | not applicable | - | - |
-| java | SCIP indexer (scip-java) | measured | 0.9623 | 0.8963 |
+| java | SCIP indexer (scip-java) | measured | 0.9650 | 0.9138 |
 | javascript | SCIP indexer (scip-typescript) | measured | 1.0000 | 0.7353 |
 | json | not applicable: no reference captures | not applicable | - | - |
-| kotlin | SCIP indexer (scip-java, Kotlin) | measured | 0.8313 | 0.5050 |
-| lua | LSP bridge (lua-language-server) | measured | 0.8216 | 0.8422 |
+| kotlin | SCIP indexer (scip-java, Kotlin) | measured | 0.9132 | 0.8170 |
+| lua | LSP bridge (lua-language-server) | measured | 0.9817 | 0.9553 |
 | markdown | not applicable: no call resolution | not applicable | - | - |
 | metal | LSP bridge (clangd, Satin) | unverified: image and pins prepared, not built or measured | - | - |
 | objc | LSP bridge (clangd, Masonry) | unverified: image and pins prepared, not built or measured | - | - |
@@ -290,13 +290,13 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | ruby | SCIP indexer (scip-ruby) | measured | 0.9864 | 0.9943 |
 | rust | SCIP indexer (rust-analyzer, this repository) | measured | 0.9868 | 0.9789 |
 | scala | SCIP indexer (scip-java, Scala) | measured | 0.9017 | 0.8439 |
-| solidity | LSP bridge (solidity language server) | measured | 0.7103 | 0.6651 |
+| solidity | LSP bridge (solidity language server) | measured | 0.9576 | 0.8966 |
 | sql | not applicable to --eval=scip: table and column references are not scored | not applicable | - | - |
 | swift | LSP bridge (sourcekit-lsp 6.1, eul; scripts/corpus/Dockerfile.swift) | unverified: image and pins prepared, not built or measured | - | - |
 | toml | not applicable: no reference captures | not applicable | - | - |
 | typescript | SCIP indexer (scip-typescript) | measured | 0.9882 | 0.9882 |
 | yaml | not applicable: no reference captures | not applicable | - | - |
-| zig | LSP bridge (zls) | measured | 0.8095 | 0.8759 |
+| zig | LSP bridge (zls) | measured | 0.8857 | 0.8759 |
 
 Not covered: languages marked not attempted or blocked above have no floor and no measurement; a corpus floor says nothing about a language it does not index. Languages covered only by in-memory fixtures remain so until an entry measures them.
 

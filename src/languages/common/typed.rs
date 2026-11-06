@@ -1,7 +1,7 @@
 //! Java and C# grammars label types and names with fields, so bindings read them by field name.
 
 use super::reads::{EXTENDS, ReadBindings, enclosing_scope, nodes};
-use crate::languages::{Implementation, is_plain_type_name};
+use crate::languages::{Implementation, is_plain_type_name, is_type_path};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -28,20 +28,33 @@ pub struct TypedSyntax {
     pub class_params: &'static [&'static str],
     /// Wrapper templates whose one type argument is the receiver's type (`std::unique_ptr<T>`).
     pub transparent_wrappers: &'static [&'static str],
+    /// Nested classes are named by the class around them (`Outer.Inner`): members and types recorded under a nested
+    /// class, and bare type names that name a class nested in an enclosing class, are qualified by that class.
+    pub scoped_nesting: bool,
 }
 
 /// Field facts per `(class, field)`: `None` marks fields given two different types.
 pub type FieldFacts = HashMap<(String, String), Option<String>>;
 
 pub fn record_fact(facts: &mut FieldFacts, owner: &str, field: &str, ty: String) {
+    agree(facts, (owner.to_string(), field.to_string()), Some(ty));
+}
+
+/// Notes `value` under `key`: the first value stands, and a later value that differs turns the key unknown
+/// (`None`), so a key whose sites disagree on its type names no single type.
+pub fn agree<K: Eq + std::hash::Hash, V: PartialEq>(
+    facts: &mut HashMap<K, Option<V>>,
+    key: K,
+    value: Option<V>,
+) {
     facts
-        .entry((owner.to_string(), field.to_string()))
+        .entry(key)
         .and_modify(|slot| {
-            if slot.as_deref() != Some(ty.as_str()) {
+            if *slot != value {
                 *slot = None;
             }
         })
-        .or_insert(Some(ty));
+        .or_insert(value);
 }
 
 /// Gathers field facts from every class of `class_kinds` under `root`, with `facts` filling the explicit
@@ -273,6 +286,83 @@ fn record_assignment<'a>(
     bindings.insert(name, assignment.start_byte()..block.end_byte(), ty);
 }
 
+/// The key a class's members are recorded under: its name, qualified by the class around it when the language scopes
+/// nested classes.
+fn owner_key(class: Node<'_>, name: &str, source: &[u8], syntax: &TypedSyntax) -> String {
+    if !syntax.scoped_nesting {
+        return name.to_string();
+    }
+    match enclosing_scope(class, |kind| syntax.classes.contains(&kind))
+        .and_then(|outer| text_of(outer.child_by_field_name("name"), source))
+    {
+        Some(outer) => format!("{outer}.{name}"),
+        None => name.to_string(),
+    }
+}
+
+fn is_class(node: Node<'_>, syntax: &TypedSyntax) -> bool {
+    syntax.classes.contains(&node.kind())
+}
+
+/// A type written through its outer class (`Outer.Inner`), where the language scopes nested classes.
+fn scoped_type_text(ty: Node<'_>, source: &[u8], syntax: &TypedSyntax) -> Option<String> {
+    let text = ty.utf8_text(source).ok()?;
+    (syntax.scoped_nesting && is_type_path(text) && !syntax.inferred.contains(&text))
+        .then(|| text.to_string())
+}
+
+/// A bare type name written inside classes names the nested class of that name the nearest enclosing class declares
+/// (`Outer.Inner`), else the name itself.
+pub fn qualify_nested_type(
+    site: Node<'_>,
+    name: &str,
+    source: &[u8],
+    is_class: impl Fn(Node<'_>) -> bool,
+    class_name: impl for<'s> Fn(Node<'_>, &'s [u8]) -> Option<&'s str>,
+    body_of: impl Fn(Node<'_>) -> Option<Node<'_>>,
+) -> String {
+    let mut ancestor = site.parent();
+    while let Some(node) = ancestor {
+        if is_class(node)
+            && body_of(node)
+                .is_some_and(|body| declares_class(body, name, source, &is_class, &class_name))
+            && let Some(outer) = class_name(node, source)
+        {
+            return format!("{outer}.{name}");
+        }
+        ancestor = node.parent();
+    }
+    name.to_string()
+}
+
+fn qualify_in_scope(site: Node<'_>, name: &str, source: &[u8], syntax: &TypedSyntax) -> String {
+    if !syntax.scoped_nesting || !is_plain_type_name(name) {
+        return name.to_string();
+    }
+    qualify_nested_type(
+        site,
+        name,
+        source,
+        |n| is_class(n, syntax),
+        |n, source| text_of(n.child_by_field_name("name"), source),
+        |n| n.child_by_field_name("body"),
+    )
+}
+
+/// Whether the class body `body` directly declares a class named `name`: a child that `is_class` admits and
+/// `class_name` names.
+pub fn declares_class(
+    body: Node<'_>,
+    name: &str,
+    source: &[u8],
+    is_class: impl Fn(Node<'_>) -> bool,
+    class_name: impl for<'s> Fn(Node<'_>, &'s [u8]) -> Option<&'s str>,
+) -> bool {
+    let mut cursor = body.walk();
+    body.named_children(&mut cursor)
+        .any(|child| is_class(child) && class_name(child, source) == Some(name))
+}
+
 fn record_class<'a>(
     bindings: &mut ReadBindings<'a>,
     class: Node<'_>,
@@ -285,7 +375,8 @@ fn record_class<'a>(
     ) else {
         return;
     };
-    bindings.insert("this", body.byte_range(), Some(name.to_string()));
+    let owner = owner_key(class, name, source, syntax);
+    bindings.insert("this", body.byte_range(), Some(owner.clone()));
     if let Some((clause_kind, keyword)) = syntax.superclass {
         let mut cursor = class.walk();
         let base = class
@@ -294,7 +385,7 @@ fn record_class<'a>(
             .and_then(|clause| type_names(clause, source).next());
         if let Some(base) = base {
             bindings.insert(keyword, body.byte_range(), Some(base.to_string()));
-            bindings.insert_member(name, EXTENDS, base.to_string());
+            bindings.insert_member(&owner, EXTENDS, base.to_string());
         }
     }
     let mut cursor = body.walk();
@@ -319,12 +410,12 @@ fn record_class<'a>(
     );
     for (field_name, ty) in fields {
         if let Some(ty) = &ty {
-            bindings.insert_member(name, field_name, ty.clone());
+            bindings.insert_member(&owner, field_name, ty.clone());
         }
         bindings.insert(field_name, body.byte_range(), ty);
     }
     for (method, ty) in class_method_returns(body, source, syntax) {
-        bindings.insert_member(name, &format!("{method}()"), ty);
+        bindings.insert_member(&owner, &format!("{method}()"), ty);
     }
 }
 
@@ -345,8 +436,8 @@ fn class_method_returns<'a>(
             continue;
         };
         let ty = text_of(method.child_by_field_name(syntax.return_type_field), source)
-            .filter(|ty| is_plain_type_name(ty))
-            .map(str::to_string);
+            .filter(|ty| is_plain_type_name(ty) || (syntax.scoped_nesting && is_type_path(ty)))
+            .map(|ty| qualify_in_scope(method, ty, source, syntax));
         returns.note(name, ty);
     }
     returns
@@ -526,7 +617,11 @@ fn declared_type(node: Node<'_>, source: &[u8], syntax: &TypedSyntax) -> Option<
             .find_map(|child| child.child_by_field_name("type"))
     })?;
     let (inner, wrapped) = unwrap_transparent(ty, source, syntax.transparent_wrappers);
-    let text = declared_type_text(inner, source, syntax.inferred)?;
+    let text = match declared_type_text(inner, source, syntax.inferred) {
+        Some(text) => text,
+        None => scoped_type_text(inner, source, syntax)?,
+    };
+    let text = qualify_in_scope(inner, &text, source, syntax);
     Some(if wrapped {
         format!("{text}{WRAPPED_RECEIVER}")
     } else {

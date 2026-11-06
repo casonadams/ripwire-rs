@@ -118,6 +118,7 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
     declaration_name: None,
     class_params: &[],
     transparent_wrappers: &[],
+    scoped_nesting: false,
 };
 
 impl LanguageSemantics for PhpLanguage {

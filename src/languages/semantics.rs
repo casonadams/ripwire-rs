@@ -220,6 +220,16 @@ pub trait LanguageSemantics: Sync {
         true
     }
 
+    /// Declared result types of the free functions a file declares, as `(name, result type)`. The project pass
+    /// types the locals that take a function's result; empty unless the language does so.
+    fn function_return_types(
+        &self,
+        _root: tree_sitter::Node<'_>,
+        _source: &[u8],
+    ) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
     /// Lexical locals must not resolve to unrelated same-named repository definitions.
     fn read_bindings<'a>(
         &self,
@@ -524,6 +534,12 @@ pub trait LanguageSemantics: Sync {
         false
     }
 
+    /// True where a nested type is named by the type that encloses it (`Outer.Inner`): its owner key is qualified by
+    /// that type, and a bare name written inside the enclosing type names the nested one first.
+    fn nested_types_are_scoped(&self) -> bool {
+        false
+    }
+
     /// Core members of the language's standard smart pointers, optionals and `swap`. A call of one on a receiver with
     /// no type evidence, or on a smart pointer, names the standard member, not an in-tree class's method.
     fn core_member_names(&self) -> &'static [&'static str] {
@@ -632,6 +648,12 @@ pub trait LanguageSemantics: Sync {
         false
     }
 
+    /// True where a member call `x.f()` never names a type: a struct or interface declaration is no method, so a
+    /// call on an untyped receiver does not bind to a same-named type (Go `r.Context()` is not `type Context`).
+    fn member_calls_skip_types(&self) -> bool {
+        false
+    }
+
     /// Multiplier for this language's symbols in task retrieval; below 1 for declaration-only formats.
     fn retrieval_weight(&self) -> f64 {
         1.0
@@ -684,6 +706,15 @@ pub trait LanguageSemantics: Sync {
     /// True where declared implementations (Rust `impl`, TypeScript `class … implements`) feed the trait index.
     fn indexes_implementations(&self) -> bool {
         self.has_trait_impls()
+    }
+    /// True where a method's receiver type is always declared in the tree and any named type (`type T func()`, a
+    /// map or a slice) can carry methods, so a method whose receiver names no indexed type binds to none (Go).
+    fn methods_declare_their_receiver(&self) -> bool {
+        false
+    }
+    /// True where a named type that is neither a class, struct nor interface (`Other`) is a type a method can name.
+    fn named_types_take_methods(&self) -> bool {
+        false
     }
     /// True where a function scoped to a type is that type's method although it is tagged as a plain
     /// function (Python tags every `def`, so a class body's `def` is a `Function`). Such functions join

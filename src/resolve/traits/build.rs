@@ -24,10 +24,11 @@ impl TraitIndex {
         let methods = methods_by_file(env.symbols);
         index.index_trait_bodies(env, &methods);
         for imp in implementations {
-            let inherits = files
-                .get(imp.file_id as usize)
-                .is_some_and(|file| file.lang.semantics().has_class_inheritance());
-            index.add_implementation(imp, env, &methods, inherits);
+            let file = files.get(imp.file_id as usize);
+            let inherits = file.is_some_and(|file| file.lang.semantics().has_class_inheritance());
+            let declared =
+                file.is_some_and(|file| file.lang.semantics().methods_declare_their_receiver());
+            index.add_implementation(imp, env, &methods, inherits, declared);
         }
         index.add_structural_implementors(env);
         index
@@ -120,6 +121,7 @@ impl TraitIndex {
         env: &TraitEnv<'_>,
         methods: &MethodsByFile,
         inherits: bool,
+        receivers_declared: bool,
     ) {
         let members = span_methods(
             env.symbols,
@@ -135,7 +137,8 @@ impl TraitIndex {
         if trait_id.is_none() && inherits {
             self.record_supertype(imp, subject, env);
         }
-        let external = !imp.generic_subject && subject.is_none() && !members.is_empty();
+        let external =
+            !receivers_declared && !imp.generic_subject && subject.is_none() && !members.is_empty();
         if trait_id.is_none() && subject.is_none() && bound.is_none() && !external {
             return;
         }
@@ -213,6 +216,7 @@ fn nominals_by_name(symbols: &[Symbol]) -> HashMap<Spur, Vec<NodeId>> {
         let semantics = s.lang.semantics();
         semantics.indexes_implementations()
             && (s.kind.is_type_container()
+                || (s.kind == SymKind::Other && semantics.named_types_take_methods())
                 || (s.kind == SymKind::Section && semantics.modules_are_mixins()))
     }) {
         map.entry(s.name).or_default().push(s.id);

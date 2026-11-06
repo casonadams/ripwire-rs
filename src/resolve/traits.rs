@@ -1,5 +1,6 @@
 mod build;
 mod dispatch;
+mod nested;
 mod paths;
 
 use super::scopes::RustScopes;

@@ -1,4 +1,4 @@
-use super::harness::owner_qualified_callees;
+use super::harness::{nested_owner_callees, owner_qualified_callees};
 use ripwire_rs::Lang;
 
 /// What one caller's callees must satisfy.
@@ -58,6 +58,27 @@ open class Base {\n    fun close() {}\n}\n\
 class Other {\n    fun close() {}\n}\n\
 class Account\nclass Order\n\
 class Desk(private val orders: OrderStore) : Base() {\n    lateinit var accounts: AccountStore\n    fun viaThisField() { this.accounts.lookup(1) }\n    fun viaField() { accounts.lookup(1) }\n    fun viaConstructorProperty() { orders.lookup(1) }\n    fun viaLocal() { val store: OrderStore = orders; store.lookup(2) }\n    fun viaSuper() { super.close() }\n    fun make(): AccountStore = accounts\n    fun viaCallResult() { make().lookup(3) }\n}\n";
+
+const KT_CHAINS: &str = "open class Base {\n    fun close() {}\n}\n\
+class Widget : Base() {\n    fun spin() {}\n    fun polish(): Widget = this\n}\n\
+class Factory {\n    companion object {\n        fun make(): Widget = Widget()\n    }\n}\n\
+object Registry {\n    fun lookup(): Widget = Widget()\n}\n\
+fun Widget.grow(): Widget = this\n\
+class Shop(private val maybe: Widget?) {\n    fun viaSafeCall() { maybe?.spin() }\n    fun viaNonNull() { maybe!!.spin() }\n    fun viaCompanion() { Factory.make().spin() }\n    fun viaObject() { Registry.lookup().spin() }\n    fun viaCast(any: Any) { (any as Widget).spin() }\n    fun viaChain() { Registry.lookup().polish().spin() }\n    fun viaExtensionCall(w: Widget) { w.grow().spin() }\n    fun viaThisExtension() { this.maybe?.grow()?.spin() }\n}\n\
+fun Widget.viaReceiver() { this.grow().spin() }\n\
+class Pen {\n    fun apply(ink: Int) {}\n    fun trim() {}\n}\n\
+fun viaScopeFunction() { listOf(1).apply { } }\n\
+fun viaPen(pen: Pen) { pen.apply(1) }\n";
+
+const KT_MAKER: &str = "class Maker {\n    companion object {\n        fun make(): Widget = Widget()\n        fun builder(): Builder = Builder()\n    }\n}\n\
+class Widget {\n    fun spin() {}\n}\n\
+class Builder {\n    fun build(): Widget = Widget()\n}\n";
+
+const KT_OTHER_BUILDER: &str =
+    "class Other {\n    class Builder {\n        fun build(): Other = Other()\n    }\n}\n";
+
+const KT_CALLER: &str = "fun viaCompanion() { Maker.make().spin() }\n\
+fun viaDuplicate() { Maker.builder().build() }\n";
 
 const RUBY_PIPE: &str = "class Sink\n  def write(line)\n    1\n  end\n\n  def respond_to?(name)\n    true\n  end\nend\n\
 DEFAULT_LOG = Sink.new\n\
@@ -314,6 +335,48 @@ const ARGUMENT_ROWS: &[Row] = &[
     },
 ];
 
+const KOTLIN_CHAIN_ROWS: &[Row] = &[
+    Row {
+        files: &[("src/Shop.kt", Lang::Kotlin, KT_CHAINS)],
+        cases: &[
+            ("viaSafeCall", Expect::Exactly(&["Widget.spin"])),
+            ("viaNonNull", Expect::Exactly(&["Widget.spin"])),
+            (
+                "viaCompanion",
+                Expect::Exactly(&["Factory.make", "Widget.spin"]),
+            ),
+            (
+                "viaObject",
+                Expect::Exactly(&["Registry.lookup", "Widget.spin"]),
+            ),
+            ("viaCast", Expect::Exactly(&["Widget.spin"])),
+            ("viaChain", Expect::Includes("Widget.spin")),
+            ("viaExtensionCall", Expect::Includes("Widget.spin")),
+            ("viaThisExtension", Expect::Includes("Widget.spin")),
+            ("viaReceiver", Expect::Includes("Widget.spin")),
+            ("viaScopeFunction", Expect::Excludes("Pen.apply")),
+            ("viaPen", Expect::Exactly(&["Pen.apply"])),
+        ],
+    },
+    Row {
+        files: &[
+            ("src/Maker.kt", Lang::Kotlin, KT_MAKER),
+            ("src/Other.kt", Lang::Kotlin, KT_OTHER_BUILDER),
+            ("src/Caller.kt", Lang::Kotlin, KT_CALLER),
+        ],
+        cases: &[
+            (
+                "viaCompanion",
+                Expect::Exactly(&["Maker.make", "Widget.spin"]),
+            ),
+            (
+                "viaDuplicate",
+                Expect::Exactly(&["Builder.build", "Maker.builder"]),
+            ),
+        ],
+    },
+];
+
 fn check_rows(rows: &[Row]) {
     for row in rows {
         let files: Vec<(&str, Lang, &[u8])> = row
@@ -336,12 +399,80 @@ fn check_rows(rows: &[Row]) {
     }
 }
 
+const JAVA_DOCUMENT: &str = "class Document {\n    static class OutputSettings {\n        void apply() {}\n    }\n    OutputSettings outputSettings() { return new OutputSettings(); }\n}\n";
+
+const JAVA_ENTITIES: &str =
+    "class Entities {\n    static class OutputSettings {\n        void apply() {}\n    }\n}\n";
+
+const JAVA_CALLER: &str = "class Caller {\n    void viaDocument(Document d) { d.outputSettings().apply(); }\n    void viaEntities(Entities.OutputSettings s) { s.apply(); }\n}\n";
+
+/// Each caller's callees must bind to its own nested class, when two classes of one simple name exist.
+fn check_nested_owners(files: &[(&str, Lang, &[u8])], cases: &[(&str, &str, bool)]) {
+    for (caller, callee, bound) in cases {
+        let callees = nested_owner_callees(files, caller);
+        let found = callees.iter().any(|label| label == callee);
+        assert_eq!(found, *bound, "{caller} -> {callee}: {callees:?}");
+    }
+}
+
+#[test]
+fn nested_classes_of_one_simple_name_keep_their_owner() {
+    let kotlin: Vec<(&str, Lang, &[u8])> = vec![
+        ("src/FunSpec.kt", Lang::Kotlin, KT_FUN_SPEC.as_bytes()),
+        ("src/TypeSpec.kt", Lang::Kotlin, KT_TYPE_SPEC.as_bytes()),
+        ("src/Emit.kt", Lang::Kotlin, KT_NESTED_CALLER.as_bytes()),
+    ];
+    let fun_build = "src/FunSpec.kt:Builder.build";
+    let type_build = "src/TypeSpec.kt:Builder.build";
+    check_nested_owners(
+        &kotlin,
+        &[
+            ("viaFunSpec", fun_build, true),
+            ("viaFunSpec", type_build, false),
+            ("viaFunSpec", "src/FunSpec.kt:Builder.addParameter", true),
+            ("viaTypeSpec", type_build, true),
+            ("viaTypeSpec", fun_build, false),
+            ("viaQualified", type_build, true),
+            ("viaQualified", fun_build, false),
+            ("viaMap", "src/FunSpec.kt:Builder.map", true),
+            ("viaBuiltin", "src/FunSpec.kt:Builder.map", false),
+        ],
+    );
+    let java: Vec<(&str, Lang, &[u8])> = vec![
+        ("src/Document.java", Lang::Java, JAVA_DOCUMENT.as_bytes()),
+        ("src/Entities.java", Lang::Java, JAVA_ENTITIES.as_bytes()),
+        ("src/Caller.java", Lang::Java, JAVA_CALLER.as_bytes()),
+    ];
+    let document_apply = "src/Document.java:OutputSettings.apply";
+    let entities_apply = "src/Entities.java:OutputSettings.apply";
+    check_nested_owners(
+        &java,
+        &[
+            ("viaDocument", document_apply, true),
+            ("viaDocument", entities_apply, false),
+            ("viaEntities", entities_apply, true),
+            ("viaEntities", document_apply, false),
+        ],
+    );
+}
+
 #[test]
 fn typed_receivers_bind_their_declared_owner_method() {
     check_rows(TYPED_ROWS);
     check_rows(TYPED_ROWS_SCALA);
     check_rows(TYPED_ROWS_TAIL);
+    check_rows(KOTLIN_CHAIN_ROWS);
 }
+
+const KT_FUN_SPEC: &str = "class FunSpec {\n    class Builder {\n        fun addParameter(): Builder = this\n        fun map(): Builder = this\n        fun build(): FunSpec = FunSpec()\n    }\n    companion object {\n        fun builder(): Builder = Builder()\n    }\n}\n";
+
+const KT_TYPE_SPEC: &str = "class TypeSpec {\n    class Builder {\n        fun addMember(): Builder = this\n        fun build(): TypeSpec = TypeSpec()\n    }\n    companion object {\n        fun builder(): Builder = Builder()\n    }\n}\n";
+
+const KT_NESTED_CALLER: &str = "fun viaFunSpec() { FunSpec.builder().addParameter().build() }\n\
+fun viaTypeSpec() { TypeSpec.builder().addMember().build() }\n\
+fun viaQualified() { val b: TypeSpec.Builder = TypeSpec.builder(); b.build() }\n\
+fun viaMap() { FunSpec.builder().map() }\n\
+fun viaBuiltin() { listOf(1).map { it } }\n";
 
 #[test]
 fn arguments_bases_and_destructors_select_one_member() {

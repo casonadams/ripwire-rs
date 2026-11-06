@@ -142,12 +142,26 @@ pub(super) fn pending_chain_at(
 ) -> Option<PendingChain> {
     let mut parts = receiver.split('.');
     let first = parts.next()?;
-    let base = bindings.type_at(first, byte)?.to_string();
     let steps: Vec<String> = parts.map(str::to_string).collect();
     let member_steps = steps
         .iter()
         .all(|step| is_plain_type_name(step.strip_suffix("()").unwrap_or(step)));
-    (!steps.is_empty() && member_steps).then_some(PendingChain { base, steps })
+    if !member_steps {
+        return None;
+    }
+    if let Some(callee) = bindings.call_at(first, byte) {
+        return Some(PendingChain {
+            base: String::new(),
+            call: Some(callee.to_string()),
+            steps,
+        });
+    }
+    let base = bindings.type_at(first, byte)?.to_string();
+    (!steps.is_empty()).then_some(PendingChain {
+        base,
+        call: None,
+        steps,
+    })
 }
 
 pub(super) fn find_call_qualifier(

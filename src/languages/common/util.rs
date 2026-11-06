@@ -147,6 +147,11 @@ pub(crate) fn is_plain_type_name(text: &str) -> bool {
     !text.is_empty() && text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
+/// A type written as a dot-separated path of plain names (`Outer.Inner`).
+pub(crate) fn is_type_path(text: &str) -> bool {
+    text.split('.').all(is_plain_type_name)
+}
+
 #[must_use]
 pub fn normalize_lexical_path(base_dir: &str, rel: &str) -> String {
     let combined = if base_dir.is_empty() {
