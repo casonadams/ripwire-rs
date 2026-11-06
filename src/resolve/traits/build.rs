@@ -136,7 +136,9 @@ impl TraitIndex {
         let (subject, bound) = self.resolve_subject_and_bound(imp, env);
         let subject = subject.or_else(|| {
             (inherits && imp.trait_name.is_some() && !imp.generic_subject)
-                .then(|| self.resolve_text(imp.subject, imp.file_id, imp.start_byte, env, Want::Any))
+                .then(|| {
+                    self.resolve_text(imp.subject, imp.file_id, imp.start_byte, env, Want::Any)
+                })
                 .flatten()
         });
         if inherits && (trait_id.is_none() || imp.extends) {
@@ -180,7 +182,11 @@ impl TraitIndex {
         let (Some(subject), Some(name)) = (subject, imp.trait_name) else {
             return;
         };
-        let want = if imp.extends { Want::Any } else { Want::Concrete };
+        let want = if imp.extends {
+            Want::Any
+        } else {
+            Want::Concrete
+        };
         let base = self.resolve_text(name, imp.file_id, imp.start_byte, env, want);
         if let Some(base) = base.filter(|&base| base != subject) {
             let bases = self.supertypes.entry(subject).or_default();

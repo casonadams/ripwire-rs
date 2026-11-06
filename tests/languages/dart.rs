@@ -48,12 +48,18 @@ class Doubler extends Mapper {\n  List<int> map(List<int> xs) => xs;\n}\n\
 void builtinMap() {\n  [1, 2].map((n) => n);\n}\n";
 
 fn shape_callees(caller: &str) -> Vec<String> {
-    owner_qualified_callees(&[("lib/shapes.dart", Lang::Dart, SHAPES.as_bytes())], caller)
+    owner_qualified_callees(
+        &[("lib/shapes.dart", Lang::Dart, SHAPES.as_bytes())],
+        caller,
+    )
 }
 
 #[test]
 fn dart_bodyless_abstract_member_is_a_declaration_the_typed_receiver_reaches() {
-    assert_eq!(shape_callees("render"), ["Circle.draw", "Shape.draw", "Square.draw"]);
+    assert_eq!(
+        shape_callees("render"),
+        ["Circle.draw", "Shape.draw", "Square.draw"]
+    );
     assert_eq!(shape_callees("paint"), ["Circle.draw"]);
 }
 
@@ -74,8 +80,14 @@ fn collection_callees(caller: &str) -> Vec<String> {
 
 #[test]
 fn dart_lambda_over_a_call_result_types_its_parameter_from_the_element() {
-    assert_eq!(collection_callees("playAll"), ["Kid.play", "Nursery.children"]);
-    assert_eq!(collection_callees("playWithToys"), ["Shelf.toys", "Toy.play"]);
+    assert_eq!(
+        collection_callees("playAll"),
+        ["Kid.play", "Nursery.children"]
+    );
+    assert_eq!(
+        collection_callees("playWithToys"),
+        ["Shelf.toys", "Toy.play"]
+    );
     assert!(collection_callees("mapBuiltin").is_empty());
 }
 
