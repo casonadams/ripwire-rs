@@ -1,5 +1,5 @@
 use crate::support::index::index_files;
-use ripwire_rs::{Graph, IngestResult, Interner, Lang};
+use ripwire_rs::{Graph, IngestResult, Interner, Lang, resolve_all_references};
 
 /// The `name@file` of every callee of the first symbol named `caller`, sorted. A struct literal or a type
 /// mention is a callee too, so `make` reaches its `Opts` type as well as the `default` it calls.
@@ -317,4 +317,17 @@ fn std_named_members_bind_only_on_a_typed_in_tree_receiver() {
     );
     assert!(callees(&ingest, &graph, &interner, "size").is_empty());
     assert!(callees(&ingest, &graph, &interner, "get").is_empty());
+}
+
+/// `drop(file)` is the Rust prelude's free function. An in-tree `Drop` impl's `drop` method is no candidate for a
+/// bare call, so the call is declined as a std name, never counted as unresolved.
+#[test]
+fn a_prelude_drop_call_beside_an_in_tree_drop_method_is_declined() {
+    let (ingest, _graph, interner) = index_files(&[(
+        "src/cache.rs",
+        Lang::Rust,
+        b"struct Writer;\n\nimpl Drop for Writer {\n    fn drop(&mut self) {}\n}\n\npub fn flush(file: u8) {\n    drop(file);\n}\n",
+    )]);
+    let res = resolve_all_references(&ingest, &interner);
+    assert_eq!(res.unresolved, 0);
 }

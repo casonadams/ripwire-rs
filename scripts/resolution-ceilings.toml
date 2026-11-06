@@ -9,6 +9,9 @@
 # the Rust std and tree-sitter lists now cover lines, skip, chain and walk, which takes it to 518.
 # Still unresolved: std names no in-tree definition answers on an untyped receiver (Err, max, min, position, lock,
 # entry, ...) and Python calls in scripts/. main at de3b6bf reads 667 before the shadowed-name change.
+# Unresolved at c0da24b read 529; the cache's bare `drop(file)` (1ac58fc) made it 530. `drop` is a Rust std member
+# (`Drop::drop`, `mem::drop`), declined rather than unresolved, so the tree reads 524. The ceiling stays at 529: it is
+# already tighter than the 2 percent policy, and raising it to 2 percent above 524 would hide regressions.
 
 [[ceiling]]
 gauge = "graph_ambiguous"
