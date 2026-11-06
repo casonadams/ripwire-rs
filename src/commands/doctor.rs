@@ -12,9 +12,9 @@ const MANY_BLOBS: usize = 50;
 const TRACKED_SCAN_CAP: usize = 20_000;
 const SNIFF_BYTES: u64 = 8000;
 const AUTO_CACHE_PREFIX: &str = "ripwire-rs-cache-";
-const AUTO_CACHE_SUFFIX: &str = ".json";
+const AUTO_CACHE_SUFFIX: &str = ".bin";
 
-const DOCTOR_LEGEND: &str = "<!-- ripwire-rs doctor schema=ripwire-rs.doctor/v1: setup health: <c n= ok=> checks. checks=/passed=: rows emitted / rows with ok=1. n=: binary-path, grammars, cache-dir, git, tree-sitter, tracked-binaries, index-cache, git-config-trust. self=/which=: this binary / the same name found on PATH; which_version=: the PATH copy's version line, printed only when it is not this binary; on_path=0 fails the row and hint= carries the export line; same_file=1: both resolve to one file. loaded=/expected=: distinct compiled-in grammars ABI-compatible with the linked tree-sitter / distinct compiled-in grammars; a shortfall fails the row. dir=: the temp directory holding auto-cache blobs (ripwire-rs-cache-*.json); unwritable fails the row. blobs=/bytes=: blob count / total size; blobs_floor=1 when the scan stopped at 4096. many=1: more than 50 blobs, informational. truncated=1: scan cut short (cache-dir: cap or I/O error; tracked-binaries: over 20000 tracked files, binaries= omitted). volatile=: attributes reading live machine state. repo=0|1: root is inside a git repository; git is read in-process, so a git executable is needed only to clone a remote URL root. history=0|1: HEAD resolves to a commit; head= its 9-hex short sha. core_abi=/newest_grammar_abi=: tree-sitter language ABI / the newest compiled-in grammar ABI. languages=N: distinct compiled-in grammars. tracked=N: index entries under root. binaries=N: tracked files whose first 8000 bytes hold a NUL. non_git=1: no repository; the row passes unscanned. cache_version=: index cache format version. source=auto|cache-flag|disabled: the index artifact this run reads (per-root auto-cache, the file named by the cache flag, or none when the cache is disabled). lean_path=: the index artifact checked: the file named by the cache flag or the auto-cache for root. lean=: ok, absent, cache-version (other format), corrupt or unreadable; only the last two fail the row. fsmonitor=: core.fsmonitor: unset, builtin, off or hook (a command git runs). neutralised=1: a hook is configured but never runs: ripwire-rs reads git in-process, and its one git invocation (cloning a remote URL root) passes -c core.fsmonitor=false. filter_drivers=N: filter drivers the repository's own config defines. -->\n";
+const DOCTOR_LEGEND: &str = "<!-- ripwire-rs doctor schema=ripwire-rs.doctor/v1: setup health: <c n= ok=> checks. checks=/passed=: rows emitted / rows with ok=1. n=: binary-path, grammars, cache-dir, git, tree-sitter, tracked-binaries, index-cache, git-config-trust. self=/which=: this binary / the same name found on PATH; which_version=: the PATH copy's version line, printed only when it is not this binary; on_path=0 fails the row and hint= carries the export line; same_file=1: both resolve to one file. loaded=/expected=: distinct compiled-in grammars ABI-compatible with the linked tree-sitter / distinct compiled-in grammars; a shortfall fails the row. dir=: the temp directory holding auto-cache blobs (ripwire-rs-cache-*.bin); unwritable fails the row. blobs=/bytes=: blob count / total size; blobs_floor=1 when the scan stopped at 4096. many=1: more than 50 blobs, informational. truncated=1: scan cut short (cache-dir: cap or I/O error; tracked-binaries: over 20000 tracked files, binaries= omitted). volatile=: attributes reading live machine state. repo=0|1: root is inside a git repository; git is read in-process, so a git executable is needed only to clone a remote URL root. history=0|1: HEAD resolves to a commit; head= its 9-hex short sha. core_abi=/newest_grammar_abi=: tree-sitter language ABI / the newest compiled-in grammar ABI. languages=N: distinct compiled-in grammars. tracked=N: index entries under root. binaries=N: tracked files whose first 8000 bytes hold a NUL. non_git=1: no repository; the row passes unscanned. cache_version=: index cache format version. source=auto|cache-flag|disabled: the index artifact this run reads (per-root auto-cache, the file named by the cache flag, or none when the cache is disabled). lean_path=: the index artifact checked: the file named by the cache flag or the auto-cache for root. lean=: ok, absent, cache-version (other format), corrupt or unreadable; only the last two fail the row. fsmonitor=: core.fsmonitor: unset, builtin, off or hook (a command git runs). neutralised=1: a hook is configured but never runs: ripwire-rs reads git in-process, and its one git invocation (cloning a remote URL root) passes -c core.fsmonitor=false. filter_drivers=N: filter drivers the repository's own config defines. -->\n";
 
 /// One `<c>` row of the doctor report: a named check, its verdict, and measured attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,7 +97,7 @@ pub fn classify_fsmonitor(value: Option<&str>) -> &'static str {
     }
 }
 
-/// True for file names the auto-cache writes (`ripwire-rs-cache-<hash>.json`).
+/// True for file names the auto-cache writes (`ripwire-rs-cache-<hash>.bin`).
 #[must_use]
 pub fn is_cache_blob_name(name: &str) -> bool {
     name.len() > AUTO_CACHE_PREFIX.len() + AUTO_CACHE_SUFFIX.len()
@@ -105,19 +105,10 @@ pub fn is_cache_blob_name(name: &str) -> bool {
         && name.ends_with(AUTO_CACHE_SUFFIX)
 }
 
-#[derive(serde::Deserialize)]
-struct CacheVersionProbe {
-    version: u32,
-}
-
 /// Classify a cache artifact's format from its bytes: `ok`, `cache-version`, or `corrupt`.
 #[must_use]
 pub fn probe_cache_artifact<R: Read>(reader: R) -> &'static str {
-    match serde_json::from_reader::<_, CacheVersionProbe>(io::BufReader::new(reader)) {
-        Ok(probe) if probe.version == crate::cache::CACHE_VERSION => "ok",
-        Ok(_) => "cache-version",
-        Err(_) => "corrupt",
-    }
+    crate::cache::probe_blob(reader)
 }
 
 /// Run every doctor check against `root`, the `--cache` file when given, and the process environment.

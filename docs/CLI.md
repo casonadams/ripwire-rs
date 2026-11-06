@@ -384,8 +384,9 @@ ripwire-rs . --exclude="vendor/*" --exclude=dist,build --no-ignore --ignore-test
 ripwire-rs . --compress
 
 # Cold-parse once into an index file, then reuse it (valid while HEAD, working tree and binary match)
-ripwire-rs . --index-out="index.json"
-ripwire-rs . --cache="index.json" --callers="parse"
+ripwire-rs . --index-out="index.bin"
+ripwire-rs . --cache="index.bin" --callers="parse"
+# The index file is a binary cache blob (not JSON). A file from another build or cache version is a miss: the run re-parses.
 
 ```
 * **Benefits:** Minimal prompt token consumption with maximum semantic density for coding agents.

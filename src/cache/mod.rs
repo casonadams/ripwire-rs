@@ -4,15 +4,21 @@ use crate::rank::PageRankResult;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
-use std::io::{self, BufWriter};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-pub const CACHE_VERSION: u32 = 38;
+/// Blob layout and serialized-type version. A blob of any other version is a miss, never parsed.
+pub const CACHE_VERSION: u32 = 39;
 
-/// Serialized binary cache payload for fast warm repository queries.
+/// Every blob starts with these four bytes, then `CACHE_VERSION` as a little-endian `u32`; the
+/// postcard body follows.
+const BLOB_MAGIC: &[u8; 4] = b"RWCB";
+const BLOB_HEADER_LEN: usize = 8;
+
+/// Cached repository analysis. postcard writes fields in declaration order and no names, so that
+/// order is the layout.
 #[derive(Serialize, Deserialize)]
 pub struct CachePayload {
-    pub version: u32,
     pub validation_key: String,
     pub interner_strings: Vec<String>,
     pub ingest: IngestResult,
@@ -22,13 +28,13 @@ pub struct CachePayload {
 
 #[derive(Serialize)]
 struct CachePayloadRef<'a> {
-    version: u32,
     validation_key: String,
     interner_strings: Vec<String>,
     ingest: &'a IngestResult,
     graph: &'a Graph,
     pr: &'a PageRankResult,
 }
+
 /// Compute a fast cache validation key from git HEAD (or mtime metadata).
 #[must_use]
 fn current_binary_stamp() -> u64 {
@@ -118,7 +124,7 @@ fn tagged_auto_cache_path(root: &str, tag: &str) -> PathBuf {
     let abs = fs::canonicalize(root).unwrap_or_else(|_| PathBuf::from(root));
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     abs.to_string_lossy().hash(&mut hasher);
-    std::env::temp_dir().join(format!("ripwire-rs-cache-{:x}{tag}.json", hasher.finish()))
+    std::env::temp_dir().join(format!("ripwire-rs-cache-{:x}{tag}.bin", hasher.finish()))
 }
 
 /// The cache file and validation key for `root` under crawler options `tag` (empty for defaults).
@@ -142,17 +148,73 @@ pub fn load_cached_analysis(
     load_cached_payload_slice(&bytes, &key)
 }
 
-/// Load and validate cached payload from a byte slice.
+/// Load and validate cached payload from a byte slice. Any blob that is not a current, complete
+/// payload for `expected_key` is `None`.
 pub fn load_cached_payload_slice(
     bytes: &[u8],
     expected_key: &str,
 ) -> Option<(IngestResult, Graph, PageRankResult, Interner)> {
-    let payload: CachePayload = serde_json::from_slice(bytes).ok()?;
-    if payload.version != CACHE_VERSION || payload.validation_key != expected_key {
+    let payload = decode_blob(bytes)?;
+    if payload.validation_key != expected_key {
         return None;
     }
     let interner = Interner::from_strings(&payload.interner_strings);
     Some((payload.ingest, payload.graph, payload.pr, interner))
+}
+
+/// The postcard body of `bytes` when its header is this build's magic and `CACHE_VERSION`.
+fn blob_body(bytes: &[u8]) -> Option<&[u8]> {
+    let header = bytes.get(..BLOB_HEADER_LEN)?;
+    let version = CACHE_VERSION.to_le_bytes();
+    (header[..4] == BLOB_MAGIC[..] && header[4..] == version[..]).then(|| &bytes[BLOB_HEADER_LEN..])
+}
+
+/// The whole payload, or `None` for a stale header, a truncated body, or trailing bytes.
+fn decode_blob(bytes: &[u8]) -> Option<CachePayload> {
+    let (payload, rest) = postcard::take_from_bytes::<CachePayload>(blob_body(bytes)?).ok()?;
+    rest.is_empty().then_some(payload)
+}
+
+/// Format state of blob `bytes`: `ok`, `cache-version` (a JSON blob from an older build, or this
+/// build's magic with another version), or `corrupt`.
+#[must_use]
+pub fn blob_state(bytes: &[u8]) -> &'static str {
+    if decode_blob(bytes).is_some() {
+        return "ok";
+    }
+    let version = CACHE_VERSION.to_le_bytes();
+    let legacy_json = bytes.first() == Some(&b'{');
+    let stale = bytes.len() >= BLOB_HEADER_LEN
+        && bytes[..4] == BLOB_MAGIC[..]
+        && bytes[4..BLOB_HEADER_LEN] != version[..];
+    if legacy_json || stale {
+        "cache-version"
+    } else {
+        "corrupt"
+    }
+}
+
+/// Read a blob's bytes from `reader` and classify them with [`blob_state`]; a read error is `corrupt`.
+#[must_use]
+pub fn probe_blob<R: Read>(mut reader: R) -> &'static str {
+    let mut bytes = Vec::new();
+    match reader.read_to_end(&mut bytes) {
+        Ok(_) => blob_state(&bytes),
+        Err(_) => "corrupt",
+    }
+}
+
+/// The blob bytes of `payload`: the layout [`save_cached_analysis`] writes and
+/// [`load_cached_payload_slice`] reads.
+pub fn encode_payload(payload: &CachePayload) -> io::Result<Vec<u8>> {
+    encode_blob(payload)
+}
+
+fn encode_blob<T: Serialize>(payload: &T) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(BLOB_HEADER_LEN);
+    bytes.extend_from_slice(BLOB_MAGIC);
+    bytes.extend_from_slice(&CACHE_VERSION.to_le_bytes());
+    postcard::to_extend(payload, bytes).map_err(io::Error::other)
 }
 
 /// Save repository analysis to cache file atomically.
@@ -165,17 +227,17 @@ pub fn save_cached_analysis(
     let (ingest, graph, pr, interner) = analysis;
     let (path, validation_key) = cache_identity(root, cache_path, options_tag)?;
     let payload = CachePayloadRef {
-        version: CACHE_VERSION,
         validation_key,
         interner_strings: interner.all_strings(),
         ingest,
         graph,
         pr,
     };
+    let bytes = encode_blob(&payload)?;
 
     let tmp_path = path.with_extension("tmp");
-    let file = File::create(&tmp_path)?;
-    let writer = BufWriter::with_capacity(256 * 1024, file);
-    serde_json::to_writer(writer, &payload).map_err(|e| io::Error::other(e.to_string()))?;
+    let mut file = File::create(&tmp_path)?;
+    file.write_all(&bytes)?;
+    drop(file);
     fs::rename(tmp_path, &path)
 }
