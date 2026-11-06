@@ -711,12 +711,21 @@ def entry_key(entry):
     return f"{entry['command']}={case}" if case else entry["command"]
 
 
+def lower_total_declaration_errors(entry):
+    """`lower_total` is an opt-in on a smaller entry for a paged list, and must be the boolean true."""
+    if entry["kind"] != "smaller" or entry["lower_total"] is not True:
+        return [f"ledger entry {entry['id']} lower_total must be true on a smaller entry"]
+    return []
+
+
 def ledger_entry_errors(entry, ids, keys):
     ident = entry.get("id", "?")
     missing = [f for f in LEDGER_FIELDS if f not in entry]
     if missing:
         return [f"ledger entry {ident} missing {missing}"]
     errors = []
+    if "lower_total" in entry:
+        errors.extend(lower_total_declaration_errors(entry))
     if "omits" in entry:
         errors.extend(omit_declaration_errors(entry))
     if entry["kind"] not in KINDS:
@@ -865,9 +874,17 @@ def paged_row_error(root_rw, rows_full_rw, rows_full_rip):
     return None
 
 
-def paged_count_error(root_rw, root_rip):
+def lower_total_recorded(root_rw, root_rip):
+    """True when ours reports fewer rows in total than upstream, the only count a `smaller` entry may record."""
+    rw, rip = root_rw.attrib.get("total", ""), root_rip.attrib.get("total", "")
+    return rw.isdigit() and rip.isdigit() and int(rw) < int(rip)
+
+
+def paged_count_error(root_rw, root_rip, lower_total_ok=False):
     for attr in ("total", "count"):
         if attr in root_rw.attrib and attr in root_rip.attrib and root_rw.attrib[attr] != root_rip.attrib[attr]:
+            if lower_total_ok and attr == "total" and lower_total_recorded(root_rw, root_rip):
+                continue
             return f"paged {attr} mismatch: rw={root_rw.attrib[attr]} vs rip={root_rip.attrib[attr]}"
     return None
 
@@ -880,7 +897,7 @@ def paged_offset_error(root_rw):
     return None
 
 
-def paged_verdict(rw_bin, rip_bin, repo, cmd, out_rw, out_rip, root_rw, root_rip):
+def paged_verdict(rw_bin, rip_bin, repo, cmd, out_rw, out_rip, root_rw, root_rip, lower_total_ok=False):
     try:
         full_out_rw, full_out_rip = run_full_rows(rw_bin, rip_bin, repo, cmd)
     except subprocess.TimeoutExpired:
@@ -891,14 +908,14 @@ def paged_verdict(rw_bin, rip_bin, repo, cmd, out_rw, out_rip, root_rw, root_rip
         return "paged list: full row set not comparable"
     return (
         paged_row_error(root_rw, row_groups(root_full_rw), row_groups(root_full_rip))
-        or paged_count_error(root_rw, root_rip)
+        or paged_count_error(root_rw, root_rip, lower_total_ok)
         or paged_offset_error(root_rw)
         or size_verdict(out_rw, out_rip, root_rw, root_rip)
     )
 
 
 def generic_covers(rw_bin, rip_bin, repo, cmd, outcome, roots):
-    return is_paged(roots[0]) and paged_verdict(rw_bin, rip_bin, repo, cmd, outcome.rw, outcome.rip, *roots) is None
+    return is_paged(roots[0]) and paged_verdict(rw_bin, rip_bin, repo, cmd, outcome.rw, outcome.rip, roots[0], roots[1]) is None
 
 
 def defect_judgement(rw_bin, rip_bin, repo, cmd, outcome, entry, roots, diff):
@@ -915,7 +932,19 @@ def stale_message(entry, why):
 
 
 def paged_judgement(rw_bin, rip_bin, repo, cmd, outcome, entry, roots):
-    reason = paged_verdict(rw_bin, rip_bin, repo, cmd, outcome.rw, outcome.rip, *roots)
+    """A `smaller` entry with `lower_total = true` records a lower paged total; the row, offset and size rules still judge the rows shown."""
+    declared = entry is not None and entry.get("lower_total") is True
+    lower = declared and lower_total_recorded(roots[0], roots[1])
+    if declared and not lower:
+        return True, stale_message(entry, "declares lower_total but ours is not below upstream's total; remove it")
+    reason = paged_verdict(rw_bin, rip_bin, repo, cmd, outcome.rw, outcome.rip, roots[0], roots[1], lower)
+    if lower:
+        print(
+            f"ledger {entry['id']} [smaller]: paged total rw={roots[0].attrib['total']} rip={roots[1].attrib['total']}; "
+            f"bytes rw={len(outcome.rw.encode())} rip={len(outcome.rip.encode())}; "
+            f"facts rw={facts(roots[0])} rip={facts(roots[1])}"
+        )
+        return True, reason
     if reason is None:
         return True, stale_message(entry, "is covered by the generic paged-list rule; remove it")
     return entry is None, reason

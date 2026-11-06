@@ -6,10 +6,11 @@
 # that are not regressions: re-measure the failing entries, then update this line in the same commit.
 #
 # Paged row lists follow one generic rule in the checker and need no entry: same schema, totals
-# equal upstream's, every shown row in upstream's full (--limit) set, rows in our ranking order,
+# equal upstream's unless a smaller entry records a lower one, every shown row in upstream's full (--limit) set, rows in our ranking order,
 # and bytes within upstream's or richer by density. An entry records only what that rule cannot.
 # Kinds, checked against measured output:
-#   smaller                 our stdout bytes <= upstream stdout bytes; may declare omits (see docs/GATES.md) and extra root attributes
+#   smaller                 our stdout bytes <= upstream stdout bytes; may declare omits (see docs/GATES.md) and extra root attributes.
+#                           On a paged list, `lower_total = true` records a lower total (ours < upstream's); the rows shown still pass the generic rule, byte-or-density check included.
 #   richer                  our facts (elements + attributes) > upstream's, and our facts-per-byte >= upstream's
 #   fixes-upstream-defect   evidence = tests/<mod>/<file>.rs::test_name, which must exist
 #   defect                  our known defect; printed as a warning and counted in defect_budget
@@ -415,3 +416,28 @@ case = ""
 kind = "richer"
 why = "Ours labels reaches that bind only by name with a hedged= count on the root (honest before confident); upstream reports no such count. Name-only reaches carry via=name in both outputs."
 evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 12374 B with hedged=183; upstream 6757 B."
+
+[[divergence]]
+id = "external-surface-fewer-names"
+command = "--external-surface"
+case = ""
+kind = "smaller"
+why = "Ours lists 645 external names against upstream's 898, and every name ours lists is in upstream's set. The 253 left out are excluded on purpose: 84 std or builtin methods (unwrap, iter, to_string, append, join), 44 path qualifiers (crate, std, serde_json, os: upstream lists the namespace, ours the call inside it), 38 calls through a parameter or closure, or reads of a local value (ours binds them to no external name; upstream counts most as calls), 25 Python builtins (print, sorted, int), 12 Rust std macros (assert, vec, println), 31 non-call references (trait impls such as Display, base classes, JS identifier reads: ours counts calls only), and 19 names that an in-tree definition shares (ours declines rather than guess). The default page is budgeted: 623 rows at 30 KB against upstream's 100 rows at 5.5 KB, at higher facts per byte; the full set is 31 KB against upstream's 43 KB."
+lower_total = true
+evidence = "measured on upstream 0.6.8 (built_from=cd11226a6) at the committed tree: ours default total=645 bytes=30048 facts=3127 density=0.10406; upstream default total=898 shown=100 bytes=5549 facts=512 density=0.09227. Full (--limit=100000): ours names=645 bytes=31071 facts=3236 density=0.10415; upstream names=898 bytes=42751 facts=4501 density=0.10528."
+
+[[divergence]]
+id = "test-gate-validate-parity-checker-test"
+command = "--test-gate"
+case = "scripts/validate-parity.py"
+kind = "richer"
+why = "A change to the parity checker names the unit test that exercises it, scripts/test_validate_parity.py at one hop, because the test calls the checker's functions through its module alias. Upstream reports no impact (impacted=0, tests=0), so it does not bind those calls and gives no test to run."
+evidence = "measured on 0d4d0b3f9+dirty against upstream 0.6.8 (built_from=cd11226a6): ours bytes=689 facts=28 density=0.04064 with one <t> row; upstream bytes=1769 facts=22 density=0.01244 with no rows."
+
+[[divergence]]
+id = "affected-validate-parity-checker-test"
+command = "--affected"
+case = "scripts/validate-parity.py"
+kind = "smaller"
+why = "A change to the parity checker lists the unit test that exercises it, scripts/test_validate_parity.py at one hop (reached=105), where upstream lists no test (tests=0). Ours is fewer bytes and names the test to run."
+evidence = "measured on 0d4d0b3f9+dirty against upstream 0.6.8 (built_from=cd11226a6): ours bytes=320 facts=15 with one <test> row; upstream bytes=1248 facts=16 with no rows."
