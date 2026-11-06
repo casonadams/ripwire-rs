@@ -1,3 +1,5 @@
+use crate::languages::common::util::ancestors;
+
 const NON_BINDING_PARAM_FIELDS: &[&str] = &[
     "value",
     "right",
@@ -11,21 +13,16 @@ const NON_BINDING_PARAM_FIELDS: &[&str] = &[
 
 /// True when a function or closure enclosing `node` declares a parameter named `name`.
 pub(super) fn is_enclosing_parameter(
+    root: tree_sitter::Node<'_>,
     node: tree_sitter::Node<'_>,
     name: &str,
     source_bytes: &[u8],
 ) -> bool {
-    let mut cur = node.parent();
-    while let Some(n) = cur {
-        if let Some(params) = n.child_by_field_name("parameters")
-            && node.start_byte() >= params.end_byte()
-            && binds_name(params, name, source_bytes)
-        {
-            return true;
-        }
-        cur = n.parent();
-    }
-    false
+    ancestors(root, node).into_iter().any(|n| {
+        n.child_by_field_name("parameters").is_some_and(|params| {
+            node.start_byte() >= params.end_byte() && binds_name(params, name, source_bytes)
+        })
+    })
 }
 
 fn binds_name(node: tree_sitter::Node<'_>, name: &str, source_bytes: &[u8]) -> bool {

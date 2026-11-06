@@ -121,6 +121,7 @@ pub(super) fn extract_match_captures<'a>(
 }
 
 pub(super) fn record_extracted_item(
+    root: tree_sitter::Node<'_>,
     ext: MatchExtract<'_>,
     source_bytes: &[u8],
     lang: Lang,
@@ -128,13 +129,13 @@ pub(super) fn record_extracted_item(
     refs: &mut Vec<RawRef>,
 ) {
     if let Some((kind, _, start, _, line)) = ext.def {
-        record_def_item(&ext, source_bytes, lang, defs);
+        record_def_item(root, &ext, source_bytes, lang, defs);
         if kind == SymKind::Macro
             && let Some(name) = &ext.name
         {
             scan_macro_body_calls(ext.def_node, name, line, start, lang, source_bytes, refs);
         }
     } else if ext.r#ref.is_some() {
-        record_ref_item(&ext, source_bytes, lang, refs);
+        record_ref_item(root, &ext, source_bytes, lang, refs);
     }
 }

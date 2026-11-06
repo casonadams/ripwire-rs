@@ -37,6 +37,7 @@ fn ref_is_skipped(
 }
 
 fn ref_qualifiers(
+    root: tree_sitter::Node<'_>,
     ext: &MatchExtract<'_>,
     inline_qual: Option<String>,
     role: RefRole,
@@ -54,19 +55,19 @@ fn ref_qualifiers(
     if role == RefRole::Extends && lang.semantics().has_trait_impls() {
         let recv_ty = ext
             .name_node
-            .and_then(|n| find_enclosing_scope(n, source_bytes, lang));
+            .and_then(|n| find_enclosing_scope(root, n, source_bytes, lang));
         let qual = inline_qual.or_else(|| {
             ext.name_node
-                .and_then(|n| find_call_qualifier(n, source_bytes, lang))
+                .and_then(|n| find_call_qualifier(root, n, source_bytes, lang))
         });
         return (qual, recv_ty);
     }
     let qual = inline_qual.or_else(|| {
         ext.name_node.and_then(|n| {
             if role == RefRole::Extends {
-                find_enclosing_scope(n, source_bytes, lang)
+                find_enclosing_scope(root, n, source_bytes, lang)
             } else {
-                find_call_qualifier(n, source_bytes, lang)
+                find_call_qualifier(root, n, source_bytes, lang)
             }
         })
     });
@@ -74,6 +75,7 @@ fn ref_qualifiers(
 }
 
 fn is_shadowed_by_parameter(
+    root: tree_sitter::Node<'_>,
     ext: &MatchExtract<'_>,
     name: &str,
     role: RefRole,
@@ -83,12 +85,13 @@ fn is_shadowed_by_parameter(
     let shadow_applies = role == RefRole::Read
         || (role == RefRole::Call && lang.semantics().parameters_shadow_calls());
     shadow_applies
-        && ext
-            .name_node
-            .is_some_and(|n| !is_member_access(n) && is_enclosing_parameter(n, name, source_bytes))
+        && ext.name_node.is_some_and(|n| {
+            !is_member_access(n) && is_enclosing_parameter(root, n, name, source_bytes)
+        })
 }
 
 pub(super) fn record_ref_item(
+    root: tree_sitter::Node<'_>,
     ext: &MatchExtract<'_>,
     source_bytes: &[u8],
     lang: Lang,
@@ -105,8 +108,9 @@ pub(super) fn record_ref_item(
     if ref_is_skipped(ext, name, role, lang, source_bytes) {
         return;
     }
-    let (qualifier, receiver_type) = ref_qualifiers(ext, inline_qual, role, lang, source_bytes);
-    if qualifier.is_none() && is_shadowed_by_parameter(ext, name, role, lang, source_bytes) {
+    let (qualifier, receiver_type) =
+        ref_qualifiers(root, ext, inline_qual, role, lang, source_bytes);
+    if qualifier.is_none() && is_shadowed_by_parameter(root, ext, name, role, lang, source_bytes) {
         return;
     }
     let receiver = qualifier
@@ -125,7 +129,7 @@ pub(super) fn record_ref_item(
     });
     let (arg_count, arg_count_known) = ext
         .name_node
-        .map(count_call_arguments)
+        .map(|n| count_call_arguments(root, n))
         .unwrap_or((0, false));
     let callee_name = if role == RefRole::Call {
         lang.semantics()

@@ -19,6 +19,26 @@ pub(crate) fn is_non_entrypoint_path(rel_path: &str) -> bool {
     })
 }
 
+/// The ancestors of `node` from its nearest to `root`. `Node::parent` re-descends from the root on every call,
+/// so a loop over it costs quadratic time in depth; one descent from `root` yields the whole chain.
+pub(crate) fn ancestors<'t>(
+    root: tree_sitter::Node<'t>,
+    node: tree_sitter::Node<'t>,
+) -> Vec<tree_sitter::Node<'t>> {
+    if root == node {
+        return Vec::new();
+    }
+    let mut chain = vec![root];
+    while let Some(next) = chain.last().and_then(|cur| cur.child_with_descendant(node)) {
+        if next == node {
+            break;
+        }
+        chain.push(next);
+    }
+    chain.reverse();
+    chain
+}
+
 pub(crate) fn find_enclosing_definition_node(
     node: tree_sitter::Node<'_>,
 ) -> Option<tree_sitter::Node<'_>> {
