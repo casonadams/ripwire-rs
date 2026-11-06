@@ -1,0 +1,193 @@
+# Pinned corpus for scripts/corpus/corpus.py: public repositories with an official SCIP indexer.
+#
+# Each repo is pinned to a full commit SHA. Its indexer runs inside the image built from scripts/corpus/Dockerfile,
+# with the checkout mounted at /src (a cache copy) and the output directory at /out.
+#
+# Fields:
+#   languages            languages the repo is scored for
+#   license              SPDX id; permissive only (MIT, Apache-2.0, BSD, zlib, CC0)
+#   url, sha             a remote repo at a full 40-hex commit (cloned into the cache)
+#   path                 instead of url/sha: a local tree, relative to the repo root (snapshotted, keyed by content)
+#   indexer, indexer_version, index_file
+#                        the indexer and the file it writes under /out; the runner moves it into the cache
+#   setup                shell run first in /src (dependency install, build-system configure); may be empty
+#   index                shell that writes {out} (= /out/<index_file>)
+#   precision_floor, recall_floor
+#                        lowest accepted --eval=scip values, set just under the measured value
+#                        (corpus.py measure prints suggestions)
+#   status               measured | unverified | blocked; blocked entries need a reason
+#
+# Repo URLs and SHAs live only in this file (see AGENTS.md).
+
+[[repo]]
+name = "ripwire-rs"
+languages = ["rust"]
+status = "unverified"
+license = "Apache-2.0"
+path = "."
+indexer = "rust-analyzer"
+indexer_version = "1.98.1"
+index = "rust-analyzer scip /src --output {out}"
+
+[[repo]]
+name = "rich"
+languages = ["python"]
+status = "measured"
+license = "MIT"
+url = "https://github.com/Textualize/rich"
+sha = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
+indexer = "scip-python"
+indexer_version = "0.6.8"
+setup = "python3 -m venv /tmp/venv && /tmp/venv/bin/pip install -q -e ."
+index = "PATH=/tmp/venv/bin:$PATH scip-python index --cwd /src --project-name=rich --output={out} --quiet"
+precision_floor = 0.9806
+recall_floor = 0.9131
+
+[[repo]]
+name = "superstruct"
+languages = ["typescript"]
+status = "measured"
+license = "MIT"
+url = "https://github.com/ianstormtaylor/superstruct"
+sha = "e414c8afd3b69f6bc0173b8ee25f71d8e5694f01"
+indexer = "scip-typescript"
+indexer_version = "0.6.1"
+setup = "npm install --ignore-scripts --no-audit --no-fund"
+index = "scip-typescript index --cwd /src --output {out}"
+precision_floor = 0.9862
+recall_floor = 0.9862
+
+[[repo]]
+name = "async"
+languages = ["javascript"]
+status = "measured"
+license = "MIT"
+url = "https://github.com/caolan/async"
+sha = "3921e54bd0704157dbea238fdfcc0c3619abde1a"
+indexer = "scip-typescript"
+indexer_version = "0.6.1"
+setup = '''npm ci --ignore-scripts --no-audit --no-fund
+cat > tsconfig.json <<'EOF'
+{"compilerOptions": {"allowJs": true, "checkJs": false, "module": "esnext", "moduleResolution": "node", "target": "es2020"}, "include": ["lib/**/*.js", "test/**/*.js"]}
+EOF'''
+index = "scip-typescript index --cwd /src --output {out}"
+precision_floor = 0.9980
+recall_floor = 0.7207
+
+[[repo]]
+name = "rack"
+languages = ["ruby"]
+status = "measured"
+license = "MIT"
+url = "https://github.com/rack/rack"
+sha = "da90464e3fa93e3cb49dc2d4ede798e6c6b70b4f"
+indexer = "scip-ruby"
+indexer_version = "0.5.1"
+index = 'cd /src && { scip-ruby . || [ "$?" -eq 100 ]; } && mv index.scip {out}'
+precision_floor = 0.8816
+recall_floor = 0.9923
+
+[[repo]]
+name = "dart-xml"
+languages = ["dart"]
+status = "measured"
+license = "MIT"
+url = "https://github.com/renggli/dart-xml"
+sha = "e083bbaf4188beccdebac514acacc9440297de53"
+indexer = "scip_dart"
+indexer_version = "1.8.1"
+setup = "dart pub get"
+index = "cd /src && dart pub global run scip_dart /src && mv index.scip {out}"
+precision_floor = 0.9558
+recall_floor = 0.6505
+
+[[repo]]
+name = "kotlinpoet"
+languages = ["kotlin"]
+status = "blocked"
+reason = "scip-java 0.12.3 Kotlin semanticdb plugin rejects KotlinPoet's Kotlin compiler (PluginProcessingError: incompatible with the current version of the compiler); scip-java 0.13.x writes SCIP typed_range, which the resolver's scip crate 0.10.0 ignores; 0.14.0 needs an artifact not on Maven Central"
+license = "Apache-2.0"
+url = "https://github.com/square/kotlinpoet"
+sha = "4ce5d54547614aa245dd3cc8d9e0732bbe9c44de"
+indexer = "scip-java"
+indexer_version = "0.12.3"
+index = "cd /src && scip-java index --output={out}"
+
+[[repo]]
+name = "jsoup"
+languages = ["java"]
+status = "measured"
+license = "MIT"
+url = "https://github.com/jhy/jsoup"
+sha = "d90d57521d931db7bf7ee464a4c0a1a9293db088"
+indexer = "scip-java"
+indexer_version = "0.12.3"
+index = "cd /src && scip-java index --output={out}"
+precision_floor = 0.9399
+recall_floor = 0.8319
+
+[[repo]]
+name = "os-lib"
+languages = ["scala"]
+status = "blocked"
+reason = "scip-java 0.12.3 reports 'No build tool detected' for os-lib (Mill 1.x build.mill) even with --build-tool=mill; sbt is not installed in the image, and no sbt-based Scala repo was indexed"
+license = "MIT"
+url = "https://github.com/com-lihaoyi/os-lib"
+sha = "8871ab0bda9bbcc4edbef9b1a402eb4c47ef9398"
+indexer = "scip-java"
+indexer_version = "0.12.3"
+index = "cd /src && scip-java index --build-tool=mill --output={out}"
+
+[[repo]]
+name = "spdlog"
+languages = ["cpp"]
+status = "measured"
+license = "MIT"
+url = "https://github.com/gabime/spdlog"
+sha = "6d9805df3f588402b17073dcd13eb569ceda864d"
+indexer = "scip-clang"
+indexer_version = "0.4.1"
+setup = "cmake -S /src -B /tmp/build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSPDLOG_BUILD_EXAMPLE=OFF -DSPDLOG_BUILD_TESTS=OFF"
+index = "scip-clang --compdb-path=/tmp/build/compile_commands.json --index-output-path={out}"
+precision_floor = 0.8963
+recall_floor = 0.6982
+
+[[repo]]
+name = "zlib"
+languages = ["c"]
+status = "measured"
+license = "zlib"
+url = "https://github.com/madler/zlib"
+sha = "757f0527154291bcf6bfbd6396ecde6bedd2db95"
+indexer = "scip-clang"
+indexer_version = "0.4.1"
+setup = "cmake -S /src -B /tmp/build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+index = "scip-clang --compdb-path=/tmp/build/compile_commands.json --index-output-path={out}"
+precision_floor = 0.4693
+recall_floor = 0.9980
+
+[[repo]]
+name = "guardclauses"
+languages = ["csharp"]
+status = "measured"
+license = "MIT"
+url = "https://github.com/ardalis/GuardClauses"
+sha = "61dde6c9d3e1715286bd100144a9edff1ad0664c"
+indexer = "scip-dotnet"
+indexer_version = "0.2.16"
+index = "cd /src && scip-dotnet index GuardClauses.sln --output {out}"
+precision_floor = 0.9862
+recall_floor = 0.9776
+
+[[repo]]
+name = "uuid"
+languages = ["php"]
+status = "blocked"
+reason = "scip-php 0.0.2 exits at start: 'Invalid scip-php vendor directory' (it expects its vendor dir at a nested path composer does not create); its protobuf dependency is blocked by a security advisory (--no-security-blocking) and its php-parser pin conflicts with uuid dev dependencies"
+license = "MIT"
+url = "https://github.com/ramsey/uuid"
+sha = "dc681915388ca5fd55a7fcb7c85bd9202f20fd4a"
+indexer = "scip-php"
+indexer_version = "0.0.2"
+setup = "composer install --no-interaction --no-progress --no-scripts && composer require --dev --with-all-dependencies --no-interaction --no-progress --no-scripts --no-security-blocking davidrjenni/scip-php:0.0.2"
+index = "cd /src && vendor/bin/scip-php && mv index.scip {out}"

@@ -108,7 +108,8 @@ more correct, or more honest.
   per test, `< 15s` full suite).
 - **Generic names only**: Findings from other codebases must reach tests,
   fixtures, docs, and commit messages under generic names (`lint_rules.py`,
-  `user_accounts`); never copy their repo, path, symbol, or table names.
+  `user_accounts`); never copy their repo, path, symbol, or table names. The one exception is the corpus manifest
+  `scripts/corpus/corpus.toml`, the only place repo URLs and commit SHAs may appear; the corpus docs name languages only.
 - **Documentation sync**: `docs/REFERENCE.md` lists every CLI flag and MCP tool and is
   generated from the binary; run `make docs` after changing one (`make docs-check`
   fails when it is stale). Hand-written docs (`README.md`, `docs/`, `www/`,

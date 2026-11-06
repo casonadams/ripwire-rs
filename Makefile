@@ -89,8 +89,8 @@ registry: ## Check every language and command plugin directory is registered
 	@python3 ./scripts/check-registry.py .
 
 .PHONY: script-tests
-script-tests: ## Run the unittest checks for scripts/ (parity rule logic, no network)
-	@python3 -m unittest scripts/test_validate_parity.py
+script-tests: ## Run the unittest checks for scripts/ (parity rule logic, corpus runner parsing; no network)
+	@python3 -m unittest scripts/test_validate_parity.py scripts/corpus/test_corpus.py
 
 .PHONY: quality
 quality: ## Measure quality regressions against git HEAD with ripwire-rs
@@ -119,6 +119,30 @@ docs-check: build-release ## Fail when docs/REFERENCE.md is stale
 .PHONY: resolution
 resolution: build-release ## Fail when call resolution gets worse than scripts/resolution-ceilings.toml
 	@python3 ./scripts/check-resolution.py .
+
+CORPUS := python3 ./scripts/corpus/corpus.py
+NAME ?=
+
+.PHONY: corpus-image
+corpus-image: ## Build the local SCIP indexer image (linux/amd64, needs Docker; not part of all or ci)
+	docker build --platform linux/amd64 -t ripwire-corpus:local scripts/corpus
+
+.PHONY: corpus-index
+corpus-index: ## Index the corpus repos into ~/.cache/ripwire-corpus (NAME=click for one; FORCE=1 to rebuild)
+	@$(CORPUS) index $(NAME) $(if $(FORCE),--force)
+
+.PHONY: corpus-eval
+corpus-eval: build-release ## Score the resolver on the corpus and fail when a precision or recall floor is missed
+	@$(CORPUS) eval $(NAME) --bin target/release/ripwire-rs
+
+.PHONY: corpus-measure
+corpus-measure: build-release ## Print measured precision and recall per corpus repo with suggested floors
+	@$(CORPUS) measure $(NAME) --bin target/release/ripwire-rs
+
+.PHONY: corpus-diff
+corpus-diff: build-release ## Diff resolver verdicts on the corpus between OLD=path/to/old/ripwire-rs and target/release/ripwire-rs
+	@test -n "$(OLD)" || { echo "usage: make corpus-diff OLD=path/to/old/ripwire-rs"; exit 1; }
+	@$(CORPUS) diff "$(OLD)" target/release/ripwire-rs $(NAME)
 
 UPSTREAM_DIR ?= ../ripwire
 
