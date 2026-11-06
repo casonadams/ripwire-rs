@@ -35,7 +35,7 @@ pub(super) fn is_unpinned_std_member_blocked<L: ResolutionLookup + ?Sized>(
         return false;
     }
     if let Some(q) = r.qualifier {
-        return sym.scope != Some(q);
+        return sym.scope != Some(q) && !is_module_path_free_fn(lookup, r, sym, q);
     }
     match sym.kind {
         crate::domain::SymKind::Field | crate::domain::SymKind::Var => true,
@@ -49,6 +49,20 @@ pub(super) fn is_unpinned_std_member_blocked<L: ResolutionLookup + ?Sized>(
         }
         _ => false,
     }
+}
+
+/// `module::name(..)` names the free fn `name` of the indexed module file the qualifier is bound to. A path call
+/// (not a receiver call) to that file's top-level function is pinned, whatever the std-member name.
+fn is_module_path_free_fn<L: ResolutionLookup + ?Sized>(
+    lookup: &L,
+    r: &Reference,
+    sym: &Symbol,
+    q: Spur,
+) -> bool {
+    r.path_call
+        && sym.kind == crate::domain::SymKind::Function
+        && sym.scope.is_none()
+        && lookup.qualifier_module_file(r.file_id, q) == Some(sym.file_id)
 }
 
 pub(super) fn is_non_table_read_write(r: &Reference) -> bool {

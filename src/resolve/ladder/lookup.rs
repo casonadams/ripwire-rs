@@ -357,7 +357,8 @@ pub trait ResolutionLookup {
     }
 
     /// Candidates a qualified reference can mean: those scoped by the qualifier, else those in the module
-    /// file the qualifier is bound to by an import, else all of them unless the qualifier is std/builtin.
+    /// file the qualifier is bound to by an import, else all of them unless the qualifier is std/builtin, or a
+    /// macro argument names a type the index does not bind (its path is read from flat tokens: no evidence).
     #[must_use]
     fn narrow_by_qualifier(
         &self,
@@ -392,12 +393,14 @@ pub trait ResolutionLookup {
         if let Some(imported) = self.narrow_to_imported_module(&cands, r, q) {
             return Some((imported, Narrowing::Import));
         }
-        let is_std_qual = self
-            .interner()
-            .and_then(|i| i.try_resolve(&q))
-            .is_some_and(|qs| r.lang.semantics().is_std_or_builtin_qualifier(qs));
-        (!is_std_qual && !r.lang.semantics().qualifier_must_be_indexed())
-            .then_some((cands, Narrowing::None))
+        let qualifier_text = self.interner().and_then(|i| i.try_resolve(&q));
+        let is_std_qual =
+            qualifier_text.is_some_and(|qs| r.lang.semantics().is_std_or_builtin_qualifier(qs));
+        let names_a_type =
+            qualifier_text.is_some_and(|qs| qs.starts_with(|c: char| c.is_ascii_uppercase()));
+        let unindexed_qualifier_binds =
+            !r.lang.semantics().qualifier_must_be_indexed() && !(r.macro_arg && names_a_type);
+        (!is_std_qual && unindexed_qualifier_binds).then_some((cands, Narrowing::None))
     }
 
     #[must_use]

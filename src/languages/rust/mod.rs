@@ -18,7 +18,9 @@ use super::{
 use crate::domain::{Lang, SymKind};
 use implementations::collect_rust_implementations;
 use names::{RUST_BUILTIN_MACROS, RUST_STD_MEMBERS, RUST_STD_QUALIFIERS};
-use positions::{is_function_name, is_macro_argument_call, rust_read_position};
+use positions::{
+    is_function_name, is_macro_argument_call, macro_path_qualifier, rust_read_position,
+};
 use read_bindings::collect_rust_read_bindings;
 use resolve::resolve_rust_use_target;
 use std::collections::HashMap;
@@ -154,6 +156,9 @@ impl LanguageSemantics for RustLanguage {
         name_node: tree_sitter::Node<'_>,
         source_bytes: &[u8],
     ) -> Option<String> {
+        if name_node.parent().is_some_and(|p| p.kind() == "token_tree") {
+            return macro_path_qualifier(name_node, source_bytes);
+        }
         let path = name_node.parent().filter(|p| p.kind() == "scoped_identifier")?;
         let path = path.child_by_field_name("path")?;
         if path.kind() != "scoped_identifier" {

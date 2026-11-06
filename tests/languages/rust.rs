@@ -461,7 +461,7 @@ fn test_rust_macro_argument_calls_bind_only_to_bare_calls() {
     assert_eq!(rust_callers_of(method, "alpha"), 0);
     let path =
         b"pub fn alpha(x: u8) -> u8 { x }\nfn checks() { assert_eq!(other::alpha(2), 2); }\n";
-    assert_eq!(rust_callers_of(path, "alpha"), 0);
+    assert_eq!(rust_callers_of(path, "alpha"), 1);
     let bare = b"pub fn alpha(x: u8) -> u8 { x }\nfn checks() { assert_eq!(alpha(2), 2); }\n";
     assert_eq!(rust_callers_of(bare, "alpha"), 1);
 }

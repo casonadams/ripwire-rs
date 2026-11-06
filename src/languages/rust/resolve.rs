@@ -154,12 +154,17 @@ pub(super) fn resolve_rust_use_target(
         }
     }
     resolve_rust_workspace_crate_target(clean, file_index)
-        .or_else(|| resolve_rust_unique_suffix(&segs, file_index))
+        .or_else(|| resolve_rust_unique_suffix(&segs, file_index, importer_path))
 }
 
 /// A path led by a crate name the index cannot map (`pkg::commands::x`) resolves to the one indexed file
 /// whose path ends in its module segments after that name. Two candidates, or a std path, resolve to nothing.
-fn resolve_rust_unique_suffix(segs: &[&str], file_index: &HashMap<&str, u32>) -> Option<u32> {
+/// The importing file is no candidate: it cannot be the module it imports.
+fn resolve_rust_unique_suffix(
+    segs: &[&str],
+    file_index: &HashMap<&str, u32>,
+    importer_path: &str,
+) -> Option<u32> {
     let [head, tail @ ..] = segs else {
         return None;
     };
@@ -173,7 +178,7 @@ fn resolve_rust_unique_suffix(segs: &[&str], file_index: &HashMap<&str, u32>) ->
         let module = tail[..take].join("/");
         let mut hits = file_index
             .iter()
-            .filter(|(path, _)| path_is_module_file(path, &module))
+            .filter(|(path, _)| **path != importer_path && path_is_module_file(path, &module))
             .map(|(_, id)| *id);
         if let Some(first) = hits.next() {
             return hits.next().is_none().then_some(first);
