@@ -38,6 +38,30 @@ fn dart_typed_receiver_without_the_method_keeps_name_resolution() {
     assert_eq!(dart_callees("viaInherited"), ["Base.close"]);
 }
 
+const SHAPES: &str = "abstract class Shape {\n  void draw();\n}\n\
+class Circle extends Shape {\n  void draw() {}\n}\n\
+class Square extends Shape {\n  void draw() {}\n}\n\
+void render(Shape shape) {\n  shape.draw();\n}\n\
+void paint(Circle circle) {\n  circle.draw();\n}\n\
+abstract class Mapper {\n  List<int> map(List<int> xs);\n}\n\
+class Doubler extends Mapper {\n  List<int> map(List<int> xs) => xs;\n}\n\
+void builtinMap() {\n  [1, 2].map((n) => n);\n}\n";
+
+fn shape_callees(caller: &str) -> Vec<String> {
+    owner_qualified_callees(&[("lib/shapes.dart", Lang::Dart, SHAPES.as_bytes())], caller)
+}
+
+#[test]
+fn dart_bodyless_abstract_member_is_a_declaration_the_typed_receiver_reaches() {
+    assert_eq!(shape_callees("render"), ["Circle.draw", "Shape.draw", "Square.draw"]);
+    assert_eq!(shape_callees("paint"), ["Circle.draw"]);
+}
+
+#[test]
+fn dart_builtin_map_is_not_an_in_tree_abstract_member() {
+    assert!(shape_callees("builtinMap").is_empty());
+}
+
 #[test]
 fn dart_call_result_receiver_uses_the_factory_return_type() {
     assert_call_result_binds_factory_return(
