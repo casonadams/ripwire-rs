@@ -28,6 +28,7 @@ fn find_def_body_start(node: tree_sitter::Node<'_>, kinds: &SyntaxKinds) -> usiz
 }
 
 pub(super) fn record_def_item(
+    root: tree_sitter::Node<'_>,
     ext: &MatchExtract<'_>,
     source_bytes: &[u8],
     lang: Lang,
@@ -55,7 +56,7 @@ pub(super) fn record_def_item(
     }
     let scope = inline_scope.or_else(|| {
         ext.name_node
-            .and_then(|n| find_enclosing_scope(n, source_bytes, lang))
+            .and_then(|n| find_enclosing_scope(root, n, source_bytes, lang))
     });
     let (body_node, end) = lang.semantics().resolve_def_body_and_end(ext.def_node, end);
     let kinds = lang.semantics().syntax_kinds();

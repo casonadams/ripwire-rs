@@ -87,7 +87,7 @@ fn collect_items(
     let mut matches = cursor.matches(query, ctx.root, ctx.source_bytes);
     while let Some(m) = matches.next() {
         let ext = extract_match_captures(m, query, ctx.source_bytes);
-        record_extracted_item(ext, ctx.source_bytes, ctx.lang, defs, refs);
+        record_extracted_item(ctx.root, ext, ctx.source_bytes, ctx.lang, defs, refs);
     }
 }
 
