@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/casonadams/ripwire-rs/compare/v0.7.0...v0.7.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **rust:** count tree-sitter Node members as external surface ([a6d0eb6](https://github.com/casonadams/ripwire-rs/commit/a6d0eb6103b3bcadc7e1def17c61331e08ec1592))
+
 ## [0.7.0](https://github.com/casonadams/ripwire-rs/compare/v0.6.9...v0.7.0) (2026-11-06)
 
 
