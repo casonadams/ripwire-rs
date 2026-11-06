@@ -1,7 +1,8 @@
-//! C-family type aliases: `typedef T Name;` and C++ `using Name = T;`, as `(Name, declared target)`.
+//! C-family type aliases: `typedef T Name;` and C++ `using Name = T;`, as `(Name, declared target)`. A target held by a
+//! transparent wrapper (`using P = std::shared_ptr<T>;`) names `T`, marked as reached through the wrapper.
 
 use crate::languages::common::reads::nodes;
-use crate::languages::common::typed::declared_type_text;
+use crate::languages::common::typed::{WRAPPED_RECEIVER, declared_type_text, unwrap_transparent};
 use tree_sitter::Node;
 /// The type a declaration names: `using X = T;` wraps `T` in a `type_descriptor`.
 fn target_type(ty: Node<'_>) -> Node<'_> {
@@ -12,7 +13,11 @@ fn target_type(ty: Node<'_>) -> Node<'_> {
     }
 }
 
-pub(crate) fn type_aliases(root: Node<'_>, source: &[u8]) -> Vec<(String, String)> {
+pub(crate) fn type_aliases(
+    root: Node<'_>,
+    source: &[u8],
+    wrappers: &[&str],
+) -> Vec<(String, String)> {
     nodes(root)
         .filter_map(|node| {
             let (name, ty) = match node.kind() {
@@ -30,8 +35,16 @@ pub(crate) fn type_aliases(root: Node<'_>, source: &[u8]) -> Vec<(String, String
                 return None;
             }
             let alias = name.utf8_text(source).ok()?;
-            let target = declared_type_text(target_type(ty), source, &[])?;
-            (alias != target.trim_end_matches("<>")).then(|| (alias.to_string(), target))
+            let (inner, wrapped) = unwrap_transparent(target_type(ty), source, wrappers);
+            let text = declared_type_text(inner, source, &[])?;
+            (alias != text.trim_end_matches("<>")).then(|| {
+                let target = if wrapped {
+                    format!("{text}{WRAPPED_RECEIVER}")
+                } else {
+                    text
+                };
+                (alias.to_string(), target)
+            })
         })
         .collect()
 }

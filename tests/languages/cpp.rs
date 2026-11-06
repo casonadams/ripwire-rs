@@ -297,3 +297,51 @@ fn cpp_untyped_member_call_declines_rather_than_preferring_the_callers_own_class
     assert!(!drained.iter().any(|c| c == "pool.flush"), "{drained:?}");
     assert!(!filled.iter().any(|c| c == "pool.push_back"), "{filled:?}");
 }
+
+#[test]
+fn cpp_alias_of_a_wrapper_types_its_pointee_and_forward_declarations_do_not_hide_the_class() {
+    let files: &[(&str, Lang, &[u8])] = &[
+        (
+            "src/registry.cpp",
+            Lang::Cpp,
+            b"#include \"../include/registry.h\"\nvoid Registry::attach(sink_ptr s) { s->flush(); }\nvoid Registry::drop(sink_ptr s) { s.reset(); }\nvoid Registry::tune(logger* l) { l->set_level(1); }\n",
+        ),
+        (
+            "include/sink.h",
+            Lang::Cpp,
+            b"#pragma once\n#include <memory>\nclass sink {\npublic:\n  void flush();\n  void reset();\n};\nusing sink_ptr = std::shared_ptr<sink>;\n",
+        ),
+        (
+            "include/stale.h",
+            Lang::Cpp,
+            b"class stale {\npublic:\n  void flush();\n  void reset();\n};\n",
+        ),
+        ("include/fwd.h", Lang::Cpp, b"class logger;\n"),
+        (
+            "include/logger.h",
+            Lang::Cpp,
+            b"#pragma once\nclass logger {\npublic:\n  void set_level(int l);\n};\n",
+        ),
+        (
+            "include/registry.h",
+            Lang::Cpp,
+            b"#pragma once\n#include \"logger.h\"\nclass Registry {\npublic:\n  void attach(sink_ptr s);\n  void drop(sink_ptr s);\n  void tune(logger* l);\n};\n",
+        ),
+    ];
+    assert!(
+        owner_qualified_callees(files, "attach")
+            .iter()
+            .any(|c| c == "sink.flush"),
+        "{:?}",
+        owner_qualified_callees(files, "attach")
+    );
+    let dropped = owner_qualified_callees(files, "drop");
+    assert!(!dropped.iter().any(|c| c == "sink.reset"), "{dropped:?}");
+    assert!(
+        owner_qualified_callees(files, "tune")
+            .iter()
+            .any(|c| c == "logger.set_level"),
+        "{:?}",
+        owner_qualified_callees(files, "tune")
+    );
+}

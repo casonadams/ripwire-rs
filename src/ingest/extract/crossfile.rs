@@ -9,6 +9,7 @@ use crate::domain::Lang;
 use crate::languages::common::typed::WRAPPED_RECEIVER;
 use crate::languages::reads::ReadBindings;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 /// Receivers the file's own bindings cannot type but a class field of another file can: `member` or `this.member`
 /// inside a body whose `this` is class `class`, with no binding of `member` in the file.
@@ -68,6 +69,18 @@ pub(super) fn pending_facts(
     }
 }
 
+/// The type an alias names: its declared target, resolved as `Declared::template_target` resolves a template, with a
+/// wrapper mark kept after the resolved name.
+fn alias_target(declared: &Declared, target: &str) -> Option<String> {
+    match target.strip_suffix(WRAPPED_RECEIVER) {
+        Some(base) => Some(format!(
+            "{}{WRAPPED_RECEIVER}",
+            declared.template_target(base)?
+        )),
+        None => declared.template_target(target),
+    }
+}
+
 /// The project-wide tables the per-file pass reads.
 struct Table<'a> {
     declared: &'a Declared,
@@ -80,7 +93,7 @@ struct Table<'a> {
 impl Table<'_> {
     /// The type a declared type text stands for: an alias's target, a template's bare name when the tree does not
     /// specialize it, or the specialization the text names exactly. `None` when the text names a specialized template
-    /// that is not declared exactly.
+    /// that is not declared exactly. A wrapper mark on the target is kept.
     fn clean(&self, ty: &str) -> Option<String> {
         if ty.contains('<') {
             return self.declared.template_target(ty);
@@ -92,13 +105,22 @@ impl Table<'_> {
     }
 
     /// The receiver type a declared type gives a call named `callee`. A receiver typed through a transparent wrapper
-    /// (`std::unique_ptr<T>`) takes its class `T`, except for the wrapper's own members (`reset` on the pointer).
+    /// (`std::unique_ptr<T>`, or an alias of one) takes its class `T`, except for the wrapper's own members (`reset` on
+    /// the pointer).
     fn receiver_type(&self, ty: &str, callee: &str, wrapper_members: &[&str]) -> Option<String> {
-        match ty.strip_suffix(WRAPPED_RECEIVER) {
-            Some(_) if wrapper_members.contains(&callee) => None,
-            Some(base) => self.clean(base),
-            None => self.clean(ty),
+        let (ty, wrapped) = match ty.strip_suffix(WRAPPED_RECEIVER) {
+            Some(base) => (base, true),
+            None => (ty, false),
+        };
+        let target = self.clean(ty)?;
+        let (class, aliased) = match target.strip_suffix(WRAPPED_RECEIVER) {
+            Some(base) => (base.to_string(), true),
+            None => (target, false),
+        };
+        if (wrapped || aliased) && wrapper_members.contains(&callee) {
+            return None;
         }
+        Some(class)
     }
 }
 
@@ -136,18 +158,27 @@ pub(super) fn resolve_cross_file_types(
 impl<'a> Table<'a> {
     fn build(parsed: &[Option<(Lang, FileParseResult)>], declared: &'a Declared) -> Self {
         let files = || parsed.iter().flatten().map(|(_, file)| file);
-        let mut alias_count: HashMap<&str, usize> = HashMap::new();
-        for (alias, _) in files().flat_map(|file| file.aliases.iter()) {
-            *alias_count.entry(alias.as_str()).or_default() += 1;
-        }
-        let mut aliases = HashMap::new();
+        // An alias declared more than once binds only where every declaration names one target (an `#if`/`#else`
+        // pair of the same target); two different targets leave the name unbound.
+        let mut targets: HashMap<&str, Option<Option<String>>> = HashMap::new();
         for (alias, target) in files().flat_map(|file| file.aliases.iter()) {
-            if alias_count.get(alias.as_str()) != Some(&1) || declared.classes.contains(alias) {
-                continue;
+            let resolved = alias_target(declared, target);
+            match targets.entry(alias.as_str()) {
+                Entry::Vacant(slot) => {
+                    slot.insert(Some(resolved));
+                }
+                Entry::Occupied(mut slot) => {
+                    if slot.get().as_ref() != Some(&resolved) {
+                        slot.insert(None);
+                    }
+                }
             }
-            let resolved = declared.template_target(target);
-            aliases.insert(alias.clone(), resolved);
         }
+        let aliases = targets
+            .into_iter()
+            .filter(|(alias, _)| !declared.classes.contains(*alias))
+            .filter_map(|(alias, target)| Some((alias.to_string(), target?)))
+            .collect();
         let mut member_count: HashMap<(&str, &str), usize> = HashMap::new();
         let mut member_types: HashMap<(&str, &str), &str> = HashMap::new();
         for member in files().flat_map(|file| file.members.iter()) {

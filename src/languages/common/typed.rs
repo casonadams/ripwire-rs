@@ -631,7 +631,11 @@ fn declared_type(node: Node<'_>, source: &[u8], syntax: &TypedSyntax) -> Option<
 
 /// The type a transparent wrapper hands its receiver: `T` of `std::unique_ptr<T>`, through any nesting. `wrapped` is
 /// false for any other type.
-fn unwrap_transparent<'t>(ty: Node<'t>, source: &[u8], wrappers: &[&str]) -> (Node<'t>, bool) {
+pub(crate) fn unwrap_transparent<'t>(
+    ty: Node<'t>,
+    source: &[u8],
+    wrappers: &[&str],
+) -> (Node<'t>, bool) {
     let mut current = ty;
     let mut wrapped = false;
     while let Some(inner) = transparent_argument(current, source, wrappers) {

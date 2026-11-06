@@ -545,6 +545,12 @@ pub trait LanguageSemantics: Sync {
         false
     }
 
+    /// True where a bodyless class or struct declaration (`class logger;`) is a forward declaration of the type a
+    /// definition elsewhere gives a body: it declares no members and never competes with that definition by name.
+    fn bodyless_types_are_forward_declarations(&self) -> bool {
+        false
+    }
+
     /// True where a nested type is named by the type that encloses it (`Outer.Inner`): its owner key is qualified by
     /// that type, and a bare name written inside the enclosing type names the nested one first.
     fn nested_types_are_scoped(&self) -> bool {

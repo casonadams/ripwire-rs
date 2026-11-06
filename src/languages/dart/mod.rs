@@ -184,6 +184,7 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
     member_access: &[
         "unconditional_assignable_selector",
         "conditional_assignable_selector",
+        "cascade_selector",
     ],
     body_blocks: &["function_body", "block", "class_body"],
     body_wrappers: &["function_expression", "parenthesized_expression"],
@@ -207,6 +208,18 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 fn selector_receiver(selector: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
     let mut receiver = selector.prev_named_sibling()?;
     while receiver.kind() == "selector" && receiver.named_child_count() == 0 {
+        receiver = receiver.prev_named_sibling()?;
+    }
+    Some(receiver)
+}
+
+/// The target of a cascade (`p` in `p..a()..b()`): the named sibling before the run of cascade sections.
+fn cascade_receiver(section: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    if section.kind() != "cascade_section" {
+        return None;
+    }
+    let mut receiver = section.prev_named_sibling()?;
+    while receiver.kind() == "cascade_section" {
         receiver = receiver.prev_named_sibling()?;
     }
     Some(receiver)
@@ -336,6 +349,7 @@ impl LanguageSemantics for DartLanguage {
             "unconditional_assignable_selector" | "conditional_assignable_selector" => {
                 selector_receiver(access.parent()?)
             }
+            "cascade_selector" => cascade_receiver(access.parent()?),
             _ => None,
         }
     }
