@@ -32,22 +32,22 @@ indexer_version = "0.5.1"
 
 [[repo]]
 name = "dart-xml"
-precision = 0.9726
-recall = 0.7593
+precision = 0.9751
+recall = 0.8373
 sha = "e083bbaf4188beccdebac514acacc9440297de53"
 indexer_version = "1.8.1"
 
 [[repo]]
 name = "kotlinpoet"
-precision = 0.8313
-recall = 0.5050
+precision = 0.9132
+recall = 0.8170
 sha = "4ce5d54547614aa245dd3cc8d9e0732bbe9c44de"
 indexer_version = "0.13.2"
 
 [[repo]]
 name = "jsoup"
-precision = 0.9623
-recall = 0.8963
+precision = 0.9650
+recall = 0.9138
 sha = "d90d57521d931db7bf7ee464a4c0a1a9293db088"
 indexer_version = "0.12.3"
 
@@ -88,21 +88,21 @@ indexer_version = "0.0.2"
 
 [[repo]]
 name = "chi"
-precision = 0.8053
-recall = 0.8228
+precision = 0.9534
+recall = 0.9586
 sha = "9f8adb1aabaa8a91180a821111d3f8e668d1c0bf"
 indexer_version = "gopls-0.24.0"
 
 [[repo]]
 name = "penlight"
-precision = 0.8216
-recall = 0.8422
+precision = 0.9817
+recall = 0.9553
 sha = "7f3351f226c2f643aaa1d3afa8d7293dd8a1d985"
 indexer_version = "lua-language-server-3.19.2"
 
 [[repo]]
 name = "zls"
-precision = 0.8095
+precision = 0.8857
 recall = 0.8759
 sha = "b3e65123f1bf455cea491ba7069bebd5f93e6839"
 indexer_version = "zls-0.17.0"
@@ -116,8 +116,8 @@ indexer_version = "fortls-3.2.2"
 
 [[repo]]
 name = "forge-std"
-precision = 0.7103
-recall = 0.6651
+precision = 0.9576
+recall = 0.8966
 sha = "dc647cc030d9d65910d8f1172a0cde48d7106e32"
 indexer_version = "solidity-ls-0.9.3"
 
@@ -129,8 +129,36 @@ sha = "94c2977eda06f230aafa9628fcd869123f01896b"
 indexer_version = "bash-language-server-5.8.1"
 
 [[repo]]
+name = "rodash"
+precision = 1.0000
+recall = 1.0000
+sha = "105b69ef98f2b5351dd3f02c9041a3a36886f717"
+indexer_version = "brighterscript-0.73.8"
+
+[[repo]]
+name = "masonry"
+precision = 0.7429
+recall = 0.6500
+sha = "8bd77ea92bbe995e14c454f821200b222e5a8804"
+indexer_version = "clangd-19.0"
+
+[[repo]]
+name = "deepgemm"
+precision = 0.5796
+recall = 1.0000
+sha = "5081f8513af57e61696de4f4f04b0e707ffb503e"
+indexer_version = "clangd-19.0"
+
+[[repo]]
+name = "satin"
+precision = 0.9590
+recall = 0.9590
+sha = "a91c469f517cef1946d5ed4dd9771df4843a30ef"
+indexer_version = "clangd-19.0"
+
+[[repo]]
 name = "ripwire-rs-self"
-precision = 0.9868
-recall = 0.9789
+precision = 0.9873
+recall = 0.9798
 sha = "check-resolution"
 indexer_version = ""

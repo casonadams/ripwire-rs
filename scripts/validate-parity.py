@@ -245,7 +245,7 @@ def discover_repo_targets(rw_bin, repo_dir):
 # A Rust test_ basename under src/ is a module, not a partner (06ecbed), so the partner probe is a Python test_x pair.
 CHANGED_SETS = (
     "src/gate/affected.rs,src/serialize/arch_xml/mod.rs",
-    "scripts/corpus/corpus.py",
+    "scripts/validate-parity.py",
     "src/commands/situ.rs,src/commands/edit_check.rs,src/commands/safe_delete.rs",
 )
 # --edit-check and --safe-delete take one symbol each, so each symbol is its own run.

@@ -104,8 +104,8 @@ indexer = "scip_dart"
 indexer_version = "1.8.1"
 setup = "dart pub get"
 index = "cd /src && dart pub global run scip_dart /src && mv index.scip {out}"
-precision_floor = 0.9706
-recall_floor = 0.7573
+precision_floor = 0.9731
+recall_floor = 0.8353
 
 [[repo]]
 name = "kotlinpoet"
@@ -117,8 +117,8 @@ sha = "4ce5d54547614aa245dd3cc8d9e0732bbe9c44de"
 indexer = "scip-java"
 indexer_version = "0.13.2"
 index = "cd /src && scip-java-0.13.2 index --output={out}"
-precision_floor = 0.8294
-recall_floor = 0.5030
+precision_floor = 0.9112
+recall_floor = 0.8150
 
 [[repo]]
 name = "jsoup"
@@ -130,8 +130,8 @@ sha = "d90d57521d931db7bf7ee464a4c0a1a9293db088"
 indexer = "scip-java"
 indexer_version = "0.12.3"
 index = "cd /src && scip-java index --output={out}"
-precision_floor = 0.9603
-recall_floor = 0.8943
+precision_floor = 0.9630
+recall_floor = 0.9118
 
 [[repo]]
 name = "scalacheck"
@@ -230,8 +230,8 @@ index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .go --lang
 name = "penlight"
 languages = ["lua"]
 status = "measured"
-precision_floor = 0.8341
-recall_floor = 0.9519
+precision_floor = 0.9797
+recall_floor = 0.9533
 license = "MIT"
 url = "https://github.com/lunarmodules/penlight"
 sha = "7f3351f226c2f643aaa1d3afa8d7293dd8a1d985"
@@ -244,7 +244,7 @@ index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .lua --lan
 name = "zls"
 languages = ["zig"]
 status = "measured"
-precision_floor = 0.8075
+precision_floor = 0.8837
 recall_floor = 0.8739
 license = "MIT"
 url = "https://github.com/zigtools/zls"
@@ -272,8 +272,8 @@ index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .f90 --lan
 name = "forge-std"
 languages = ["solidity"]
 status = "measured"
-precision_floor = 0.7083
-recall_floor = 0.6631
+precision_floor = 0.9556
+recall_floor = 0.8946
 license = "Apache-2.0"
 url = "https://github.com/foundry-rs/forge-std"
 sha = "dc647cc030d9d65910d8f1172a0cde48d7106e32"
