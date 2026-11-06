@@ -6,7 +6,7 @@
 use crate::languages::{Implementation, is_plain_type_name};
 use crate::languages::javascript::{javascript_binding_scope, javascript_binding_scope_in};
 use crate::languages::reads::{ReadBindings, nodes};
-use crate::languages::typed::{FieldFacts, implementation, record_fact, record_field_facts};
+use crate::languages::typed::{FieldFacts, record_fact, record_field_facts};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::Node;
 
@@ -15,19 +15,17 @@ const RETURN_CHAIN_DEPTH: usize = 4;
 
 /// Every class (with its own method span) and every `implements` name it declares.
 pub(super) fn class_implementations(root: Node<'_>, source: &[u8]) -> Vec<Implementation> {
-    nodes(root)
-        .filter(|node| matches!(node.kind(), "class_declaration" | "abstract_class_declaration"))
-        .filter_map(|class| {
-            let subject = class.child_by_field_name("name")?.utf8_text(source).ok()?;
-            let span = (class.start_byte(), class.end_byte());
-            let own = implementation(subject, None, span);
-            let implemented = heritage_names(class, source, &["implements_clause", "extends_clause"])
-                .into_iter()
-                .map(|name| implementation(subject, Some(name), span));
-            Some(std::iter::once(own).chain(implemented).collect::<Vec<_>>())
-        })
-        .flatten()
-        .collect()
+    crate::languages::typed::class_implementations(
+        root,
+        source,
+        &["class_declaration", "abstract_class_declaration"],
+        ts_class_name,
+        |class, source| heritage_names(class, source, &["implements_clause", "extends_clause"]),
+    )
+}
+
+fn ts_class_name<'s>(class: Node<'_>, source: &'s [u8]) -> Option<&'s str> {
+    class.child_by_field_name("name")?.utf8_text(source).ok()
 }
 
 fn heritage_names<'s>(class: Node<'_>, source: &'s [u8], clauses: &[&str]) -> Vec<&'s str> {

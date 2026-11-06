@@ -39,6 +39,8 @@ pub fn parse_file_tree(
         let mut defs = Vec::new();
         let mut refs = Vec::new();
         collect_items(cursor, query, &ctx, &mut defs, &mut refs);
+        lang.semantics()
+            .import_refs(ctx.root, source_bytes, &mut refs);
         let bindings = lang.semantics().read_bindings(ctx.root, source_bytes);
         let aliases = declared_aliases(lang, ctx.root, source_bytes);
         let returns = lang

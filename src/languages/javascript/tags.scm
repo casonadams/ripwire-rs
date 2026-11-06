@@ -199,9 +199,7 @@
 (class_heritage
   (identifier) @name) @reference.extends
 
-(import_statement
-  source: (string) @import.path)
-
+; `import` statements are referenced by imports.rs (import_refs): the bound local names need the clause.
 (export_statement
   source: (string) @import.path)
 

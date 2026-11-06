@@ -196,25 +196,7 @@ fn link_callee(target: &str, headings: &[(String, String)]) -> Option<String> {
 }
 
 fn push_link_ref(callee: String, line: u32, start_byte: usize, refs: &mut Vec<RawRef>) {
-    refs.push(RawRef {
-        callee_name: callee,
-        qualifier: None,
-        line,
-        name_line: line,
-        start_byte,
-        role: RefRole::Call,
-        arg_count: 0,
-        arg_count_known: false,
-        lang: None,
-        receiver: None,
-        receiver_type: None,
-        receiver_chain: None,
-        receiver_file: None,
-        callable_field: false,
-        macro_arg: false,
-        member_call: false,
-        path_call: false,
-    });
+    refs.push(RawRef::positioned(callee, RefRole::Call, line, start_byte));
 }
 
 /// Byte offset of the backtick run of exactly `run` backticks that closes a code span opened before `from`.

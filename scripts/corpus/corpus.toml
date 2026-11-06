@@ -79,7 +79,7 @@ cat > tsconfig.json <<'EOF'
 EOF'''
 index = "scip-typescript index --cwd /src --output {out}"
 precision_floor = 0.998
-recall_floor = 0.7333
+recall_floor = 0.9980
 
 [[repo]]
 name = "rack"

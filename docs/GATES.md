@@ -278,7 +278,7 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | graphql | none wired | not attempted: no MIT repo with fragment-spread references found yet | - | - |
 | hcl | not applicable: reference edges are builtin function calls only | not applicable | - | - |
 | java | SCIP indexer (scip-java) | measured | 0.9650 | 0.9138 |
-| javascript | SCIP indexer (scip-typescript) | measured | 1.0000 | 0.7353 |
+| javascript | SCIP indexer (scip-typescript) | measured | 1.0000 | 1.0000 |
 | json | not applicable: no reference captures | not applicable | - | - |
 | kotlin | SCIP indexer (scip-java, Kotlin) | measured | 0.9132 | 0.8170 |
 | lua | LSP bridge (lua-language-server) | measured | 0.9817 | 0.9553 |

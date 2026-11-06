@@ -255,6 +255,18 @@ pub(crate) fn named_children_of_kind<'t>(node: Node<'t>, kind: &str) -> Vec<Node
         .collect()
 }
 
+/// The first named child of `node` whose kind is `kind`.
+pub(crate) fn named_child_of_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .find(|child| child.kind() == kind)
+}
+
+/// The source text of the first named child of `node` whose kind is `kind`.
+pub(crate) fn child_text<'a>(node: Node<'_>, kind: &str, source: &'a [u8]) -> Option<&'a str> {
+    named_child_of_kind(node, kind)?.utf8_text(source).ok()
+}
+
 pub(crate) fn in_field(parent: Node<'_>, node: Node<'_>, field: &str) -> bool {
     parent.child_by_field_name(field).is_some_and(|child| {
         child.start_byte() <= node.start_byte() && child.end_byte() >= node.end_byte()

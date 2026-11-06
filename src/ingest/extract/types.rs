@@ -63,7 +63,7 @@ pub struct MemberType {
 }
 
 /// Raw reference extracted before enclosing symbol attribution.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RawRef {
     pub callee_name: String,
     pub qualifier: Option<String>,
@@ -89,6 +89,21 @@ pub struct RawRef {
     /// The file that declares the member a cross-file chain typed `receiver_type` through. The type name is
     /// written in that file, so its imports (not the reference's own file's) name the type.
     pub receiver_file: Option<u32>,
+}
+
+impl RawRef {
+    /// A reference with no receiver, qualifier or argument facts: the name, role and position a hook knows.
+    #[must_use]
+    pub fn positioned(callee_name: String, role: RefRole, line: u32, start_byte: usize) -> Self {
+        Self {
+            callee_name,
+            line,
+            name_line: line,
+            start_byte,
+            role,
+            ..Self::default()
+        }
+    }
 }
 
 /// Parsed facts from a single file.

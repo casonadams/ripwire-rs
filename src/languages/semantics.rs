@@ -281,6 +281,17 @@ pub trait LanguageSemantics: Sync {
     ) {
     }
 
+    /// Import references this language spells as statements or calls the tags query cannot bind to the names
+    /// they introduce (CommonJS `const X = require("p")`). Appends one `Import` reference per bound name, named
+    /// `"p as X"` (see `import_binding`), or one `"p"` reference when nothing is bound.
+    fn import_refs(
+        &self,
+        _root: tree_sitter::Node<'_>,
+        _source: &[u8],
+        _refs: &mut Vec<crate::ingest::RawRef>,
+    ) {
+    }
+
     /// Environment-read spellings this language uses (`getenv("X")`, `process.env.X`).
     fn env_reads(&self) -> &'static [common::flags::EnvRead] {
         &[]
