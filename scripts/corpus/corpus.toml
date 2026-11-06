@@ -8,6 +8,7 @@
 #   license              SPDX id; permissive only (MIT, Apache-2.0, BSD, zlib, CC0)
 #   url, sha             a remote repo at a full 40-hex commit (cloned into the cache)
 #   path                 instead of url/sha: a local tree, relative to the repo root (snapshotted, keyed by content)
+#   subdir               url/sha only: index this directory of the repo (mounted at /src); default: all of it
 #   indexer, indexer_version, index_file
 #                        the indexer and the file it writes under /out; the runner moves it into the cache
 #   setup                shell run first in /src (dependency install, build-system configure); may be empty

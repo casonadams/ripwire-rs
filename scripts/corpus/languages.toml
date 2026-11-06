@@ -1,0 +1,352 @@
+# Language templates for `corpus.py add`: one table per supported language (the 36 in src/languages).
+#
+# oracle        scip (a compiler index), lsp (the LSP bridge, lsp2scip.py), or none (nothing to score)
+# status        template (add writes an unverified entry from it), blocked (add refuses; reason says why), none
+# extensions    the source files counted for the 50-300 file guide: the names Lang::from_extension recognizes
+#               counting only: a bridge's --ext in index may name fewer files, and a measurement shows which matter
+# image, indexer, indexer_version, setup, index
+#               copied from the measured or blocked corpus.toml entries of the language; `{project}` in
+#               setup or index becomes the new entry's name; `{out}` is the index path, as in corpus.toml
+# server        lsp only: the language server the bridge runs
+# notes         what to check first when measuring a new repo
+
+[bash]
+oracle = "lsp"
+status = "template"
+server = "bash-language-server"
+indexer = "lsp2scip"
+indexer_version = "bash-language-server-5.8.1"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .sh,.bash --language-id shellscript --out {out} --pattern '(?:^|[;&|(`]|\\$\\(|\\b(?:then|do|else)\\s+)\\s*([A-Za-z_][\\w.-]*)(?=\\s|$|;|\\))' -- bash-language-server start"
+extensions = ["sh", "bash", "zsh"]
+
+[brightscript]
+oracle = "lsp"
+status = "template"
+server = "brighterscript"
+indexer = "lsp2scip"
+indexer_version = "brighterscript-0.73.8"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .brs,.bs --language-id brightscript --out {out} --settle 20 -- bsc --lsp --stdio"
+extensions = ["brs", "bs"]
+
+[c]
+oracle = "scip"
+status = "template"
+indexer = "scip-clang"
+indexer_version = "0.4.1"
+setup = "cmake -S /src -B /tmp/build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+index = "scip-clang --compdb-path=/tmp/build/compile_commands.json --index-output-path={out}"
+extensions = ["c"]
+notes = "Only .c is counted: the C language declares no extension list of its own."
+
+[cobol]
+oracle = "lsp"
+status = "blocked"
+reason = "che-che4z-lsp-for-cobol 2.5.1 fails analysis with NullPointerException \"dialects is null\" in ConfigHelper.parseDialectRegistry even when workspace/configuration answers cobol-lsp.dialects with []; the expected settings shape is undetermined."
+server = "che-cobol"
+indexer = "lsp2scip"
+indexer_version = "che-cobol-2.5.1"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .cob,.cpy --language-id cobol --out {out} --settle 30 --init-options '{\"cobol-lsp\": {\"dialects\": [], \"dialect\": {\"libs\": []}, \"target-sql-backend\": \"NONE\", \"$target-sql-backend-enable-processing\": \"DISABLED\", \"sql-decimal-comma-allowed\": \"DISABLED\", \"cpy-manager\": {\"paths-local\": [], \"paths-dsn\": [], \"copybook-extensions\": [\"cpy\"]}, \"subroutine-manager\": {\"paths-local\": []}, \"cics\": {\"translator\": false}, \"locale\": \"en\", \"logging\": {\"level\": {\"root\": \"INFO\"}}}}' --config '{\"cobol-lsp\": {\"dialects\": [], \"dialect\": {\"libs\": []}, \"target-sql-backend\": \"NONE\", \"$target-sql-backend-enable-processing\": \"DISABLED\", \"sql-decimal-comma-allowed\": \"DISABLED\", \"cpy-manager\": {\"paths-local\": [], \"paths-dsn\": [], \"copybook-extensions\": [\"cpy\"]}, \"subroutine-manager\": {\"paths-local\": []}, \"cics\": {\"translator\": false}, \"locale\": \"en\", \"logging\": {\"level\": {\"root\": \"INFO\"}}}}' --pattern '(?i)\\bPERFORM\\s+([A-Za-z0-9][A-Za-z0-9-]*)' -- cobol-language-server"
+extensions = ["cbl", "cob", "cpy"]
+
+[cpp]
+oracle = "scip"
+status = "template"
+indexer = "scip-clang"
+indexer_version = "0.4.1"
+setup = "cmake -S /src -B /tmp/build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSPDLOG_BUILD_EXAMPLE=OFF -DSPDLOG_BUILD_TESTS=OFF"
+index = "scip-clang --compdb-path=/tmp/build/compile_commands.json --index-output-path={out}"
+extensions = ["h", "cpp", "cc", "cxx", "hpp", "hxx", "hh"]
+notes = "scip-clang reads the cmake compile database; the setup builds it."
+
+[csharp]
+oracle = "scip"
+status = "template"
+indexer = "scip-dotnet"
+indexer_version = "0.2.16"
+index = "cd /src && scip-dotnet index *.sln --output {out}"
+extensions = ["cs"]
+notes = "The index assumes one solution file at the repo root (the *.sln glob); check it on the first measurement."
+
+[cuda]
+oracle = "lsp"
+status = "template"
+server = "clangd"
+indexer = "lsp2scip"
+indexer_version = "clangd-19.0"
+image = "ripwire-corpus-lsp:local"
+setup = "printf '%s\\n' -xcuda -std=c++17 --cuda-gpu-arch=sm_90 > /src/compile_flags.txt && find /src -name '*.cuh' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .cu,.cuh --language-id cuda --out {out} --settle 30 -- clangd"
+extensions = ["cu", "cuh"]
+
+[dart]
+oracle = "scip"
+status = "template"
+indexer = "scip_dart"
+indexer_version = "1.8.1"
+setup = "dart pub get"
+index = "cd /src && dart pub global run scip_dart /src && mv index.scip {out}"
+extensions = ["dart"]
+
+[elixir]
+oracle = "lsp"
+status = "blocked"
+reason = "elixir-ls 0.31.1 mix install fails on Elixir 1.18.3: vendored jason_v dependency 'Compilation error ... could not call Module.put_attribute/3 because the module ElixirLS.Mix is already compiled'; the server exits before answering initialize"
+server = "elixir-ls"
+indexer = "lsp2scip"
+indexer_version = "elixir-ls-0.31.1"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .ex,.exs --language-id elixir --out {out} --settle 30 -- /opt/elixir-ls/language_server.sh"
+extensions = ["ex", "exs"]
+
+[erlang]
+oracle = "lsp"
+status = "blocked"
+reason = "ELP 2026-10-14 otp-27.3 is the candidate server, but its tarball is not pinned: the release API publishes no sha256 digest and the download was blocked. Pin it with ADD --checksum once computed. The repo has 31 .erl and 3 .hrl files, below the 50-file guide"
+server = "elp-2026-10"
+indexer = "lsp2scip"
+indexer_version = "elp-2026-10-14"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .erl,.hrl --language-id erlang --out {out} --settle 60 -- elp server"
+extensions = ["erl", "hrl"]
+
+[fortran]
+oracle = "lsp"
+status = "template"
+server = "fortls"
+indexer = "lsp2scip"
+indexer_version = "fortls-3.2.2"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .f90 --language-id fortran --out {out} -- fortls"
+extensions = ["f", "for", "f90", "f95", "f03", "f08"]
+
+[gdscript]
+oracle = "lsp"
+status = "blocked"
+reason = "Godot 4.7.2 headless language server starts, imports and accepts the bridge, but under amd64 emulation it answered none of 1067 definition requests in over two hours; needs a native arm64 build."
+server = "godot"
+indexer = "lsp2scip"
+indexer_version = "godot-4.7.2"
+image = "ripwire-corpus-lsp:local"
+index = '''godot --headless --editor --path /src/godot --audio-driver Dummy >/out/godot.log 2>&1 &
+python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .gd --language-id gdscript --out {out} --connect 127.0.0.1:6005 --settle 30'''
+extensions = ["gd"]
+
+[go]
+oracle = "lsp"
+status = "template"
+server = "gopls"
+indexer = "lsp2scip"
+indexer_version = "gopls-0.24.0"
+image = "ripwire-corpus-lsp:local"
+setup = "go mod download"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .go --language-id go --out {out} -- gopls serve"
+extensions = ["go"]
+
+[graphql]
+oracle = "none"
+status = "none"
+reason = "not attempted: no MIT repo with fragment-spread references found yet"
+extensions = ["graphql", "gql"]
+
+[hcl]
+oracle = "none"
+status = "none"
+reason = "not applicable: reference edges are builtin function calls only"
+extensions = ["tf", "hcl", "tfvars"]
+
+[java]
+oracle = "scip"
+status = "template"
+indexer = "scip-java"
+indexer_version = "0.12.3"
+index = "cd /src && scip-java index --output={out}"
+extensions = ["java"]
+
+[javascript]
+oracle = "scip"
+status = "template"
+indexer = "scip-typescript"
+indexer_version = "0.6.1"
+setup = '''npm ci --ignore-scripts --no-audit --no-fund
+cat > tsconfig.json <<'EOF'
+{"compilerOptions": {"allowJs": true, "checkJs": false, "module": "esnext", "moduleResolution": "node", "target": "es2020"}, "include": ["lib/**/*.js", "test/**/*.js"]}
+EOF'''
+index = "scip-typescript index --cwd /src --output {out}"
+extensions = ["js", "jsx", "mjs", "cjs"]
+notes = "The tsconfig heredoc lets scip-typescript read plain JavaScript."
+
+[json]
+oracle = "none"
+status = "none"
+reason = "not applicable: no reference captures"
+extensions = ["json"]
+
+[kotlin]
+oracle = "scip"
+status = "template"
+indexer = "scip-java"
+indexer_version = "0.13.2"
+index = "cd /src && scip-java-0.13.2 index --output={out}"
+extensions = ["kt", "kts"]
+
+[lua]
+oracle = "lsp"
+status = "template"
+server = "lua-language-server"
+indexer = "lsp2scip"
+indexer_version = "lua-language-server-3.19.2"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .lua --language-id lua --out {out} --settle 20 -- lua-language-server --logpath=/corpus-home/lua-ls/log --metapath=/corpus-home/lua-ls/meta"
+extensions = ["lua"]
+
+[markdown]
+oracle = "none"
+status = "none"
+reason = "not applicable: no call resolution"
+extensions = ["md", "markdown", "rst", "adoc", "org", "mdx"]
+
+[metal]
+oracle = "lsp"
+status = "template"
+server = "clangd"
+indexer = "lsp2scip"
+indexer_version = "clangd-19.0"
+image = "ripwire-corpus-lsp:local"
+setup = "printf '%s\\n' -xc++ -std=c++17 -Dkernel= -Dvertex= -Dfragment= -Ddevice= -Dconstant= -Dthread= -Dthreadgroup= > /src/compile_flags.txt && find /src -name '*.h' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .metal --language-id metal --out {out} --settle 30 -- clangd"
+extensions = ["metal"]
+notes = "Metal keywords are stubbed for clangd (see the setup)."
+
+[objc]
+oracle = "lsp"
+status = "template"
+server = "clangd"
+indexer = "lsp2scip"
+indexer_version = "clangd-19.0"
+image = "ripwire-corpus-lsp:local"
+setup = "printf '%s\\n' -xobjective-c -fobjc-arc > /src/compile_flags.txt && find /src -name '*.h' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .m,.h --language-id objective-c --out {out} --settle 30 --pattern '(?<![\\w$])([A-Za-z_$][\\w$]*)\\s*\\(|\\[\\s*[^\\[\\]\\s]+\\s+([A-Za-z_]\\w*)|\\]\\s+([A-Za-z_]\\w*)' -- clangd"
+extensions = ["m", "mm"]
+
+[php]
+oracle = "scip"
+status = "template"
+indexer = "scip-php"
+indexer_version = "0.0.2"
+setup = "composer install --no-interaction --no-progress --no-scripts --no-security-blocking"
+index = "cd /src && scip-php && mv index.scip {out}"
+extensions = ["php", "phtml"]
+
+[proto]
+oracle = "none"
+status = "none"
+reason = "not applicable to --eval=scip: type references are not scored"
+extensions = ["proto"]
+
+[python]
+oracle = "scip"
+status = "template"
+indexer = "scip-python"
+indexer_version = "0.6.8"
+setup = "python3 -m venv /tmp/venv && /tmp/venv/bin/pip install -q -e ."
+index = "PATH=/tmp/venv/bin:$PATH scip-python index --cwd /src --project-name={project} --output={out} --quiet"
+extensions = ["py", "pyi"]
+notes = "The project name is the new entry's name."
+
+[ruby]
+oracle = "scip"
+status = "template"
+indexer = "scip-ruby"
+indexer_version = "0.5.1"
+index = "cd /src && { scip-ruby . || [ \"$?\" -eq 100 ]; } && mv index.scip {out}"
+extensions = ["rb", "rake", "jbuilder"]
+
+[rust]
+oracle = "scip"
+status = "template"
+indexer = "rust-analyzer"
+indexer_version = "1.98.1"
+index = "rust-analyzer scip /src --output {out}"
+extensions = ["rs"]
+notes = "rust-analyzer indexes the repo root; the in-tree self check is measured by make verify."
+
+[scala]
+oracle = "scip"
+status = "template"
+indexer = "scip-java"
+indexer_version = "0.12.3"
+setup = '''mkdir -p /tmp/work /tmp/codegen/classes && cp -r /src/core /tmp/work/ && cat > /tmp/codegen/Generate.scala <<'EOF'
+object Generate {
+  def main(args: Array[String]): Unit = {
+    val dir = java.nio.file.Paths.get(args(0))
+    java.nio.file.Files.createDirectories(dir)
+    codegen.genAll.foreach(f => java.nio.file.Files.writeString(dir.resolve(f.name), f.code))
+  }
+}
+EOF
+java -cp "$(cat /opt/scala-compiler-classpath.txt)" dotty.tools.dotc.Main -classpath "$(cat /opt/scala-library-classpath.txt)" -d /tmp/codegen/classes /src/project/codegen.scala /tmp/codegen/Generate.scala && java -cp "/tmp/codegen/classes:$(cat /opt/scala-library-classpath.txt)" Generate /tmp/work/core/shared/src/main/scala-generated/org/scalacheck'''
+index = "cd /src && scip-java index --output={out}"
+extensions = ["scala", "sc"]
+notes = "Start with scip-java index; a build that needs a hand-built SemanticDB pipeline belongs in setup."
+
+[solidity]
+oracle = "lsp"
+status = "template"
+server = "solidity-ls"
+indexer = "lsp2scip"
+indexer_version = "solidity-ls-0.9.3"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .sol --language-id solidity --out {out} --settle 20 -- nomicfoundation-solidity-language-server --stdio"
+extensions = ["sol"]
+
+[sql]
+oracle = "none"
+status = "none"
+reason = "not applicable to --eval=scip: table and column references are not scored"
+extensions = ["sql", "sqlx"]
+
+[swift]
+oracle = "lsp"
+status = "blocked"
+reason = "sourcekit-lsp 6.1 under linux/amd64 emulation exits before answering the first definition request on a SwiftPM package that builds cleanly (swift build succeeds in 17 s); a native arm64 image is the next thing to try. The first candidate, a macOS app, cannot compile on Linux (no SwiftUI)."
+server = "sourcekit-lsp"
+indexer = "lsp2scip"
+indexer_version = "sourcekit-lsp-6.1"
+image = "ripwire-corpus-swift:local"
+setup = "swift build 2>&1 | tail -5"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .swift --language-id swift --out {out} --settle 60 -- sourcekit-lsp"
+extensions = ["swift"]
+
+[toml]
+oracle = "none"
+status = "none"
+reason = "not applicable: no reference captures"
+extensions = ["toml"]
+
+[typescript]
+oracle = "scip"
+status = "template"
+indexer = "scip-typescript"
+indexer_version = "0.6.1"
+setup = "npm install --ignore-scripts --no-audit --no-fund"
+index = "scip-typescript index --cwd /src --output {out}"
+extensions = ["ts", "tsx", "mts", "cts", "astro"]
+
+[yaml]
+oracle = "none"
+status = "none"
+reason = "not applicable: no reference captures"
+extensions = ["yml", "yaml"]
+
+[zig]
+oracle = "lsp"
+status = "template"
+server = "zls"
+indexer = "lsp2scip"
+indexer_version = "zls-0.17.0"
+image = "ripwire-corpus-lsp:local"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .zig --language-id zig --out {out} -- zls"
+extensions = ["zig", "zon"]

@@ -109,7 +109,7 @@ registry: ## Check every language and command plugin directory is registered
 
 .PHONY: script-tests
 script-tests: ## Run the unittest checks for scripts/ (parity rule logic, corpus runner and verification parsing and baseline ratchet rules; no network)
-	@python3 -m unittest scripts/test_validate_parity.py scripts/corpus/test_corpus.py scripts/corpus/test_verify.py
+	@python3 -m unittest scripts/test_validate_parity.py scripts/corpus/test_corpus.py scripts/corpus/test_verify.py scripts/corpus/test_add.py
 
 .PHONY: quality
 quality: verify-bin ## Measure quality regressions against git HEAD with the verification binary (BIN, built fresh by verify-bin; never a stale release or PATH copy)
@@ -162,6 +162,19 @@ corpus-measure: verify-bin ## Print measured precision and recall per corpus rep
 corpus-diff: verify-bin ## Diff resolver verdicts on the corpus between OLD=path/to/old/ripwire-rs and the verification binary
 	@test -n "$(OLD)" || { echo "usage: make corpus-diff OLD=path/to/old/ripwire-rs"; exit 1; }
 	@$(CORPUS) diff "$(OLD)" $(BIN) $(NAME)
+
+# ADD_LANG reads LANG only when given on the command line, never from the shell's locale variable.
+ADD_LANG := $(if $(filter command line,$(origin LANG)),$(LANG))
+
+.PHONY: corpus-add
+corpus-add: $(if $(MEASURE),verify-bin) ## Add a GitHub repo as an unverified corpus entry: URL=https://github.com/OWNER/REPO LANG=python [NAME= SHA= SUBDIR= MEASURE=1 DRY_RUN=1]
+	@test -n "$(URL)" -a -n "$(ADD_LANG)" || { echo "usage: make corpus-add URL=https://github.com/OWNER/REPO LANG=python [NAME=] [SHA=] [SUBDIR=] [MEASURE=1] [DRY_RUN=1]"; exit 1; }
+	@$(CORPUS) add "$(URL)" --language "$(ADD_LANG)" $(if $(NAME),--name "$(NAME)") $(if $(SHA),--sha "$(SHA)") $(if $(SUBDIR),--path "$(SUBDIR)") $(if $(DRY_RUN),--dry-run) $(if $(MEASURE),--measure --bin "$(BIN)")
+
+.PHONY: corpus-remove
+corpus-remove: ## Retire a corpus repo: NAME=rich [YES=1 skips the prompt]; removes its manifest entry, cached checkout, index and baseline row
+	@test -n "$(NAME)" || { echo "usage: make corpus-remove NAME=rich [YES=1]"; exit 1; }
+	@$(CORPUS) remove "$(NAME)" $(if $(YES),--yes)
 
 # VERIFY_LANG reads LANG only when given on the command line, never from the shell's locale variable.
 VERIFY_LANG := $(if $(filter command line file,$(origin LANG)),$(LANG))

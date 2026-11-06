@@ -12,6 +12,9 @@ Usage:
   corpus.py diff OLD_BIN NEW_BIN [NAME...] [--samples N] [--strict]
   corpus.py status [NAME...]
   corpus.py verify [run|ratchet|changed|watch|status|warm] [NAME...] [--bin PATH] [--lang L] [--diff[=OLD_BIN]]
+  corpus.py add URL --language LANG [--name N] [--sha SHA] [--path SUBDIR] [--measure] [--dry-run]   (see add.py)
+  corpus.py add --list-languages
+  corpus.py remove NAME [--yes]
 """
 
 import argparse
@@ -60,6 +63,7 @@ class Entry:
     url: str
     sha: str
     path: str
+    subdir: str
     indexer: str
     indexer_version: str
     index_file: str
@@ -80,6 +84,7 @@ class Entry:
             url=table.get("url", ""),
             sha=table.get("sha", ""),
             path=table.get("path", ""),
+            subdir=table.get("subdir", ""),
             indexer=table["indexer"],
             indexer_version=table.get("indexer_version", ""),
             index_file=table.get("index_file", "index.scip"),
@@ -195,10 +200,11 @@ def container_script(entry):
 
 
 def docker_command(entry, src, out):
+    mount = src / entry.subdir if entry.subdir else src
     return [
         "docker", "run", "--rm", "--platform", "linux/amd64", "--memory=3g",
         "--user", f"{os.getuid()}:{os.getgid()}",
-        "-v", f"{src}:/src", "-v", f"{out}:/out", "-v", f"{CACHE / 'home'}:/corpus-home",
+        "-v", f"{mount}:/src", "-v", f"{out}:/out", "-v", f"{CACHE / 'home'}:/corpus-home",
         "-w", "/src",
         "-e", "HOME=/corpus-home",
         "-e", "CARGO_HOME=/corpus-home/cargo",
@@ -472,6 +478,10 @@ def main(argv=None):
         import verify  # imports this module back; the verification commands build on its helpers
 
         return verify.main(argv[1:])
+    if argv[:1] and argv[0] in ("add", "remove"):
+        import add  # the repository lifecycle; add.py builds on this module's helpers
+
+        return add.main(argv)
     args = build_parser().parse_args(argv)
     return HANDLERS[args.cmd](args)
 
