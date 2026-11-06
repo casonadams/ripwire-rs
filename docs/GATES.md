@@ -254,6 +254,7 @@ Call resolution scored against an oracle over real public repositories. Two orac
 - `make verify-diff [OLD=path]` adds the sites that flipped right->wrong against an older binary, with ours and scip for each. The default baseline is the binary that `make verify-keep-bin` kept.
 - `make verify-watch LANG=dart` rebuilds the fast binary on each `src/` change and prints only the entries whose numbers moved. `make verify-status` shows stale or missing indexes, Docker and image state, and cache size.
 - `make verify-ratchet` records the measured numbers in `baseline.toml` and raises the floors to the measured value minus 0.002. It only raises: it writes nothing, and refuses, when any number dropped or any entry failed.
+- To add or retire a repository, see [Adding a repository](#adding-a-repository).
 
 Reference: `make corpus-index`, `corpus-eval`, `corpus-measure` and `corpus-diff OLD=path/to/old/ripwire-rs` (per-site verdict changes between two binaries) remain for single-purpose runs; `NAME=<entry>` limits any target to one entry.
 
@@ -299,5 +300,21 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | zig | LSP bridge (zls) | measured | 0.8857 | 0.8759 |
 
 Not covered: languages marked not attempted or blocked above have no floor and no measurement; a corpus floor says nothing about a language it does not index. Languages covered only by in-memory fixtures remain so until an entry measures them.
+
+### Adding a repository
+
+```bash
+make corpus-add URL=https://github.com/OWNER/REPO LANG=python   # license, SHA and file count checks; writes an unverified entry
+make corpus-index NAME=<name> && make corpus-measure NAME=<name> # index and score it (Docker)
+make verify-ratchet                                              # record the numbers and raise the floors
+```
+
+`corpus-add` refuses a license outside MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense and 0BSD, a
+SHA that is not a full commit, fewer than 10 source files, and a language whose template is blocked. It warns
+outside 50 to 300 source files; `SUBDIR=path` indexes one directory instead. `MEASURE=1` indexes and scores in one
+step and writes the floors on success (the language's matrix row is updated); `DRY_RUN=1` prints the entry and
+changes nothing. `make corpus-remove NAME=<name>` retires an entry with its cache, index and baseline row
+(`YES=1` skips the prompt). Templates live in `scripts/corpus/languages.toml`; `corpus.py add --list-languages`
+lists them with the blocked and no-indexer languages. Repo names and SHAs stay in `scripts/corpus/corpus.toml`.
 
 
