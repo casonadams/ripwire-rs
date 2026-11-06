@@ -7,6 +7,7 @@ use crate::languages::c::lint::{
     atoms as lint_atoms, cache as lint_cache, structure as lint_structure,
 };
 use crate::languages::lint::{flow as lint_flow, text as lint_text};
+use rayon::prelude::*;
 use std::io::{self, Write};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -495,6 +496,12 @@ struct RuleBucket {
     capped: bool,
 }
 
+/// One file's findings per rule, merged into the scan in file order.
+struct FileScan {
+    lang: usize,
+    buckets: Vec<RuleBucket>,
+}
+
 fn finish_bucket(
     rule: &'static LintRule,
     mut bucket: RuleBucket,
@@ -517,23 +524,40 @@ fn finish_bucket(
 pub fn run_lint_scan(
     ingest: &IngestResult,
     interner: &Interner,
-    read: &dyn Fn(&str) -> Option<String>,
+    read: &(dyn Fn(&str) -> Option<String> + Sync),
     options: LintOptions,
 ) -> Result<LintScan, String> {
     let rules = selected_rules(&options)?;
     let corpus = lint_naming::NameCorpus::build(ingest, interner);
+    let scans: Vec<FileScan> = ingest
+        .files
+        .par_iter()
+        .filter_map(|fi| {
+            if fi.lang.semantics().is_prose_document() {
+                return None;
+            }
+            let path = interner.resolve(&fi.path);
+            let mut buckets: Vec<RuleBucket> =
+                rules.iter().map(|_| RuleBucket::default()).collect();
+            if let Some(content) = read(path) {
+                let syms = symbols_in_file(ingest, interner, fi.id);
+                let ctx = FileLintContext::new(path, fi.lang, &content, syms, &corpus);
+                scan_file(&ctx, &rules, &mut buckets);
+            }
+            Some(FileScan {
+                lang: fi.lang as usize,
+                buckets,
+            })
+        })
+        .collect();
     let mut buckets: Vec<RuleBucket> = rules.iter().map(|_| RuleBucket::default()).collect();
     let mut file_langs = std::collections::BTreeSet::new();
-    for fi in &ingest.files {
-        if fi.lang.semantics().is_prose_document() {
-            continue;
+    for scan in scans {
+        file_langs.insert(scan.lang);
+        for (bucket, mut file_bucket) in buckets.iter_mut().zip(scan.buckets) {
+            bucket.capped |= file_bucket.capped;
+            bucket.findings.append(&mut file_bucket.findings);
         }
-        file_langs.insert(fi.lang as usize);
-        let path = interner.resolve(&fi.path);
-        let Some(content) = read(path) else { continue };
-        let syms = symbols_in_file(ingest, interner, fi.id);
-        let ctx = FileLintContext::new(path, fi.lang, &content, syms, &corpus);
-        scan_file(&ctx, &rules, &mut buckets);
     }
     let mut findings = Vec::new();
     let mut stats = Vec::new();
