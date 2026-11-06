@@ -77,6 +77,7 @@ pub(super) const RUST_STD_MEMBERS: &[&str] = &[
     "collect",
     "extend",
     "reserve",
+    "drop",
     "with_capacity",
     "default",
     "from",
