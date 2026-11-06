@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.7.0](https://github.com/casonadams/ripwire-rs/compare/v0.6.9...v0.7.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli,mcp:** the removed flags and MCP tools no longer exist.
+* **cli:** the removed flags no longer exist.
+
+### Features
+
+* **corpus:** add corpus.py add and remove with per-language templates ([23d849f](https://github.com/casonadams/ripwire-rs/commit/23d849f9cf7c033416f9155b9534c3367c0794bc))
+* **corpus:** add measured csharp, php entries (oneof, deepcopy, emailvalidator) ([9d3028a](https://github.com/casonadams/ripwire-rs/commit/9d3028a14083f581ea3874c07788c0dc71a1bb8a))
+* **corpus:** bridge language servers to SCIP and cover go, lua, zig, fortran, solidity and bash ([9a81aa8](https://github.com/casonadams/ripwire-rs/commit/9a81aa890175c1cae0613db320966923815e07d4))
+* **corpus:** run entries on a native arm64 image via a platform field ([4d7e718](https://github.com/casonadams/ripwire-rs/commit/4d7e71895fd627aa941034b907df81d8aa05bdbf))
+* **corpus:** score call resolution against compiler indexes of pinned public repos ([af90f8d](https://github.com/casonadams/ripwire-rs/commit/af90f8dbdc08a753c2039534f3ac8960ace04683))
+* **corpus:** swift and gdscript index natively on arm64; both stay blocked ([f602404](https://github.com/casonadams/ripwire-rs/commit/f60240431162950e1fa50182de39fe2215e2c8e8))
+* **corpus:** verify scoreboard with a ratcheting baseline, and oracle entries for six more languages ([d2ba068](https://github.com/casonadams/ripwire-rs/commit/d2ba06888d667ef76020401d36b501c55936a55d))
+* **cpp:** type C and C++ receivers across files, aliases, smart pointers and specializations ([4a2470f](https://github.com/casonadams/ripwire-rs/commit/4a2470f4661ebea241d8423ad4dda74fb9e96d4e))
+* **dart:** type lambda parameters from element-typed call results ([77a09ed](https://github.com/casonadams/ripwire-rs/commit/77a09ed2afedcaf901e52995dfe4565d0687fceb))
+* **js:** bind require() and import names to the declaring file ([eee1f5b](https://github.com/casonadams/ripwire-rs/commit/eee1f5bfa86d579ee141d7fa80822df08ede1c17))
+* **languages:** type Go, Kotlin, Java, C# and Scala receivers; fix Lua, Zig and Solidity resolution ([f40029c](https://github.com/casonadams/ripwire-rs/commit/f40029c30be2e062eb47380b0eb8cb15e09af1a4))
+* **languages:** type receivers in Python, JavaScript, Ruby, Java and Dart ([45830e8](https://github.com/casonadams/ripwire-rs/commit/45830e818a962a35b001539a89660d58b87054c6))
+* **resolve,dart,cpp:** resolve chain receivers in the declaring file; Dart mixins and member-only calls ([3fc88a6](https://github.com/casonadams/ripwire-rs/commit/3fc88a698dab92d0ae586b9c27016952bf6ffeae))
+* **resolve:** read typed_range occurrences and add --eval-sites; corpus covers kotlin, php, scala and rust ([a9939bb](https://github.com/casonadams/ripwire-rs/commit/a9939bbfb0fa6a0a0e69ac5081311bdb497aef9f))
+
+
+### Bug Fixes
+
+* **cli,git:** surface unreadable inputs and git read failures ([ab126b3](https://github.com/casonadams/ripwire-rs/commit/ab126b368f2d277db4755a8ebf909dc03704070a))
+* **cli:** warn on stderr when crawled files could not be read ([1337835](https://github.com/casonadams/ripwire-rs/commit/13378350ed1ff71f21d54471f00ef9599a168a7c))
+* **corpus:** php setup without require-dev; --path mounts the whole checkout ([f0e78ad](https://github.com/casonadams/ripwire-rs/commit/f0e78adfc92c7bf9dce86401834a8546b2e7192c))
+* **corpus:** scala template no longer carries scalacheck-only setup ([b77909e](https://github.com/casonadams/ripwire-rs/commit/b77909e0c5d38fefbd7fcf0c98cc1f761e977a99))
+* **cpp:** type receivers through alias wrappers and ignore forward declarations ([9fdd958](https://github.com/casonadams/ripwire-rs/commit/9fdd9586ce49c03fa85a13599fee2a1a981b9e6a))
+* **dart:** an abstract superclass records its supertypes, so its mixins reach subclasses ([d4c1b55](https://github.com/casonadams/ripwire-rs/commit/d4c1b552ae3c9bbb9f48fef66747ca905e3cd472))
+* **dart:** bind cascade sections through the cascade target ([ba6366b](https://github.com/casonadams/ripwire-rs/commit/ba6366bb9c1515414660f6fcd9d0c330d0bc950b))
+* **dart:** bodyless class members index as methods ([e439f4a](https://github.com/casonadams/ripwire-rs/commit/e439f4ab6fc8dd5cda3dc63e315b14f852eaa186))
+* **edit-check:** exclude a method's receiver from the expected argument count ([4bd0a96](https://github.com/casonadams/ripwire-rs/commit/4bd0a9694b4825531995a2e09d0a42564eb0d018))
+* **edit-check:** judge each call by what the resolver binds it to ([7d9bbb2](https://github.com/casonadams/ripwire-rs/commit/7d9bbb20ae491b4962b410751e319cf23cf73bb7))
+* **gate,paths:** check class calls against the constructor; Rust test_ modules under src are not tests ([06ecbed](https://github.com/casonadams/ripwire-rs/commit/06ecbedfae6c77a9f7fbd8392ec41d1874312cb9))
+* **gate:** count defaulted parameters as optional in edit-check; refresh parity ledger ([e83dd1a](https://github.com/casonadams/ripwire-rs/commit/e83dd1a3a46a3710337eae892e33ed1afee8b53a))
+* **ingest:** count crawled files that cannot be read ([5c9ef33](https://github.com/casonadams/ripwire-rs/commit/5c9ef331f2597b893934498b012bbdd24129945c))
+* **resolve,rust:** bind module-qualified std-named functions and path calls in macro arguments ([d5f53db](https://github.com/casonadams/ripwire-rs/commit/d5f53dbcddacf9b4e76551971e02d5bea94026f5))
+* **resolve:** bind self-only, macro-argument and struct-update calls; raise SCIP floors ([2360707](https://github.com/casonadams/ripwire-rs/commit/23607078f1c6a0ecd082fd1e7fe8b938fb2888a4))
+* **resolve:** classify iterator and tree-sitter members as builtin; measure brightscript, cuda, objc, metal ([c65326b](https://github.com/casonadams/ripwire-rs/commit/c65326b0790b2df3f7069c300b6ec2aea8ede733))
+* **resolve:** follow Rust re-export facades, glob imports and super paths ([91d3a7f](https://github.com/casonadams/ripwire-rs/commit/91d3a7fb973a2283831ae55a1f11e41c96055612))
+* **rust:** decline the prelude drop call instead of leaving it unresolved ([0588ebd](https://github.com/casonadams/ripwire-rs/commit/0588ebd5d59412dc25175195224ff16bad07f67a))
+
+
+### Performance Improvements
+
+* **cache:** store the auto-cache payload as postcard, not JSON ([1ac58fc](https://github.com/casonadams/ripwire-rs/commit/1ac58fced790cd3955e203b2995382a6069a3f97))
+* **clones:** stage Type-3 survivor pairs in parallel with an ordered fold ([f4a5a0d](https://github.com/casonadams/ripwire-rs/commit/f4a5a0deb48e20fa8ca8be42bfcc234f5211ad4b))
+* **extract:** walk reference ancestors from the root once ([26b6c60](https://github.com/casonadams/ripwire-rs/commit/26b6c60c44e4f8a27e4482f31b747e756e3ecce4))
+* **languages:** read ancestor hooks from one chain per reference ([087a9f5](https://github.com/casonadams/ripwire-rs/commit/087a9f57e2daddadc2a3d94f6bcb03a05589c30b))
+* **lint:** scan files in parallel with an ordered fold ([8b999c5](https://github.com/casonadams/ripwire-rs/commit/8b999c5a723939e8bf797ba51c5f1a6dd3c6c9e6))
+* **query:** build conceptual BM25 documents in parallel without re-allocating ([26709d2](https://github.com/casonadams/ripwire-rs/commit/26709d24b0f0784609ef324c5797277c815544dd))
+
+
+### Code Refactoring
+
+* **cli,mcp:** remove dead and alias flags; fold duplicate MCP tools ([e024f7c](https://github.com/casonadams/ripwire-rs/commit/e024f7ce62f45a24516319db331c20833b83b6f0))
+* **cli:** cut secondary lens and verb flags and drop layering shims ([8968991](https://github.com/casonadams/ripwire-rs/commit/89689914c73f71ac6b260d618fb53277642c7b99))
+
 ## [0.6.9](https://github.com/casonadams/ripwire-rs/compare/v0.6.8...v0.6.9) (2026-11-01)
 
 
