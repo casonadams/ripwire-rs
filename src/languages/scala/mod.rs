@@ -55,6 +55,7 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
     superclass: Some(("extends_clause", "super")),
     declaration_name: Some("pattern"),
     class_params: &["class_parameter"],
+    transparent_wrappers: &[],
 };
 
 impl LanguageSemantics for ScalaLanguage {

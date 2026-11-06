@@ -387,5 +387,6 @@ pub fn extract_markdown(
         foreign_exports: Vec::new(),
         callable_bindings: Vec::new(),
         implementations: Vec::new(),
+        ..FileParseResult::default()
     }
 }

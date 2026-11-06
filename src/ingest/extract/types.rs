@@ -95,4 +95,18 @@ pub struct FileParseResult {
     pub callable_bindings: Vec<crate::languages::CallableBinding>,
     pub members: Vec<MemberType>,
     pub implementations: Vec<crate::languages::Implementation>,
+    /// References to a field the file does not declare, reached through `this` of the class `class`.
+    pub pending_fields: Vec<PendingField>,
+    /// Type aliases this file declares, as `(alias, declared target type)`; set only where the language types
+    /// fields across files.
+    pub aliases: Vec<(String, String)>,
+}
+
+/// A receiver `member` (or `this.member`) of `refs[ref_index]`, reached through `this` of class `class`, whose field
+/// no binding in the reference's own file declares.
+#[derive(Debug, Clone)]
+pub struct PendingField {
+    pub ref_index: usize,
+    pub class: String,
+    pub member: String,
 }

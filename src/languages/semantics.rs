@@ -506,6 +506,30 @@ pub trait LanguageSemantics: Sync {
     fn is_untyped_core_member(&self, _name: &str) -> bool {
         false
     }
+
+    /// Library functions whose bodyless free declarations in the tree name the library's definition,
+    /// not an in-tree target: a prototype of `malloc` in a header is the C library's `malloc`.
+    fn library_function_names(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// True when a class's field types, and its type aliases, are resolved across files in the tree: a member
+    /// used in a file that does not declare its class (an out-of-line `-inl.h` body) takes the declared type.
+    fn cross_file_field_types(&self) -> bool {
+        false
+    }
+
+    /// Core members of the language's standard smart pointers, optionals and `swap`. A call of one on a receiver with
+    /// no type evidence, or on a smart pointer, names the standard member, not an in-tree class's method.
+    fn core_member_names(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Type aliases a file declares, as `(alias, declared target type)`.
+    fn type_aliases(&self, _root: tree_sitter::Node<'_>, _source: &[u8]) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
     /// True if a method name belongs to the language's standard container/string/builtin types (declined on untyped receivers).
     fn is_std_or_builtin_member(&self, name: &str) -> bool {
         self.std_member_names().contains(&name)

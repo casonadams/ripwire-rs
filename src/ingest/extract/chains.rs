@@ -3,16 +3,19 @@
 //! parsed, each pending chain is typed through the members of the classes the tree declares exactly once: a name
 //! declared twice could name either class, so its members are not used.
 
+use super::project::Declared;
 use super::types::{FileParseResult, PendingChain};
-use crate::domain::SymKind;
+use crate::domain::Lang;
 use crate::languages::is_plain_type_name;
 use crate::languages::reads::{EXTENDS, ReadBindings};
-use std::collections::HashMap;
 
-/// Type every pending receiver chain in `files` through the members of uniquely declared classes.
-pub fn resolve_pending_chains(files: &mut [&mut FileParseResult]) {
-    let members = unique_class_members(files);
-    for file in files.iter_mut() {
+/// Type every pending receiver chain in `parsed` through the members of uniquely declared classes.
+pub(super) fn resolve_pending_chains(
+    parsed: &mut [Option<(Lang, FileParseResult)>],
+    declared: &Declared,
+) {
+    let members = unique_class_members(parsed, declared);
+    for (_, file) in parsed.iter_mut().flatten() {
         for r in &mut file.refs {
             if let Some(chain) = r.receiver_chain.take() {
                 r.receiver_type = typed_chain(&members, &chain);
@@ -23,23 +26,20 @@ pub fn resolve_pending_chains(files: &mut [&mut FileParseResult]) {
 
 /// The members of every class the files declare once, and the superclass of each such class when that
 /// superclass is also declared once.
-fn unique_class_members(files: &[&mut FileParseResult]) -> ReadBindings<'static> {
-    let mut declared: HashMap<&str, usize> = HashMap::new();
-    for def in files.iter().flat_map(|file| file.defs.iter()) {
-        if matches!(
-            def.kind,
-            SymKind::Class | SymKind::Struct | SymKind::Interface
-        ) {
-            *declared.entry(def.name.as_str()).or_default() += 1;
-        }
-    }
-    let unique = |name: &str| declared.get(name) == Some(&1);
+fn unique_class_members(
+    parsed: &[Option<(Lang, FileParseResult)>],
+    declared: &Declared,
+) -> ReadBindings<'static> {
     let mut table = ReadBindings::default();
-    for member in files.iter().flat_map(|file| file.members.iter()) {
-        if !unique(&member.owner) || (member.member == EXTENDS && !unique(&member.ty)) {
-            continue;
+    for (_, file) in parsed.iter().flatten() {
+        for member in &file.members {
+            if !declared.classes.contains(member.owner.as_str())
+                || (member.member == EXTENDS && !declared.classes.contains(member.ty.as_str()))
+            {
+                continue;
+            }
+            table.insert_member(&member.owner, &member.member, member.ty.clone());
         }
-        table.insert_member(&member.owner, &member.member, member.ty.clone());
     }
     table
 }

@@ -160,6 +160,7 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
     superclass: Some(("base_list", "base")),
     declaration_name: None,
     class_params: &[],
+    transparent_wrappers: &[],
 };
 
 impl LanguageSemantics for CSharpLanguage {

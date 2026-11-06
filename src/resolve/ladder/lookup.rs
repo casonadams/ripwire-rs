@@ -1,5 +1,5 @@
 use super::candidates::{CandBuffer, filter_in_file, filter_matching_scope, filter_unscoped};
-use super::definitions::{primary_template, tied_definition, yields_to_definition};
+use super::definitions::{is_declaration, primary_template, tied_definition, yields_to_definition};
 use super::outcome::{EdgeProv, Narrowing, RefOutcome, ResolvedRef};
 use super::precedence::{Tier, edge_prov, is_unique_global_group, select_precedence_tier};
 use super::std_filter::{
@@ -91,7 +91,7 @@ pub trait ResolutionLookup {
     /// implementors and keeps its own declaration; a concrete owner prefers its inherent methods
     /// and otherwise uses trait impls. Same-named methods of unrelated types are never reached.
     #[must_use]
-    fn owner_candidates(&self, r: &Reference, recv: Spur) -> Option<CandBuffer> {
+    fn owner_candidates(&self, r: &Reference, recv: Spur, named: &[NodeId]) -> Option<CandBuffer> {
         let trait_idx = self.trait_index()?;
         let Some(owner) = self.receiver_owner(r, recv) else {
             return self.external_owner_candidates(r, recv);
@@ -106,7 +106,8 @@ pub trait ResolutionLookup {
             found.dedup();
             found
         } else {
-            let all = trait_idx.subject_targets(owner, r.callee_name, symbols);
+            let mut all = trait_idx.subject_targets(owner, r.callee_name, symbols);
+            all.extend(self.owner_declarations(owner, named, r));
             let mut compatible: Vec<NodeId> = all
                 .into_iter()
                 .filter(|&id| self.is_owner_compatible(r, &symbols[id as usize]))
@@ -146,6 +147,28 @@ pub trait ResolutionLookup {
                 .any(|&id| self.symbols()[id as usize].params == r.arg_count)
     }
 
+    /// Bodyless declarations of `owner` named like the call, each replaced by the definition tied to
+    /// it among `named` (an out-of-line body): a call through the owner binds to the definition when the
+    /// tree has one and to the declaration otherwise.
+    #[must_use]
+    fn owner_declarations(&self, owner: NodeId, named: &[NodeId], r: &Reference) -> Vec<NodeId> {
+        let Some(trait_idx) = self.trait_index() else {
+            return Vec::new();
+        };
+        let symbols = self.symbols();
+        let mut out: Vec<NodeId> = trait_idx
+            .subject_declarations(owner, r.callee_name, symbols)
+            .into_iter()
+            .map(|decl| {
+                crate::resolve::tied_definition(&symbols[decl as usize], named, symbols)
+                    .unwrap_or(decl)
+            })
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
     #[must_use]
     fn owner_compatible(
         &self,
@@ -168,29 +191,7 @@ pub trait ResolutionLookup {
             return false;
         }
         if r.role == RefRole::Access {
-            let caller_scope = self
-                .symbols()
-                .get(r.from_symbol as usize)
-                .and_then(|cs| cs.scope);
-            let semantics = r.lang.semantics();
-            let standard = self
-                .interner()
-                .and_then(|i| i.try_resolve(&r.callee_name))
-                .is_some_and(|name| {
-                    semantics.is_std_or_builtin_member(name)
-                        || semantics.std_property_names().contains(&name)
-                });
-            let symbols = self.symbols();
-            let ambiguous = self.by_name().get(&r.callee_name).is_some_and(|ids| {
-                ids.iter()
-                    .filter(|&&id| symbols[id as usize].accessor)
-                    .count()
-                    > 1
-            });
-            return sym.accessor
-                && sym.lang.is_compatible(r.lang)
-                && !((standard || ambiguous)
-                    && is_method_std_member_blocked(self, r, sym, caller_scope));
+            return self.is_access_compatible(r, sym);
         }
         if sym.lang.semantics().is_table_read_write_target()
             && matches!(r.role, RefRole::Read | RefRole::Write)
@@ -227,6 +228,33 @@ pub trait ResolutionLookup {
             }
         }
         self.is_owner_compatible(r, sym)
+    }
+
+    #[must_use]
+    fn is_access_compatible(&self, r: &Reference, sym: &Symbol) -> bool {
+        let caller_scope = self
+            .symbols()
+            .get(r.from_symbol as usize)
+            .and_then(|cs| cs.scope);
+        let semantics = r.lang.semantics();
+        let standard = self
+            .interner()
+            .and_then(|i| i.try_resolve(&r.callee_name))
+            .is_some_and(|name| {
+                semantics.is_std_or_builtin_member(name)
+                    || semantics.std_property_names().contains(&name)
+            });
+        let symbols = self.symbols();
+        let ambiguous = self.by_name().get(&r.callee_name).is_some_and(|ids| {
+            ids.iter()
+                .filter(|&&id| symbols[id as usize].accessor)
+                .count()
+                > 1
+        });
+        sym.accessor
+            && sym.lang.is_compatible(r.lang)
+            && !((standard || ambiguous)
+                && is_method_std_member_blocked(self, r, sym, caller_scope))
     }
 
     /// A bare call reaches `sym` unless it is a member of a type. A definition nested in a function
@@ -513,7 +541,7 @@ pub trait ResolutionLookup {
         r: &Reference,
     ) -> Option<(CandBuffer, Narrowing)> {
         if let Some(recv) = r.receiver_type {
-            if let Some(cands) = self.owner_candidates(r, recv) {
+            if let Some(cands) = self.owner_candidates(r, recv, all_cands) {
                 return Some((cands, Narrowing::Owner));
             }
             if !self.untyped_receiver_uses_names(r, recv)
@@ -718,9 +746,59 @@ pub trait ResolutionLookup {
         }
     }
 
+    /// The candidates of a call to a library function (`malloc`) without the free declarations in the
+    /// tree: a prototype there names the library's definition. `None` when the callee names no library
+    /// function of the caller's language.
+    fn without_library_prototypes(&self, r: &Reference, named: &[NodeId]) -> Option<Vec<NodeId>> {
+        let name = self.interner()?.try_resolve(&r.callee_name)?;
+        if !r.lang.semantics().library_function_names().contains(&name) {
+            return None;
+        }
+        let symbols = self.symbols();
+        Some(
+            named
+                .iter()
+                .copied()
+                .filter(|&id| {
+                    let sym = &symbols[id as usize];
+                    !(is_declaration(sym) && sym.scope.is_none())
+                })
+                .collect(),
+        )
+    }
+
+    /// A receiver typed as an explicit specialization (`Box<int>`, the text the tree declares it with) binds the
+    /// candidates that specialization declares, labelled as a template. Two declarations of it tie and are declined.
+    fn exact_specialization_outcome(&self, r: &Reference, named: &[NodeId]) -> Option<RefOutcome> {
+        let recv = r.receiver_type?;
+        if !self.interner()?.try_resolve(&recv)?.contains('<') {
+            return None;
+        }
+        let symbols = self.symbols();
+        let exact: Vec<NodeId> = named
+            .iter()
+            .copied()
+            .filter(|&id| symbols[id as usize].scope == Some(recv))
+            .collect();
+        match exact.as_slice() {
+            [] => None,
+            [_] => Some(self.resolve_targets(r, exact, Narrowing::Owner, Tier::SameFile, true)),
+            _ => Some(RefOutcome::Declined),
+        }
+    }
+
     fn classify_by_name(&self, r: &Reference) -> RefOutcome {
         let Some(named) = self.by_name().get(&r.callee_name) else {
             return RefOutcome::External;
+        };
+        let library_kept: Vec<NodeId>;
+        let named: &[NodeId] = match self.without_library_prototypes(r, named) {
+            Some(kept) if kept.is_empty() => return RefOutcome::External,
+            Some(kept) => {
+                library_kept = kept;
+                &library_kept
+            }
+            None => named.as_slice(),
         };
         let symbols = self.symbols();
         let without_contracts: Vec<NodeId>;
@@ -734,6 +812,9 @@ pub trait ResolutionLookup {
         } else {
             named
         };
+        if let Some(outcome) = self.exact_specialization_outcome(r, all_cands) {
+            return outcome;
+        }
         let Some((cands, narrowing)) = self.filter_ref_candidates(all_cands, r) else {
             return match classify_rejected_candidates(r, self.interner()) {
                 RefOutcome::Unresolved if self.imported_from_outside(r.file_id, r.callee_name) => {

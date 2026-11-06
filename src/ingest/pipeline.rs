@@ -1,4 +1,4 @@
-use super::extract::{FileParseResult, RawDef, parse_file_tree, resolve_pending_chains};
+use super::extract::{FileParseResult, RawDef, parse_file_tree, resolve_project_types};
 use super::ownership::{assign_module_scope_owner, build_file_references};
 use super::registry::LanguageRegistry;
 use crate::crawler::CrawledFile;
@@ -142,12 +142,7 @@ pub fn ingest_crawled_files(
             Err(_) => None,
         })
         .collect();
-    let mut parsed_refs: Vec<&mut FileParseResult> = parsed_files
-        .iter_mut()
-        .flatten()
-        .map(|(_, parsed)| parsed)
-        .collect();
-    resolve_pending_chains(&mut parsed_refs);
+    resolve_project_types(&mut parsed_files);
 
     let processed: Vec<(FileInfo, FileIndex)> = (0..files.len())
         .into_par_iter()
@@ -196,8 +191,7 @@ pub fn ingest_in_memory_files(
     interner: &Interner,
 ) -> IngestResult {
     let mut ingest = IngestResult::new();
-
-    let mut parsed_files: Vec<(Lang, FileParseResult)> = files
+    let mut parsed_files: Vec<Option<(Lang, FileParseResult)>> = files
         .iter()
         .map(|&(rel_path, lang, source_bytes)| {
             let eff_lang = lang
@@ -210,16 +204,16 @@ pub fn ingest_in_memory_files(
                 byte_size: source_bytes.len() as u64,
                 ..FileParseResult::default()
             });
-            (eff_lang, parsed)
+            Some((eff_lang, parsed))
         })
         .collect();
-    let mut parsed_refs: Vec<&mut FileParseResult> =
-        parsed_files.iter_mut().map(|(_, parsed)| parsed).collect();
-    resolve_pending_chains(&mut parsed_refs);
-    for (file_id, (&(rel_path, _, source_bytes), (eff_lang, parsed))) in
-        files.iter().zip(parsed_files).enumerate()
+    resolve_project_types(&mut parsed_files);
+    for (index, (&(rel_path, _, source_bytes), entry)) in files.iter().zip(parsed_files).enumerate()
     {
-        let file_id = file_id as u32;
+        let file_id = index as u32;
+        let Some((eff_lang, parsed)) = entry else {
+            continue;
+        };
         let file_info = FileInfo {
             id: file_id,
             path: interner.intern(rel_path),

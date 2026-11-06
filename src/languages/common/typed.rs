@@ -5,6 +5,9 @@ use crate::languages::{Implementation, is_plain_type_name};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
+/// Marks a receiver typed through a transparent wrapper (`std::unique_ptr<T>` types `T`, marked).
+pub(crate) const WRAPPED_RECEIVER: &str = "~w";
+
 pub struct TypedSyntax {
     pub classes: &'static [&'static str],
     pub supertype_clauses: &'static [&'static str],
@@ -23,6 +26,8 @@ pub struct TypedSyntax {
     /// Scala: `val x: T` is a declaration whose own declarator is named by `pattern`.
     pub declaration_name: Option<&'static str>,
     pub class_params: &'static [&'static str],
+    /// Wrapper templates whose one type argument is the receiver's type (`std::unique_ptr<T>`).
+    pub transparent_wrappers: &'static [&'static str],
 }
 
 /// Field facts per `(class, field)`: `None` marks fields given two different types.
@@ -177,6 +182,7 @@ pub fn typed_read_bindings<'a>(
             record_assignment(&mut bindings, node, source, syntax);
         } else if syntax.functions.contains(&kind) {
             record_return(&mut returns, node, source, syntax);
+            record_out_of_line_this(&mut bindings, node, source);
         }
     }
     returns.insert_into(&mut bindings);
@@ -434,6 +440,84 @@ fn declarator_types<'a>(
     out
 }
 
+/// C++ `ns::Box` declares a `Box` in namespace `ns`: the type is the bare name. A template `Box<int>` keeps its
+/// argument list, which the cross-file pass matches against the specialization the tree declares, if any.
+fn declared_base(ty: Node<'_>) -> Option<(Node<'_>, Option<Node<'_>>)> {
+    match ty.kind() {
+        "qualified_identifier" => declared_base(ty.child_by_field_name("name")?),
+        "template_type" => Some((
+            plain_name(ty.child_by_field_name("name")?)?,
+            ty.child_by_field_name("arguments"),
+        )),
+        _ => Some((ty, None)),
+    }
+}
+
+/// The bare identifier a name ends in (`ns::Box` names `Box`).
+fn plain_name(name: Node<'_>) -> Option<Node<'_>> {
+    match name.kind() {
+        "qualified_identifier" => plain_name(name.child_by_field_name("name")?),
+        "type_identifier" | "identifier" => Some(name),
+        _ => None,
+    }
+}
+
+/// The declared type a type node names: its bare name, with a template's argument list after it, spaces removed as a
+/// specialization's scope spells it. `None` unless that name is plain, and never one of `inferred`.
+pub(crate) fn declared_type_text(ty: Node<'_>, source: &[u8], inferred: &[&str]) -> Option<String> {
+    let (base, arguments) = declared_base(ty)?;
+    let text = base.utf8_text(source).ok()?;
+    if !is_plain_type_name(text) || inferred.contains(&text) {
+        return None;
+    }
+    let arguments: String = match arguments {
+        Some(arguments) => arguments
+            .utf8_text(source)
+            .ok()?
+            .split_whitespace()
+            .collect(),
+        None => String::new(),
+    };
+    Some(format!("{text}{arguments}"))
+}
+
+/// A body defined out of line, `void Box::get() {}`, has the class `Box` as its `this`.
+fn record_out_of_line_this<'a>(
+    bindings: &mut ReadBindings<'a>,
+    function: Node<'_>,
+    source: &'a [u8],
+) {
+    let (Some(declarator), Some(body)) = (
+        function.child_by_field_name("declarator"),
+        function.child_by_field_name("body"),
+    ) else {
+        return;
+    };
+    let Some(scope) = out_of_line_scope(declarator) else {
+        return;
+    };
+    let Ok(text) = scope.utf8_text(source) else {
+        return;
+    };
+    let class = text.rsplit("::").next().unwrap_or(text);
+    if is_plain_type_name(class) {
+        bindings.insert("this", body.byte_range(), Some(class.to_string()));
+    }
+}
+
+/// The scope a qualified function declarator names (`ns::Box` of `ns::Box::get`), through any wrapping declarator.
+fn out_of_line_scope(declarator: Node<'_>) -> Option<Node<'_>> {
+    match declarator.kind() {
+        "qualified_identifier" => declarator.child_by_field_name("scope"),
+        "function_declarator" | "pointer_declarator" | "reference_declarator" => out_of_line_scope(
+            declarator
+                .child_by_field_name("declarator")
+                .or_else(|| declarator.named_child(0))?,
+        ),
+        _ => None,
+    }
+}
+
 /// C# fields wrap their type in a `variable_declaration` child.
 fn declared_type(node: Node<'_>, source: &[u8], syntax: &TypedSyntax) -> Option<String> {
     let ty = node.child_by_field_name("type").or_else(|| {
@@ -441,8 +525,56 @@ fn declared_type(node: Node<'_>, source: &[u8], syntax: &TypedSyntax) -> Option<
         node.named_children(&mut cursor)
             .find_map(|child| child.child_by_field_name("type"))
     })?;
-    let text = ty.utf8_text(source).ok()?;
-    (is_plain_type_name(text) && !syntax.inferred.contains(&text)).then(|| text.to_string())
+    let (inner, wrapped) = unwrap_transparent(ty, source, syntax.transparent_wrappers);
+    let text = declared_type_text(inner, source, syntax.inferred)?;
+    Some(if wrapped {
+        format!("{text}{WRAPPED_RECEIVER}")
+    } else {
+        text
+    })
+}
+
+/// The type a transparent wrapper hands its receiver: `T` of `std::unique_ptr<T>`, through any nesting. `wrapped` is
+/// false for any other type.
+fn unwrap_transparent<'t>(ty: Node<'t>, source: &[u8], wrappers: &[&str]) -> (Node<'t>, bool) {
+    let mut current = ty;
+    let mut wrapped = false;
+    while let Some(inner) = transparent_argument(current, source, wrappers) {
+        current = inner;
+        wrapped = true;
+    }
+    (current, wrapped)
+}
+
+/// The one plain type argument of a wrapper named in `wrappers`.
+fn transparent_argument<'t>(ty: Node<'t>, source: &[u8], wrappers: &[&str]) -> Option<Node<'t>> {
+    if !matches!(ty.kind(), "template_type" | "qualified_identifier") {
+        return None;
+    }
+    let text: String = ty.utf8_text(source).ok()?.split_whitespace().collect();
+    let head = text.split_once('<')?.0;
+    if !wrappers.contains(&head) {
+        return None;
+    }
+    let template = if ty.kind() == "template_type" {
+        ty
+    } else {
+        ty.child_by_field_name("name")?
+    };
+    let arguments = template.child_by_field_name("arguments")?;
+    let mut cursor = arguments.walk();
+    let mut named = arguments.named_children(&mut cursor);
+    let only = named.next()?;
+    if named.next().is_some() {
+        return None;
+    }
+    if only.kind() != "type_descriptor" {
+        return Some(only);
+    }
+    if only.child_by_field_name("declarator").is_some() {
+        return None;
+    }
+    only.child_by_field_name("type")
 }
 
 fn constructed_type(declarator: Node<'_>, source: &[u8], syntax: &TypedSyntax) -> Option<String> {

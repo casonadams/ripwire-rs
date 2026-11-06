@@ -1,5 +1,6 @@
 use super::c::{
-    C_FAMILY_KEYWORDS, CPP_STD_MEMBERS, CPP_STD_QUALIFIERS, blank_c_family_macro_lines,
+    C_FAMILY_KEYWORDS, C_LIBRARY_FUNCTIONS, CPP_STD_MEMBERS, CPP_STD_QUALIFIERS,
+    blank_c_family_macro_lines, type_aliases,
     c_family_declaration_ties, is_c_family_def_allowed, refine_c_header_dialect,
     resolve_c_family_def_body_and_end, resolve_c_family_include,
 };
@@ -36,6 +37,24 @@ const KINDS: ComplexityKinds = ComplexityKinds {
 
 /// Python module macros whose `.def("name", &fn)` calls expose C++ definitions to Python.
 const PYTHON_MODULE_MACROS: &[&[u8]] = &[b"PYBIND11_MODULE", b"BOOST_PYTHON_MODULE"];
+
+/// Core members of the standard smart pointers, `std::optional` and `swap`. On a smart pointer such a call is the
+/// wrapper's own (`formatter_.reset()` on a `std::unique_ptr<formatter>` is `unique_ptr::reset`), and on an untyped
+/// receiver it names the standard member, never an in-tree class's.
+const CPP_CORE_MEMBERS: &[&str] = &[
+    "emplace",
+    "expired",
+    "get",
+    "has_value",
+    "lock",
+    "owner_before",
+    "release",
+    "reset",
+    "swap",
+    "use_count",
+    "value",
+    "value_or",
+];
 
 fn string_literal_text<'a>(node: tree_sitter::Node<'_>, source: &'a [u8]) -> Option<&'a str> {
     (node.kind() == "string_literal")
@@ -141,6 +160,7 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
     superclass: None,
     declaration_name: Some("declarator"),
     class_params: &[],
+    transparent_wrappers: &["std::unique_ptr", "std::shared_ptr", "std::weak_ptr", "std::optional"],
 };
 
 /// Scope of a member inside an explicit specialization keeps its template arguments
@@ -266,6 +286,22 @@ impl LanguageSemantics for CppLanguage {
 
     fn std_qualifier_names(&self) -> &'static [&'static str] {
         CPP_STD_QUALIFIERS
+    }
+
+    fn core_member_names(&self) -> &'static [&'static str] {
+        CPP_CORE_MEMBERS
+    }
+
+    fn library_function_names(&self) -> &'static [&'static str] {
+        C_LIBRARY_FUNCTIONS
+    }
+
+    fn cross_file_field_types(&self) -> bool {
+        true
+    }
+
+    fn type_aliases(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, String)> {
+        type_aliases(root, source)
     }
 
     fn blank_error_macros(&self, source_bytes: &[u8]) -> Option<Vec<u8>> {

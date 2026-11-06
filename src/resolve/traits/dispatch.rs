@@ -85,6 +85,52 @@ impl TraitIndex {
         sort_dedup(out)
     }
 
+    /// Bodyless declarations named `name` that a subject writes in its own body, or else its nearest
+    /// ancestor that writes one: a C-family prototype or pure virtual, whose definition may be elsewhere.
+    #[must_use]
+    pub fn subject_declarations(
+        &self,
+        subject: NodeId,
+        name: Spur,
+        symbols: &[Symbol],
+    ) -> Vec<NodeId> {
+        std::iter::once(subject)
+            .chain(self.ancestors(subject))
+            .find(|&class| {
+                !self.own_subject_targets(class, name, symbols).is_empty()
+                    || !self
+                        .own_subject_declarations(class, name, symbols)
+                        .is_empty()
+            })
+            .map_or_else(Vec::new, |class| {
+                self.own_subject_declarations(class, name, symbols)
+            })
+    }
+
+    fn own_subject_declarations(
+        &self,
+        subject: NodeId,
+        name: Spur,
+        symbols: &[Symbol],
+    ) -> Vec<NodeId> {
+        let members = self
+            .by_subject
+            .get(&subject)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let out: Vec<NodeId> = members
+            .iter()
+            .flat_map(|&i| self.impls[i].methods.iter().copied())
+            .filter(|&m| {
+                let sym = &symbols[m as usize];
+                sym.name == name
+                    && crate::resolve::is_declaration(sym)
+                    && !sym.lang.semantics().declarations_yield_to_definitions()
+            })
+            .collect();
+        sort_dedup(out)
+    }
+
     fn own_subject_targets(&self, subject: NodeId, name: Spur, symbols: &[Symbol]) -> Vec<NodeId> {
         let mut out = Vec::new();
         for &i in self

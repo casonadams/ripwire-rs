@@ -1,4 +1,5 @@
 use super::capture::{extract_match_captures, record_extracted_item};
+use super::crossfile::{declared_aliases, pending_facts};
 use super::qualifier::{pending_chain_at, receiver_type_at};
 use super::types::{FileParseResult, MemberType, RawDef, RawRef};
 use crate::domain::{Lang, RefRole, SymKind};
@@ -39,8 +40,10 @@ pub fn parse_file_tree(
         let mut refs = Vec::new();
         collect_items(cursor, query, &ctx, &mut defs, &mut refs);
         let bindings = lang.semantics().read_bindings(ctx.root, source_bytes);
+        let aliases = declared_aliases(lang, ctx.root, source_bytes);
         drop_shadowed_refs(&mut refs, &bindings);
         attach_receiver_types(&mut refs, &bindings, lang);
+        let pending_fields = pending_facts(lang, &refs, &bindings);
         append_embedded_refs(&ctx, &mut refs);
         qualify_import_bound_receivers(&mut refs, lang);
         finalize_defs(&mut defs);
@@ -53,6 +56,8 @@ pub fn parse_file_tree(
             callable_bindings: lang.semantics().callable_bindings(ctx.root, source_bytes),
             implementations: lang.semantics().implementations(ctx.root, source_bytes),
             members: member_types(&bindings),
+            pending_fields,
+            aliases,
         }
     })
 }

@@ -262,7 +262,7 @@ fn template_and_macro_rows_keep_their_binding_markers() {
             template,
             "get",
             NavMode::Callers,
-            "n=\"use_box\" p=\"box.cpp:3\" of_def=\"1~t\"",
+            "n=\"use_box\" p=\"box.cpp:3\" of_def=\"2~t\"",
         ),
         (
             mac,

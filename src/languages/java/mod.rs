@@ -161,6 +161,7 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
     superclass: Some(("superclass", "super")),
     declaration_name: None,
     class_params: &[],
+    transparent_wrappers: &[],
 };
 
 impl LanguageSemantics for JavaLanguage {

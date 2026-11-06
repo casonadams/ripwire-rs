@@ -24,6 +24,17 @@ pub(super) fn is_method_std_member_blocked<L: ResolutionLookup + ?Sized>(
         && lookup.file_mentions_scope(r.file_id, sym_sc))
 }
 
+/// A member call named by a core member of the language's standard types whose receiver is not typed as the
+/// candidate's class: `name_.swap(other)` on a `std::string` member of `logger` is not `logger::swap`, and a
+/// `std::shared_ptr<logger>` member's `get()` is not `logger::get`. A member call never targets a free function.
+/// Typed owners resolve before this filter runs.
+fn is_core_member_off_receiver(r: &Reference, sym: &Symbol, callee: &str) -> bool {
+    r.member_call
+        && r.role == RefRole::Call
+        && (sym.scope.is_none() || (r.receiver_type != sym.scope && r.qualifier != sym.scope))
+        && r.lang.semantics().core_member_names().contains(&callee)
+}
+
 pub(super) fn is_unpinned_std_member_blocked<L: ResolutionLookup + ?Sized>(
     lookup: &L,
     r: &Reference,
@@ -31,6 +42,9 @@ pub(super) fn is_unpinned_std_member_blocked<L: ResolutionLookup + ?Sized>(
     caller_scope: Option<Spur>,
     callee_str: &str,
 ) -> bool {
+    if is_core_member_off_receiver(r, sym, callee_str) {
+        return true;
+    }
     if !sym.lang.semantics().is_std_or_builtin_member(callee_str) {
         return false;
     }

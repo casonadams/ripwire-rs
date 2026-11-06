@@ -7,6 +7,7 @@ mod defs;
 mod headers;
 mod macros;
 mod names;
+mod aliases;
 
 use super::{ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds};
 use std::collections::HashMap;
@@ -17,7 +18,10 @@ pub(super) use self::defs::{
 };
 pub(super) use self::headers::{refine_c_header_dialect, resolve_c_family_include};
 pub(super) use self::macros::blank_c_family_macro_lines;
-pub(super) use self::names::{C_FAMILY_KEYWORDS, CPP_STD_MEMBERS, CPP_STD_QUALIFIERS};
+pub(super) use self::aliases::type_aliases;
+pub(super) use self::names::{
+    C_FAMILY_KEYWORDS, C_LIBRARY_FUNCTIONS, CPP_STD_MEMBERS, CPP_STD_QUALIFIERS,
+};
 
 pub struct CLanguage;
 pub static C_LANG: CLanguage = CLanguage;
@@ -137,6 +141,18 @@ impl LanguageSemantics for CLanguage {
 
     fn std_qualifier_names(&self) -> &'static [&'static str] {
         CPP_STD_QUALIFIERS
+    }
+
+    fn library_function_names(&self) -> &'static [&'static str] {
+        C_LIBRARY_FUNCTIONS
+    }
+
+    fn cross_file_field_types(&self) -> bool {
+        true
+    }
+
+    fn type_aliases(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, String)> {
+        type_aliases(root, source)
     }
 
     fn blank_error_macros(&self, source_bytes: &[u8]) -> Option<Vec<u8>> {
