@@ -245,9 +245,51 @@ Upstream timeout: the upstream run of each command gets 4 seconds. A command tha
 
 ## 13. Resolver Corpus (`make corpus-*`, local only)
 
-Call resolution scored against compiler SCIP indexes of real public repositories. Measured entries cover Python, TypeScript, JavaScript, Ruby, Dart, Java, C++, C and C#. The Rust entry (this repository, local) is listed but not yet measured. Kotlin, Scala and PHP are listed as blocked, with the reason in the manifest. Not in `make ci` or `make all`; it needs Docker and network.
+Call resolution scored against an oracle over real public repositories. Two oracle kinds exist. A **SCIP indexer** is a compiler's own index (rust-analyzer, scip-typescript, scip-python, scip-ruby, scip-dart, scip-java for Java, Kotlin and Scala, scip-clang, scip-dotnet, and scip-php). An **LSP bridge** (`scripts/corpus/lsp2scip.py`) asks a language server's go-to-definition for each conservative `name(` call site and writes a SCIP index from the answers. Precision is the headline metric for bridge entries: recall is measured only over the call sites the bridge enumerates, so a bridge recall is lower-confidence than a compiler index recall. Not in `make ci` or `make all`; it needs Docker and network.
 
-Run it: `make corpus-image` once (linux/amd64 image, all indexers pinned in `scripts/corpus/Dockerfile`), then `make corpus-index` (clones and indexes into `~/.cache/ripwire-corpus`), `make corpus-eval` (fails when a precision or recall floor in `scripts/corpus/corpus.toml` is missed), `make corpus-measure` (prints measured values and suggested floors), and `make corpus-diff OLD=path/to/old/ripwire-rs` (per-site verdict changes between two binaries). `NAME=<entry>` limits any target to one repo.
+Run it: `make corpus-image` (SCIP indexers, `scripts/corpus/Dockerfile`) and `make corpus-image-lsp` (language servers and the bridge, `scripts/corpus/Dockerfile.lsp`), both linux/amd64 and capped at 3 GiB per indexer container. Then `make corpus-index` (clones and indexes into `~/.cache/ripwire-corpus`), `make corpus-eval` (fails when a precision or recall floor in `scripts/corpus/corpus.toml` is missed), `make corpus-measure` (prints measured values and suggested floors), and `make corpus-diff OLD=path/to/old/ripwire-rs` (per-site verdict changes between two binaries). `NAME=<entry>` limits any target to one entry.
 
-Not covered: languages without an official SCIP indexer (Swift, Go, Objective-C, CUDA, Lua, Elixir, Zig and others) remain covered only by in-memory fixtures. A corpus floor says nothing about a language it does not index.
+Measured on a release build of this tree. Ranges span the entries of a language; a single value is one entry. Floors are set for the LSP-bridge entries (just under measurement); SCIP entries keep their floors until ratcheted.
+
+| Language | Oracle | Status | Precision | Recall |
+|---|---|---|---|---|
+| bash | LSP bridge (bash-language-server) | measured | 0.9983 | 0.9960 |
+| brightscript | none | blocked: no standalone language server package found | - | - |
+| c | SCIP indexer (scip-clang) | measured | 1.0000 | 1.0000 |
+| cobol | LSP bridge (COBOL language server) | blocked: the native binary is a CLI with no LSP mode; the LSP jar needs a JRE the image lacks | - | - |
+| cpp | SCIP indexer (scip-clang) | measured | 0.9376 | 0.8100 |
+| csharp | SCIP indexer (scip-dotnet) | measured | 0.9882 | 0.9796 |
+| cuda | clangd (not wired) | not attempted | - | - |
+| dart | SCIP indexer (scip_dart) | measured | 0.9726 | 0.7593 |
+| elixir | LSP bridge (elixir-ls) | blocked: elixir-ls mix install fails on Elixir 1.18.3 (vendored dependency does not compile) | - | - |
+| erlang | not wired (xref is the candidate oracle) | not attempted | - | - |
+| fortran | LSP bridge (fortls) | measured | 0.9980 | 0.9845 |
+| gdscript | LSP bridge (Godot 4.7.2 language server) | blocked: the Godot binary needs libfontconfig1, not yet in the image | - | - |
+| go | LSP bridge (gopls) | measured | 0.8053 | 0.8228 |
+| graphql | none wired | not attempted | - | - |
+| hcl | not applicable: reference edges are builtin function calls only | not applicable | - | - |
+| java | SCIP indexer (scip-java) | measured | 0.9623 | 0.8963 |
+| javascript | SCIP indexer (scip-typescript) | measured | 1.0000 | 0.7353 |
+| json | not applicable: no reference captures | not applicable | - | - |
+| kotlin | SCIP indexer (scip-java, Kotlin) | measured | 0.8313 | 0.5050 |
+| lua | LSP bridge (lua-language-server) | measured | 0.8216 | 0.8422 |
+| markdown | not applicable: no call resolution | not applicable | - | - |
+| metal | clangd (not wired) | not attempted | - | - |
+| objc | clangd (not wired) | not attempted | - | - |
+| php | SCIP indexer (scip-php) | measured | 0.9367 | 0.8870 |
+| proto | not applicable to --eval=scip: type references are not scored | not applicable | - | - |
+| python | SCIP indexer (scip-python) | measured | 0.9860 | 0.9160 |
+| ruby | SCIP indexer (scip-ruby) | measured | 0.9864 | 0.9943 |
+| rust | SCIP indexer (rust-analyzer, this repository) | measured | 0.9868 | 0.9789 |
+| scala | SCIP indexer (scip-java, Scala) | measured | 0.9017 | 0.8439 |
+| solidity | LSP bridge (solidity language server) | measured | 0.7103 | 0.6651 |
+| sql | not applicable to --eval=scip: table and column references are not scored | not applicable | - | - |
+| swift | sourcekit-lsp (not wired) | not attempted | - | - |
+| toml | not applicable: no reference captures | not applicable | - | - |
+| typescript | SCIP indexer (scip-typescript) | measured | 0.9882 | 0.9882 |
+| yaml | not applicable: no reference captures | not applicable | - | - |
+| zig | LSP bridge (zls) | measured | 0.8095 | 0.8759 |
+
+Not covered: languages marked not attempted or blocked above have no floor and no measurement; a corpus floor says nothing about a language it does not index. Languages covered only by in-memory fixtures remain so until an entry measures them.
+
 

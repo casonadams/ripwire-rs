@@ -176,6 +176,9 @@ const TYPED_ROWS: &[Row] = &[
             ),
         ],
     },
+];
+
+const TYPED_ROWS_SCALA: &[Row] = &[
     Row {
         files: &[("src/Desk.scala", Lang::Scala, SCALA_STORES)],
         cases: &[
@@ -225,6 +228,9 @@ const TYPED_ROWS: &[Row] = &[
             ),
         ],
     },
+];
+
+const TYPED_ROWS_TAIL: &[Row] = &[
     Row {
         files: &[
             ("pkg/text_mod.py", Lang::Python, PY_TEXT),
@@ -333,6 +339,8 @@ fn check_rows(rows: &[Row]) {
 #[test]
 fn typed_receivers_bind_their_declared_owner_method() {
     check_rows(TYPED_ROWS);
+    check_rows(TYPED_ROWS_SCALA);
+    check_rows(TYPED_ROWS_TAIL);
 }
 
 #[test]

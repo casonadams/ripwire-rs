@@ -64,6 +64,7 @@ class Entry:
     index_file: str
     setup: str
     index: str
+    image: str
     reason: str
     precision_floor: float | None
     recall_floor: float | None
@@ -83,6 +84,7 @@ class Entry:
             index_file=table.get("index_file", "index.scip"),
             setup=table.get("setup", ""),
             index=table.get("index", ""),
+            image=table.get("image", IMAGE),
             reason=table.get("reason", ""),
             precision_floor=table.get("precision_floor"),
             recall_floor=table.get("recall_floor"),
@@ -177,13 +179,13 @@ def snapshot(entry):
     return dest
 
 
-def docker_ready():
+def docker_ready(entry):
     if shutil.which("docker") is None:
         raise Skip("docker is not installed")
     if subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True).returncode:
         raise Skip("docker daemon is not running")
-    if subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True).returncode:
-        raise Skip(f"image {IMAGE} is not built: run make corpus-image")
+    if subprocess.run(["docker", "image", "inspect", entry.image], capture_output=True).returncode:
+        raise Skip(f"image {entry.image} is not built: run the make target that builds it (corpus-image, corpus-image-lsp)")
 
 
 def container_script(entry):
@@ -193,7 +195,7 @@ def container_script(entry):
 
 def docker_command(entry, src, out):
     return [
-        "docker", "run", "--rm", "--platform", "linux/amd64",
+        "docker", "run", "--rm", "--platform", "linux/amd64", "--memory=3g",
         "--user", f"{os.getuid()}:{os.getgid()}",
         "-v", f"{src}:/src", "-v", f"{out}:/out", "-v", f"{CACHE / 'home'}:/corpus-home",
         "-w", "/src",
@@ -202,7 +204,7 @@ def docker_command(entry, src, out):
         "-e", "COMPOSER_HOME=/corpus-home/composer",
         "-e", "RUSTUP_TOOLCHAIN=1.98.1",
         "-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=*",
-        IMAGE, "sh", "-ec", container_script(entry),
+        entry.image, "sh", "-ec", container_script(entry),
     ]
 
 
@@ -234,7 +236,7 @@ def prepare(entry, force):
         key = entry.sha[:12]
     index = CACHE / "index" / f"{entry.name}-{key}-{entry.indexer_version}.scip"
     if force or not index.exists():
-        docker_ready()
+        docker_ready(entry)
         build_index(entry, src, index)
     return src, index
 

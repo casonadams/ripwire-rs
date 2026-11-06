@@ -111,6 +111,16 @@ class Manifest(unittest.TestCase):
         entry = corpus.Entry.from_table(table(setup="npm ci", index="scip-python index --output={out}"))
         self.assertEqual(corpus.container_script(entry), "npm ci\nscip-python index --output=/out/index.scip")
 
+    def test_entry_selects_its_image_and_is_memory_capped(self):
+        lsp = corpus.Entry.from_table(table(image="ripwire-corpus-lsp:local", index="lsp2scip --out {out}"))
+        command = corpus.docker_command(lsp, pathlib.Path("/src"), pathlib.Path("/out"))
+        self.assertIn("ripwire-corpus-lsp:local", command)
+        self.assertNotIn(corpus.IMAGE, command)
+        self.assertIn("--memory=3g", command)
+
+    def test_default_image_is_the_scip_indexer_image(self):
+        self.assertEqual(corpus.Entry.from_table(table()).image, corpus.IMAGE)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -207,3 +207,101 @@ setup = "composer install --no-interaction --no-progress --no-scripts --no-secur
 index = "cd /src && scip-php && mv index.scip {out}"
 precision_floor = 0.9347
 recall_floor = 0.8850
+
+[[repo]]
+name = "chi"
+languages = ["go"]
+status = "measured"
+precision_floor = 0.8033
+recall_floor = 0.8208
+license = "MIT"
+url = "https://github.com/go-chi/chi"
+sha = "9f8adb1aabaa8a91180a821111d3f8e668d1c0bf"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "gopls-0.24.0"
+setup = "go mod download"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .go --language-id go --out {out} -- gopls serve"
+
+[[repo]]
+name = "penlight"
+languages = ["lua"]
+status = "measured"
+precision_floor = 0.8196
+recall_floor = 0.8402
+license = "MIT"
+url = "https://github.com/lunarmodules/penlight"
+sha = "7f3351f226c2f643aaa1d3afa8d7293dd8a1d985"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "lua-language-server-3.19.2"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .lua --language-id lua --out {out} --settle 20 -- lua-language-server --logpath=/corpus-home/lua-ls/log --metapath=/corpus-home/lua-ls/meta"
+
+[[repo]]
+name = "zls"
+languages = ["zig"]
+status = "measured"
+precision_floor = 0.8075
+recall_floor = 0.8739
+license = "MIT"
+url = "https://github.com/zigtools/zls"
+sha = "b3e65123f1bf455cea491ba7069bebd5f93e6839"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "zls-0.17.0"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .zig --language-id zig --out {out} -- zls"
+
+[[repo]]
+name = "fpm"
+languages = ["fortran"]
+status = "measured"
+precision_floor = 0.9960
+recall_floor = 0.9825
+license = "MIT"
+url = "https://github.com/fortran-lang/fpm"
+sha = "4ccd0c1d0210a9ca25bee34de7ca6e0c1f629cef"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "fortls-3.2.2"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .f90 --language-id fortran --out {out} -- fortls"
+
+[[repo]]
+name = "forge-std"
+languages = ["solidity"]
+status = "measured"
+precision_floor = 0.7083
+recall_floor = 0.6631
+license = "Apache-2.0"
+url = "https://github.com/foundry-rs/forge-std"
+sha = "dc647cc030d9d65910d8f1172a0cde48d7106e32"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "solidity-ls-0.9.3"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .sol --language-id solidity --out {out} --settle 20 -- nomicfoundation-solidity-language-server --stdio"
+
+[[repo]]
+name = "ohmybash"
+languages = ["bash"]
+status = "measured"
+precision_floor = 0.9963
+recall_floor = 0.9940
+license = "MIT"
+url = "https://github.com/ohmybash/oh-my-bash"
+sha = "94c2977eda06f230aafa9628fcd869123f01896b"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "bash-language-server-5.8.1"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .sh,.bash --language-id shellscript --out {out} --pattern '(?:^|[;&|(`]|\\$\\(|\\b(?:then|do|else)\\s+)\\s*([A-Za-z_][\\w.-]*)(?=\\s|$|;|\\))' -- bash-language-server start"
+
+[[repo]]
+name = "plug"
+languages = ["elixir"]
+status = "blocked"
+reason = "elixir-ls 0.31.1 mix install fails on Elixir 1.18.3: vendored jason_v dependency 'Compilation error ... could not call Module.put_attribute/3 because the module ElixirLS.Mix is already compiled'; the server exits before answering initialize"
+license = "Apache-2.0"
+url = "https://github.com/elixir-plug/plug"
+sha = "0d5b5eacb93b6de8f89454452cb232aa57672733"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "elixir-ls-0.31.1"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .ex,.exs --language-id elixir --out {out} --settle 30 -- /opt/elixir-ls/language_server.sh"

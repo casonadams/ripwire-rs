@@ -138,6 +138,10 @@ NAME ?=
 corpus-image: ## Build the local SCIP indexer image (linux/amd64, needs Docker; not part of all or ci)
 	docker build --platform linux/amd64 -t ripwire-corpus:local scripts/corpus
 
+.PHONY: corpus-image-lsp
+corpus-image-lsp: ## Build the local language-server image for the LSP bridge (linux/amd64, needs Docker; not part of all or ci)
+	docker build --platform linux/amd64 -f scripts/corpus/Dockerfile.lsp -t ripwire-corpus-lsp:local scripts/corpus
+
 .PHONY: corpus-index
 corpus-index: ## Index the corpus repos into ~/.cache/ripwire-corpus (NAME=click for one; FORCE=1 to rebuild)
 	@$(CORPUS) index $(NAME) $(if $(FORCE),--force)
