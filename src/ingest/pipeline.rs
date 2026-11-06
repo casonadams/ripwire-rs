@@ -1,4 +1,4 @@
-use super::extract::{FileParseResult, RawDef, parse_file_tree};
+use super::extract::{FileParseResult, RawDef, parse_file_tree, resolve_pending_chains};
 use super::ownership::{assign_module_scope_owner, build_file_references};
 use super::registry::LanguageRegistry;
 use crate::crawler::CrawledFile;
@@ -132,7 +132,7 @@ pub fn ingest_crawled_files(
     )
     .len();
     let mut import_aliases = Vec::new();
-    let parsed_files: Vec<Option<(Lang, FileParseResult)>> = reads
+    let mut parsed_files: Vec<Option<(Lang, FileParseResult)>> = reads
         .into_iter()
         .map(|(_, read)| match read {
             Ok(crawled) => {
@@ -142,6 +142,12 @@ pub fn ingest_crawled_files(
             Err(_) => None,
         })
         .collect();
+    let mut parsed_refs: Vec<&mut FileParseResult> = parsed_files
+        .iter_mut()
+        .flatten()
+        .map(|(_, parsed)| parsed)
+        .collect();
+    resolve_pending_chains(&mut parsed_refs);
 
     let processed: Vec<(FileInfo, FileIndex)> = (0..files.len())
         .into_par_iter()
@@ -191,19 +197,29 @@ pub fn ingest_in_memory_files(
 ) -> IngestResult {
     let mut ingest = IngestResult::new();
 
-    for (file_id, &(rel_path, lang, source_bytes)) in files.iter().enumerate() {
+    let mut parsed_files: Vec<(Lang, FileParseResult)> = files
+        .iter()
+        .map(|&(rel_path, lang, source_bytes)| {
+            let eff_lang = lang
+                .semantics()
+                .refine_dialect(lang, rel_path, source_bytes);
+            let parsed = registry.get(eff_lang).map(|(language, query)| {
+                parse_file_content(source_bytes, language, query, eff_lang, rel_path)
+            });
+            let parsed = parsed.unwrap_or_else(|| FileParseResult {
+                byte_size: source_bytes.len() as u64,
+                ..FileParseResult::default()
+            });
+            (eff_lang, parsed)
+        })
+        .collect();
+    let mut parsed_refs: Vec<&mut FileParseResult> =
+        parsed_files.iter_mut().map(|(_, parsed)| parsed).collect();
+    resolve_pending_chains(&mut parsed_refs);
+    for (file_id, (&(rel_path, _, source_bytes), (eff_lang, parsed))) in
+        files.iter().zip(parsed_files).enumerate()
+    {
         let file_id = file_id as u32;
-        let eff_lang = lang
-            .semantics()
-            .refine_dialect(lang, rel_path, source_bytes);
-        let parsed = registry.get(eff_lang).map(|(language, query)| {
-            parse_file_content(source_bytes, language, query, eff_lang, rel_path)
-        });
-
-        let parsed = parsed.unwrap_or_else(|| FileParseResult {
-            byte_size: source_bytes.len() as u64,
-            ..FileParseResult::default()
-        });
         let file_info = FileInfo {
             id: file_id,
             path: interner.intern(rel_path),
@@ -426,6 +442,7 @@ pub fn build_file_symbols(
         sym.takes_self = def.takes_self;
         sym.accessor = def.accessor;
         sym.registered = def.registered;
+        sym.constructor = def.constructor;
         file_symbols.push(sym);
     }
     file_symbols

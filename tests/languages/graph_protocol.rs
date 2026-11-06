@@ -261,7 +261,7 @@ const ROWS: &[(GraphProtocolCase<'static>, Option<Entrypoint>)] = &[
             b"import 'package:core/core.dart';\nabstract class Runner {}\nclass TaskRunner extends Runner {\n  static List<String> allCols() => [];\n  void execute() {\n    print('skip');\n    Future.wait([]);\n    performStep();\n  }\n  void performStep() {\n    return;\n  }\n}\n",
         )],
         expected_syms: &[
-            sym("Runner", SymKind::Class, None, true),
+            sym("Runner", SymKind::Interface, None, true),
             sym("TaskRunner", SymKind::Class, None, true),
             sym("allCols", SymKind::Method, Some("TaskRunner"), true),
             sym("execute", SymKind::Method, Some("TaskRunner"), true),

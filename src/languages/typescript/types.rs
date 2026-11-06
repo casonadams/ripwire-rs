@@ -6,7 +6,7 @@
 use crate::languages::{Implementation, is_plain_type_name};
 use crate::languages::javascript::{javascript_binding_scope, javascript_binding_scope_in};
 use crate::languages::reads::{ReadBindings, nodes};
-use crate::languages::typed::implementation;
+use crate::languages::typed::{FieldFacts, implementation, record_fact, record_field_facts};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::Node;
 
@@ -118,43 +118,22 @@ fn insert_this_scope<'a>(bindings: &mut ReadBindings<'a>, class: Node<'_>, sourc
     }
 }
 
-/// Field facts gathered per `(class, field)`: `None` marks fields given two different types.
-type FieldFacts = HashMap<(String, String), Option<String>>;
-
-fn record_fact(facts: &mut FieldFacts, owner: &str, field: &str, ty: String) {
-    facts
-        .entry((owner.to_string(), field.to_string()))
-        .and_modify(|slot| {
-            if slot.as_deref() != Some(ty.as_str()) {
-                *slot = None;
-            }
-        })
-        .or_insert(Some(ty));
-}
-
 /// Class field types: an explicit annotation (field or constructor parameter property) wins over
 /// an initializer; `new C()` initializers and `this.f = new C()` in a constructor type the field
 /// only when no annotation does. Fields whose facts disagree stay untyped.
 fn record_class_fields(bindings: &mut ReadBindings<'_>, root: Node<'_>, source: &[u8]) {
-    let mut explicit = FieldFacts::new();
-    let mut constructed = FieldFacts::new();
-    for class in nodes(root)
-        .filter(|n| matches!(n.kind(), "class_declaration" | "abstract_class_declaration"))
-    {
-        let (Some(owner), Some(body)) = (
-            class
-                .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok()),
-            class.child_by_field_name("body"),
-        ) else {
-            continue;
-        };
-        let mut cursor = body.walk();
-        for member in body.named_children(&mut cursor) {
-            record_member_fields(member, owner, source, &mut explicit, &mut constructed);
-        }
-    }
-    insert_field_types(bindings, &explicit, &constructed);
+    record_field_facts(
+        bindings,
+        root,
+        source,
+        &["class_declaration", "abstract_class_declaration"],
+        |_, owner, body, explicit, constructed| {
+            let mut cursor = body.walk();
+            for member in body.named_children(&mut cursor) {
+                record_member_fields(member, owner, source, explicit, constructed);
+            }
+        },
+    );
 }
 
 fn record_member_fields(
@@ -191,26 +170,6 @@ fn record_member_fields(
             }
         }
         _ => {}
-    }
-}
-
-fn insert_field_types(
-    bindings: &mut ReadBindings<'_>,
-    explicit: &FieldFacts,
-    constructed: &FieldFacts,
-) {
-    for ((owner, field), ty) in explicit {
-        if let Some(ty) = ty {
-            bindings.insert_member(owner, field, ty.clone());
-        }
-    }
-    for ((owner, field), ty) in constructed {
-        if explicit.contains_key(&(owner.clone(), field.clone())) {
-            continue;
-        }
-        if let Some(ty) = ty {
-            bindings.insert_member(owner, field, ty.clone());
-        }
     }
 }
 

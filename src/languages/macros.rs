@@ -63,7 +63,7 @@ macro_rules! impl_typed_class_hooks {
             root: tree_sitter::Node<'_>,
             source: &[u8],
         ) -> Vec<super::Implementation> {
-            super::typed::class_implementations(root, source, &$typed)
+            super::typed::typed_class_implementations(root, source, &$typed)
         }
         super::impl_class_dispatch_flags!();
         fn call_receiver_name<'a>(

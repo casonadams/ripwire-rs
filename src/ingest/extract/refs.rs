@@ -147,6 +147,7 @@ pub(super) fn record_ref_item(
         lang: None,
         receiver,
         receiver_type,
+        receiver_chain: None,
         callable_field: ext
             .name_node
             .is_some_and(|n| lang.semantics().is_callable_field_access(n)),

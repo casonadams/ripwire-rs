@@ -1,31 +1,29 @@
-use crate::languages::reads::{ReadBindings, nodes};
-use crate::languages::typed::{AgreedReturns, implementation};
+use crate::languages::reads::{ReadBindings, named_children_of_kind, nodes};
+use crate::languages::typed::AgreedReturns;
 use crate::languages::{Implementation, is_plain_type_name};
 use tree_sitter::Node;
 
 pub(super) fn class_implementations(root: Node<'_>, source: &[u8]) -> Vec<Implementation> {
-    nodes(root)
-        .filter(|node| node.kind() == "class_definition")
-        .filter_map(|class| {
-            let subject = class.child_by_field_name("name")?.utf8_text(source).ok()?;
-            let span = (class.start_byte(), class.end_byte());
-            let mut out = vec![implementation(subject, None, span)];
-            for clause in ["superclass", "interfaces"]
-                .into_iter()
-                .filter_map(|field| class.child_by_field_name(field))
-            {
-                let mut cursor = clause.walk();
-                out.extend(
-                    clause
-                        .named_children(&mut cursor)
-                        .filter(|ty| ty.kind() == "type_identifier")
-                        .filter_map(|ty| ty.utf8_text(source).ok())
-                        .map(|name| implementation(subject, Some(name), span)),
-                );
-            }
-            Some(out)
-        })
-        .flatten()
+    crate::languages::typed::class_implementations(
+        root,
+        source,
+        &["class_definition"],
+        dart_class_name,
+        dart_bases,
+    )
+}
+
+fn dart_class_name<'s>(class: Node<'_>, source: &'s [u8]) -> Option<&'s str> {
+    class.child_by_field_name("name")?.utf8_text(source).ok()
+}
+
+/// Dart names the superclass and the interfaces as `type_identifier`s under those fields.
+fn dart_bases<'s>(class: Node<'_>, source: &'s [u8]) -> Vec<&'s str> {
+    ["superclass", "interfaces"]
+        .into_iter()
+        .filter_map(|field| class.child_by_field_name(field))
+        .flat_map(|clause| named_children_of_kind(clause, "type_identifier"))
+        .filter_map(|ty| ty.utf8_text(source).ok())
         .collect()
 }
 
@@ -52,14 +50,19 @@ fn record_return<'a>(returns: &mut AgreedReturns<'a>, signature: Node<'_>, sourc
     else {
         return;
     };
+    let ty = return_type(signature, source);
+    returns.note(name, ty);
+}
+
+/// The declared return type. A generic return keeps its base class unless the base is a std
+/// collection or future, which stays untyped (`XmlNodeList<XmlNode>` is `XmlNodeList`).
+fn return_type(signature: Node<'_>, source: &[u8]) -> Option<String> {
     let mut cursor = signature.walk();
     let generic = signature
         .children(&mut cursor)
         .any(|child| child.kind() == "type_arguments");
-    let ty = (!generic)
-        .then(|| declared_type(signature, source))
-        .flatten();
-    returns.note(name, ty);
+    declared_type(signature, source)
+        .filter(|ty| !generic || !super::DART_STD_QUALIFIERS.contains(&ty.as_str()))
 }
 
 fn record_class<'a>(bindings: &mut ReadBindings<'a>, class: Node<'_>, source: &'a [u8]) {
@@ -89,9 +92,55 @@ fn record_class<'a>(bindings: &mut ReadBindings<'a>, class: Node<'_>, source: &'
         for field in field_names(declaration, source) {
             bindings.insert(field, body.byte_range(), Some(ty.clone()));
             bindings.insert_member(name, field, ty.clone());
+            if let Some(element) = declared_element(declaration, source) {
+                bindings.insert_element(field, body.byte_range(), element);
+            }
         }
     }
+    for getter in body
+        .named_children(&mut cursor)
+        .filter(|n| n.kind() == "method_signature")
+        .filter_map(|method| method.named_child(0))
+        .filter(|signature| signature.kind() == "getter_signature")
+    {
+        let mut inner = getter.walk();
+        let member = getter
+            .named_children(&mut inner)
+            .find(|child| child.kind() == "identifier")
+            .and_then(|child| child.utf8_text(source).ok());
+        if let (Some(member), Some(ty)) = (member, return_type(getter, source)) {
+            bindings.insert_member(name, member, ty);
+        }
+    }
+    record_method_returns(bindings, name, body, source);
 }
+
+/// Each method of a class is a member typed by its declared return, so `d.holder()` reaches its class.
+fn record_method_returns<'a>(
+    bindings: &mut ReadBindings<'a>,
+    owner: &'a str,
+    body: Node<'_>,
+    source: &'a [u8],
+) {
+    let mut cursor = body.walk();
+    for method in body
+        .named_children(&mut cursor)
+        .filter(|n| n.kind() == "method_signature")
+    {
+        let Some(signature) = method
+            .named_child(0)
+            .filter(|s| s.kind() == "function_signature")
+        else {
+            continue;
+        };
+        let member = signature
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(source).ok());
+        if let (Some(member), Some(ty)) = (member, return_type(signature, source)) {
+            bindings.insert_member(owner, &format!("{member}()"), ty);
+        }
+    }
+ }
 
 fn field_names<'a>(declaration: Node<'_>, source: &'a [u8]) -> Vec<&'a str> {
     let mut cursor = declaration.walk();
@@ -109,16 +158,33 @@ fn field_names<'a>(declaration: Node<'_>, source: &'a [u8]) -> Vec<&'a str> {
         .collect()
 }
 
-fn record_parameter<'a>(bindings: &mut ReadBindings<'a>, param: Node<'_>, source: &'a [u8]) {
-    let Some(name) = param
+/// A parameter's name: its `name` field, or the identifier that ends a parameter without a declared
+/// type (`k` in the lambda parameter `(k)`).
+fn parameter_name<'a>(param: Node<'_>, source: &'a [u8]) -> Option<&'a str> {
+    let mut cursor = param.walk();
+    let identifier = param
         .child_by_field_name("name")
         .filter(|n| n.kind() == "identifier")
-        .and_then(|n| n.utf8_text(source).ok())
-    else {
+        .or_else(|| {
+            param
+                .named_children(&mut cursor)
+                .filter(|n| n.kind() == "identifier")
+                .last()
+        })?;
+    identifier.utf8_text(source).ok()
+}
+
+fn record_parameter<'a>(bindings: &mut ReadBindings<'a>, param: Node<'_>, source: &'a [u8]) {
+    let Some(name) = parameter_name(param, source) else {
         return;
     };
-    if let Some(scope) = parameter_scope(param) {
-        bindings.insert(name, scope, declared_type(param, source));
+    let Some(scope) = parameter_scope(param) else {
+        return;
+    };
+    let ty = declared_type(param, source).or_else(|| lambda_element(param, bindings, source));
+    bindings.insert(name, scope.clone(), ty);
+    if let Some(element) = declared_element(param, source) {
+        bindings.insert_element(name, scope, element);
     }
 }
 
@@ -154,6 +220,9 @@ fn record_local<'a>(bindings: &mut ReadBindings<'a>, definition: Node<'_>, sourc
     };
     let ty = declared_type(definition, source).or_else(|| constructed_type(definition, source));
     bindings.insert(name, definition.start_byte()..block.end_byte(), ty);
+    if let Some(element) = declared_element(definition, source) {
+        bindings.insert_element(name, definition.start_byte()..block.end_byte(), element);
+    }
 }
 
 fn declared_type(node: Node<'_>, source: &[u8]) -> Option<String> {
@@ -176,4 +245,77 @@ fn constructed_type(definition: Node<'_>, source: &[u8]) -> Option<String> {
         && name.starts_with(char::is_uppercase)
         && is_plain_type_name(name))
     .then(|| name.to_string())
+}
+
+/// The element type of a collection declared over one plain, non-std type (`List<Kids> xs` is `Kids`).
+fn declared_element(node: Node<'_>, source: &[u8]) -> Option<String> {
+    if !matches!(declared_type(node, source)?.as_str(), "List" | "Set" | "Iterable") {
+        return None;
+    }
+    let mut cursor = node.walk();
+    let arguments = node
+        .children(&mut cursor)
+        .find(|child| child.kind() == "type_arguments")?;
+    let mut inner = arguments.walk();
+    let mut types = arguments.named_children(&mut inner);
+    let element = types.next()?.utf8_text(source).ok()?.trim();
+    if types.next().is_some() || !is_plain_type_name(element) {
+        return None;
+    }
+    (!super::DART_STD_QUALIFIERS.contains(&element)).then(|| element.to_string())
+}
+
+/// Member calls that hand each element of the receiver to their first (only) lambda parameter.
+const ELEMENT_CALLBACKS: &[&str] = &[
+    "forEach",
+    "map",
+    "where",
+    "any",
+    "every",
+    "firstWhere",
+    "lastWhere",
+    "singleWhere",
+    "takeWhile",
+    "skipWhile",
+    "removeWhere",
+    "retainWhere",
+    "expand",
+];
+
+/// The element type a lambda's first parameter takes: `xs.forEach((c) => ...)` with `xs` a collection of
+/// `Kids` types `c` as `Kids`. The lambda must be the argument of an element callback on a bound identifier.
+fn lambda_element(param: Node<'_>, bindings: &ReadBindings<'_>, source: &[u8]) -> Option<String> {
+    let mut function = param.parent()?;
+    while matches!(
+        function.kind(),
+        "formal_parameter_list" | "optional_formal_parameters"
+    ) {
+        function = function.parent()?;
+    }
+    if function.kind() != "function_expression" || param.prev_named_sibling().is_some() {
+        return None;
+    }
+    let mut call = function.parent()?;
+    while call.kind() != "argument_part" {
+        if !matches!(call.kind(), "argument" | "arguments") {
+            return None;
+        }
+        call = call.parent()?;
+    }
+    let method = call.parent()?.prev_named_sibling()?;
+    let member = method.named_child(0)?;
+    let callback = member.named_child(0)?.utf8_text(source).ok()?;
+    if member.kind() != "unconditional_assignable_selector"
+        || !ELEMENT_CALLBACKS.contains(&callback)
+    {
+        return None;
+    }
+    let receiver = method.prev_named_sibling()?;
+    if receiver.kind() != "identifier" {
+        return None;
+    }
+    let name = receiver.utf8_text(source).ok()?;
+    bindings
+        .element_at(name, param.start_byte())
+        .map(str::to_string)
 }

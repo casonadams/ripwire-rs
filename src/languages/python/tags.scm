@@ -30,7 +30,9 @@
 ; must sit inside a function inside a class. ONE symbol per (class, name): ingest_sidecap.h keeps the
 ; lowest-byte assignment per key (the definition), every later one is a role="write" use-site
 ; (test/fieldusescheck.sh arm F). `cls.x = …` is not captured (disclosed).
-(assignment left: (attribute object: (identifier) attribute: (identifier) @name)) @definition.field
+; The capture is the `self.x` target, not the whole assignment: a field's span must not enclose the
+; right-hand side, or the field would become the enclosing caller of every call written there.
+(assignment left: (attribute object: (identifier) attribute: (identifier) @name) @definition.field)
 
 ; Plain class-body assignment, kept ONLY when the enclosing class's base NAME is an enum family
 ; (132 sites in django — stdlib enum plus the Choices family — and 108 in pydantic). The semantic

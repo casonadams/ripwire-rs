@@ -88,8 +88,12 @@ fn binding_type(node: Node<'_>, name: &str, source: &[u8]) -> Option<Option<Stri
 }
 
 /// A plain class name in an annotation (`Cache`), not a generic or a dotted path.
-fn annotation(node: Node<'_>, source: &[u8]) -> Option<String> {
-    let ty = node.child_by_field_name("type")?;
+pub(super) fn annotation(node: Node<'_>, source: &[u8]) -> Option<String> {
+    type_annotation(node.child_by_field_name("type")?, source)
+}
+
+/// The plain class name a type node names (`Cache`), not a generic or a dotted path.
+pub(super) fn type_annotation(ty: Node<'_>, source: &[u8]) -> Option<String> {
     let inner = if ty.kind() == "type" && ty.named_child_count() == 1 {
         ty.named_child(0)?
     } else {
@@ -99,15 +103,22 @@ fn annotation(node: Node<'_>, source: &[u8]) -> Option<String> {
     (inner.kind() == "identifier" && is_plain_type_name(text)).then(|| text.to_string())
 }
 
-/// `Cls(...)` constructs a `Cls`: a call of a plain, capitalised name (a class by convention).
-fn constructed_class(right: Node<'_>, source: &[u8]) -> Option<String> {
-    if right.kind() != "call" {
+/// A class by naming convention: a plain, capitalised name.
+pub(super) fn is_class_name(text: &str) -> bool {
+    text.starts_with(|c: char| c.is_ascii_uppercase()) && is_plain_type_name(text)
+}
+
+/// `Cls(...)` constructs a `Cls`: a call of a class name.
+pub(super) fn constructed_class(right: Node<'_>, source: &[u8]) -> Option<String> {
+    let callee = right
+        .child_by_field_name("function")
+        .filter(|_| right.kind() == "call" && right.child(0).is_some())?;
+    if callee.kind() != "identifier" {
         return None;
     }
-    let callee = right.child_by_field_name("function")?;
-    let text = callee.utf8_text(source).ok()?;
-    (callee.kind() == "identifier"
-        && text.starts_with(|c: char| c.is_ascii_uppercase())
-        && is_plain_type_name(text))
-    .then(|| text.to_string())
+    callee
+        .utf8_text(source)
+        .ok()
+        .filter(|text| is_class_name(text))
+        .map(str::to_owned)
 }

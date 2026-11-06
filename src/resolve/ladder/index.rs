@@ -67,12 +67,12 @@ pub fn index_module_qualifiers(
         .iter()
         .filter(|r| r.role == RefRole::Import)
     {
-        let raw = interner.resolve(&r.callee_name);
+        let raw = import_target_text(r, interner);
         let Some(importer) = ingest.files.get(r.file_id as usize) else {
             continue;
         };
         let importer_path = interner.resolve(&importer.path);
-        for (target, bound) in r.lang.semantics().import_module_bindings(raw) {
+        for (target, bound) in r.lang.semantics().import_module_bindings(&raw) {
             let Some(bound) = interner.get(&bound) else {
                 continue;
             };
@@ -143,6 +143,17 @@ fn bind_path_qualifiers(
     }
 }
 
+/// The text an import reference names: its qualifier and name for languages whose import keeps the path.
+fn import_target_text(r: &Reference, interner: &Interner) -> String {
+    let name = interner.resolve(&r.callee_name);
+    match r.qualifier {
+        Some(qualifier) if r.lang.semantics().import_names_full_path() => {
+            format!("{}.{name}", interner.resolve(&qualifier))
+        }
+        _ => name.to_string(),
+    }
+}
+
 /// Per file, the indexed files its imports resolve to; resolution is the importing language's own.
 #[must_use]
 pub fn index_file_imports(
@@ -166,7 +177,7 @@ pub fn index_file_imports(
         if let Some(target) = crate::languages::resolve_import(
             r.lang,
             interner.resolve(&importer.path),
-            interner.resolve(&r.callee_name),
+            &import_target_text(r, interner),
             &file_index,
             &ingest.import_aliases,
         ) {

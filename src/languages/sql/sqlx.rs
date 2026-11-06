@@ -52,6 +52,7 @@ fn read_ref(text: &str, byte: usize, target: &str) -> RawRef {
         lang: None,
         receiver: None,
         receiver_type: None,
+        receiver_chain: None,
         callable_field: false,
         macro_arg: false,
         member_call: false,

@@ -8,8 +8,9 @@ mod immutable;
 mod members;
 mod std_names;
 mod types;
+mod typed_bindings;
 
-use self::bindings::{python_binding_scope, python_read_position};
+use self::bindings::python_read_position;
 use self::immutable::is_py_immutable_binding;
 use self::members::{
     has_decorator, is_py_enum_member_target, is_py_self_field_capture, is_staticmethod,
@@ -150,14 +151,27 @@ impl LanguageSemantics for PythonLanguage {
         root: tree_sitter::Node<'_>,
         source: &'a [u8],
     ) -> super::reads::ReadBindings<'a> {
-        super::reads::ReadBindings::collect(root, source, |node| {
-            python_binding_scope(node).map(|scope| {
-                scope
-                    .child_by_field_name("body")
-                    .unwrap_or(scope)
-                    .byte_range()
-            })
-        })
+        typed_bindings::typed_read_bindings(root, source)
+    }
+
+    fn implementations(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+    ) -> Vec<super::Implementation> {
+        typed_bindings::class_implementations(root, source)
+    }
+
+    fn indexes_implementations(&self) -> bool {
+        true
+    }
+
+    fn has_class_inheritance(&self) -> bool {
+        true
+    }
+
+    fn functions_are_type_members(&self) -> bool {
+        true
     }
 
     /// A builtin call (`len(x)`) names the builtin, and `c.m()` on a receiver declared as `C` names

@@ -2,6 +2,8 @@ use super::{
     ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds,
     VisibilityMode,
 };
+use crate::languages::is_plain_type_name;
+use std::collections::HashMap;
 
 pub struct JavaLanguage;
 pub static JAVA_LANG: JavaLanguage = JavaLanguage;
@@ -145,7 +147,7 @@ const TYPED: super::typed::TypedSyntax = super::typed::TypedSyntax {
         "record_declaration",
     ],
     supertype_clauses: &["superclass", "super_interfaces", "extends_interfaces"],
-    params: &["formal_parameter", "spread_parameter"],
+    params: &["formal_parameter", "spread_parameter", "enhanced_for_statement"],
     functions: &["method_declaration", "constructor_declaration", "lambda_expression"],
     locals: &["local_variable_declaration"],
     fields: &["field_declaration"],
@@ -171,6 +173,29 @@ impl LanguageSemantics for JavaLanguage {
     super::impl_typed_class_hooks!(TYPED);
     fn overloads_by_arity(&self) -> bool {
         true
+    }
+    fn import_names_full_path(&self) -> bool {
+        true
+    }
+    fn import_module_bindings(&self, raw_target: &str) -> Vec<(String, String)> {
+        raw_target.rsplit_once('.').map_or_else(Vec::new, |(_, bound)| {
+            vec![(raw_target.to_string(), bound.to_string())]
+        })
+    }
+    fn resolve_import_target(
+        &self,
+        importer_path: &str,
+        raw_target: &str,
+        file_index: &HashMap<&str, u32>,
+    ) -> Option<u32> {
+        java_class_file(importer_path, raw_target, file_index).or_else(|| {
+            // `import static a.b.C.m;` names a member of the class `a.b.C`.
+            let (class, _) = raw_target.rsplit_once('.')?;
+            java_class_file(importer_path, class, file_index)
+        })
+    }
+    fn receiver_chain(&self, receiver: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
+        java_receiver_chain(receiver, source)
     }
     fn tag(&self) -> &'static str {
         "java"
@@ -223,4 +248,72 @@ impl LanguageSemantics for JavaLanguage {
     fn std_qualifier_names(&self) -> &'static [&'static str] {
         JVM_STD_QUALIFIERS
     }
+}
+
+/// Source roots a Java package path may sit under, relative to an ancestor of the importer.
+const JAVA_SOURCE_ROOTS: &[&str] = &["", "src/main/java/", "src/test/java/", "src/", "java/"];
+
+/// The file declaring the class `dotted` (`a.b.C` is `a/b/C.java`), probed under the importer's directory
+/// and each ancestor, nearest first, and under each conventional source root.
+fn java_class_file(
+    importer_path: &str,
+    dotted: &str,
+    file_index: &HashMap<&str, u32>,
+) -> Option<u32> {
+    if dotted.is_empty() || dotted.contains('*') {
+        return None;
+    }
+    let rel = format!("{}.java", dotted.replace('.', "/"));
+    let mut dir = importer_path.rsplit_once('/').map_or("", |(d, _)| d);
+    loop {
+        let prefix = if dir.is_empty() {
+            String::new()
+        } else {
+            format!("{dir}/")
+        };
+        if let Some(&id) = JAVA_SOURCE_ROOTS
+            .iter()
+            .find_map(|root| file_index.get(format!("{prefix}{root}{rel}").as_str()))
+        {
+            return Some(id);
+        }
+        if dir.is_empty() {
+            return None;
+        }
+        dir = dir.rsplit_once('/').map_or("", |(d, _)| d);
+    }
+}
+
+/// A receiver's text as `receiver_type_at` reads it: `a.b()` for a call on a dotted path, `(T)` for a
+/// cast to a plain type, and the chain of both (`a.b().c()` names `a.b()`).
+fn java_receiver_chain(node: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
+    match node.kind() {
+        "parenthesized_expression" => java_receiver_chain(node.named_child(0)?, source),
+        "cast_expression" => {
+            let ty = node.child_by_field_name("type")?.utf8_text(source).ok()?;
+            is_plain_type_name(ty).then(|| format!("({ty})"))
+        }
+        "method_invocation" => {
+            let name = node.child_by_field_name("name")?.utf8_text(source).ok()?;
+            let Some(object) = node.child_by_field_name("object") else {
+                return Some(format!("{name}()"));
+            };
+            let base = java_receiver_chain(object, source)?;
+            Some(format!("{base}.{name}()"))
+        }
+        _ => dotted_path(node, source),
+    }
+}
+
+/// A dotted name of identifiers (`doc`, `this.tag`), as written.
+fn dotted_path(node: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
+    let text = node.utf8_text(source).ok()?;
+    text.split('.')
+        .all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        })
+        .then(|| text.to_string())
 }

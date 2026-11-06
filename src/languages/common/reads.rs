@@ -5,6 +5,8 @@ use tree_sitter::Node;
 pub struct BindingSpan {
     pub range: std::ops::Range<usize>,
     pub ty: Option<String>,
+    /// The element type of a generic collection bound here (`List<Kids>` binds `Kids`).
+    pub element: Option<String>,
 }
 
 #[derive(Default)]
@@ -12,7 +14,14 @@ pub struct ReadBindings<'a> {
     scopes: HashMap<&'a str, Vec<BindingSpan>>,
     returns: HashMap<&'a str, String>,
     members: HashMap<(String, String), String>,
+    /// Declared type of a module-level name, read where no local binding of that name is in scope.
+    /// `None` marks names whose module-level bindings disagree.
+    module: HashMap<&'a str, Option<String>>,
 }
+
+/// The member a class records for its superclass, so a member lookup can climb to the ancestor that declares it.
+pub const EXTENDS: &str = "extends";
+const MAX_ANCESTORS: usize = 16;
 
 impl<'a> ReadBindings<'a> {
     pub fn collect(
@@ -54,14 +63,37 @@ impl<'a> ReadBindings<'a> {
     }
 
     pub fn insert(&mut self, name: &'a str, range: std::ops::Range<usize>, ty: Option<String>) {
-        let spans = self.scopes.entry(name).or_default();
-        if let Some(existing) = spans.iter_mut().find(|s| s.range == range) {
-            if existing.ty.is_none() {
-                existing.ty = ty;
-            }
-        } else {
-            spans.push(BindingSpan { range, ty });
+        let span = self.span_over(name, range);
+        if span.ty.is_none() {
+            span.ty = ty;
         }
+    }
+
+    /// Records the element type of the collection `name` bound over `range`.
+    pub fn insert_element(
+        &mut self,
+        name: &'a str,
+        range: std::ops::Range<usize>,
+        element: String,
+    ) {
+        self.span_over(name, range).element = Some(element);
+    }
+
+    /// The span of `name` bound exactly over `range`, added when absent.
+    fn span_over(&mut self, name: &'a str, range: std::ops::Range<usize>) -> &mut BindingSpan {
+        let spans = self.scopes.entry(name).or_default();
+        let index = match spans.iter().position(|s| s.range == range) {
+            Some(index) => index,
+            None => {
+                spans.push(BindingSpan {
+                    range,
+                    ty: None,
+                    element: None,
+                });
+                spans.len() - 1
+            }
+        };
+        &mut spans[index]
     }
 
     pub fn shadows(&self, name: &str, byte: usize) -> bool {
@@ -69,13 +101,27 @@ impl<'a> ReadBindings<'a> {
             .get(name)
             .is_some_and(|spans| spans.iter().any(|span| span.range.contains(&byte)))
     }
+
+    /// The declared type of `name` at `byte`: the innermost local binding in scope, else the
+    /// module-level binding of the same name.
     pub fn type_at(&self, name: &str, byte: usize) -> Option<&str> {
-        let spans = self.scopes.get(name)?;
-        spans
+        match self.span_at(name, byte) {
+            Some(span) => span.ty.as_deref(),
+            None => self.module.get(name)?.as_deref(),
+        }
+    }
+
+    /// The element type of the collection `name` at `byte`, when its innermost binding records one.
+    pub fn element_at(&self, name: &str, byte: usize) -> Option<&str> {
+        self.span_at(name, byte)?.element.as_deref()
+    }
+
+    fn span_at(&self, name: &str, byte: usize) -> Option<&BindingSpan> {
+        self.scopes
+            .get(name)?
             .iter()
             .filter(|span| span.range.contains(&byte))
             .max_by_key(|span| span.range.start)
-            .and_then(|span| span.ty.as_deref())
     }
 
     /// Records the declared result type of a function named `name`, for calls `name()`.
@@ -94,11 +140,37 @@ impl<'a> ReadBindings<'a> {
             .insert((owner.to_string(), member.to_string()), ty);
     }
 
-    /// Declared type of member `member` of the named type `owner`, when recorded.
-    pub fn member_type(&self, owner: &str, member: &str) -> Option<&str> {
+    /// Declared type of member `member` of `owner`, or of the nearest ancestor that declares it (climbing the
+    /// `EXTENDS` members each class records).
+    pub fn inherited_member_type(&self, owner: &str, member: &str) -> Option<&str> {
+        let mut current = owner.to_string();
+        for _ in 0..MAX_ANCESTORS {
+            if let Some(ty) = self.members.get(&(current.clone(), member.to_string())) {
+                return Some(ty.as_str());
+            }
+            current = self.members.get(&(current, EXTENDS.to_string()))?.clone();
+        }
+        None
+    }
+
+    /// Every recorded member type, as `(owner, member, type)`.
+    pub fn member_entries(&self) -> impl Iterator<Item = (&str, &str, &str)> {
         self.members
-            .get(&(owner.to_string(), member.to_string()))
-            .map(String::as_str)
+            .iter()
+            .map(|((owner, member), ty)| (owner.as_str(), member.as_str(), ty.as_str()))
+    }
+
+    /// Records the declared type of a module-level binding of `name`. Bindings that disagree, or one
+    /// that declares no type, leave the name untyped.
+    pub fn insert_module(&mut self, name: &'a str, ty: Option<String>) {
+        self.module
+            .entry(name)
+            .and_modify(|slot| {
+                if *slot != ty {
+                    *slot = None;
+                }
+            })
+            .or_insert(ty);
     }
 }
 
@@ -149,6 +221,14 @@ pub(crate) fn nodes(root: Node<'_>) -> impl Iterator<Item = Node<'_>> {
         done = !advance(&mut cursor);
         Some(node)
     })
+}
+
+/// Every named child of `node` whose kind is `kind`.
+pub(crate) fn named_children_of_kind<'t>(node: Node<'t>, kind: &str) -> Vec<Node<'t>> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .filter(|child| child.kind() == kind)
+        .collect()
 }
 
 pub(crate) fn in_field(parent: Node<'_>, node: Node<'_>, field: &str) -> bool {

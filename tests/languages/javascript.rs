@@ -50,3 +50,37 @@ fn test_javascript_and_jsx_graph_protocol() {
     assert!(calls.contains(&"Footer"));
     assert!(!calls.contains(&"span"));
 }
+
+const JS_QUEUE: &str = "class DLL {\n  push(item) { return item; }\n  shift() { return 1; }\n}\n\
+class Heap {\n  push(item) { return item; }\n  toArray() { return []; }\n}\n\
+function makeHeap() { return new Heap(); }\n\
+class Queue {\n  constructor() { this.tasks = new DLL(); }\n\
+  add(item) { this.tasks.push(item); }\n\
+  viaLocal() { const heap = new Heap(); heap.push(1); }\n\
+  viaObject() { const q = { _tasks: new DLL() }; q._tasks.shift(); }\n\
+  viaShapeName() { const q = { _tasks: new DLL() }; q.push(1); }\n\
+  viaResult() { return makeHeap().toArray(); }\n\
+  viaArgument(list) { list.push(1); }\n\
+}\n\
+function Pool() {}\n\
+Pool.prototype.fill = function () { this.tasks = new DLL(); };\n\
+Pool.prototype.drain = function () { this.tasks.shift(); };\n";
+
+#[test]
+fn javascript_typed_receivers_bind_their_declared_owner_method() {
+    let files: [(&str, Lang, &[u8]); 1] = [("lib/queue.js", Lang::JavaScript, JS_QUEUE.as_bytes())];
+    let cases: &[(&str, &[&str])] = &[
+        ("add", &["DLL.push"]),
+        ("viaLocal", &[".Heap", "Heap.push"]),
+        ("viaObject", &[".DLL", "DLL.shift"]),
+        ("viaShapeName", &[".DLL"]),
+        ("viaResult", &[".makeHeap", "Heap.toArray"]),
+        ("viaArgument", &[]),
+        ("drain", &["DLL.shift"]),
+    ];
+    for &(caller, want) in cases {
+        let got = super::harness::owner_qualified_callees(&files, caller);
+        let got: Vec<&str> = got.iter().map(String::as_str).collect();
+        assert_eq!(got, want, "{caller}");
+    }
+}

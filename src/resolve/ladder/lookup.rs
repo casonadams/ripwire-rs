@@ -107,10 +107,20 @@ pub trait ResolutionLookup {
             found
         } else {
             let all = trait_idx.subject_targets(owner, r.callee_name, symbols);
-            let compatible: Vec<NodeId> = all
+            let mut compatible: Vec<NodeId> = all
                 .into_iter()
                 .filter(|&id| self.is_owner_compatible(r, &symbols[id as usize]))
                 .collect();
+            if self.lacks_exact_overload(r, &compatible) {
+                compatible.extend(
+                    trait_idx
+                        .inherited_subject_targets(owner, r.callee_name, symbols)
+                        .into_iter()
+                        .filter(|&id| self.is_owner_compatible(r, &symbols[id as usize])),
+                );
+                compatible.sort_unstable();
+                compatible.dedup();
+            }
             let inherent: Vec<NodeId> = compatible
                 .iter()
                 .copied()
@@ -123,6 +133,17 @@ pub trait ResolutionLookup {
             }
         };
         self.owner_compatible(r, found)
+    }
+
+    /// Java-style overloads: when no own overload takes the call's argument count, an overload the subclass
+    /// inherits may take it.
+    #[must_use]
+    fn lacks_exact_overload(&self, r: &Reference, own: &[NodeId]) -> bool {
+        r.arg_count_known
+            && r.lang.semantics().overloads_by_arity()
+            && !own
+                .iter()
+                .any(|&id| self.symbols()[id as usize].params == r.arg_count)
     }
 
     #[must_use]
@@ -143,6 +164,9 @@ pub trait ResolutionLookup {
 
     #[must_use]
     fn is_compatible_target(&self, r: &Reference, sym: &Symbol) -> bool {
+        if sym.constructor && r.qualifier != sym.scope {
+            return false;
+        }
         if r.role == RefRole::Access {
             let caller_scope = self
                 .symbols()
@@ -413,6 +437,13 @@ pub trait ResolutionLookup {
         if let Some(q) = r.qualifier {
             return self.narrow_by_qualifier(cands, r, q);
         }
+        let semantics = r.lang.semantics();
+        let strict = self.is_ambient_call(r, semantics.ambient_core_names());
+        let shared = !strict && self.is_ambient_call(r, semantics.ambient_shared_names());
+        if strict && r.member_call {
+            // An untyped receiver is no evidence that a core method such as `write` is this method.
+            return None;
+        }
         if let Some(caller_sc) = symbols.get(r.from_symbol as usize).and_then(|cs| cs.scope) {
             let qualified = filter_matching_scope(&cands, symbols, caller_sc);
             if !qualified.is_empty() {
@@ -422,7 +453,27 @@ pub trait ResolutionLookup {
                 return Some((inherited, Narrowing::Owner));
             }
         }
+        // Outside the caller's own type chain, a core name is no evidence of its owner; a shared name
+        // still binds a definition in the caller's own file, as a file-local helper.
+        if strict {
+            return None;
+        }
+        if shared {
+            let local = filter_in_file(&cands, self.symbols(), r.file_id);
+            return (!local.is_empty()).then_some((local, Narrowing::None));
+        }
         Some((cands, Narrowing::None))
+    }
+
+    /// Whether `r` is a call of one of `names`, a language's ambient names for method calls.
+    #[must_use]
+    fn is_ambient_call(&self, r: &Reference, names: &[&str]) -> bool {
+        if r.role != RefRole::Call || names.is_empty() {
+            return false;
+        }
+        self.interner()
+            .and_then(|i| i.try_resolve(&r.callee_name))
+            .is_some_and(|name| names.contains(&name))
     }
 
     #[must_use]
@@ -471,6 +522,9 @@ pub trait ResolutionLookup {
                 return None;
             }
         }
+        if r.member_call && self.is_core_member_call(r) {
+            return None;
+        }
         let symbols = self.symbols();
         let mut cands = CandBuffer::default();
         for &id in all_cands {
@@ -482,6 +536,15 @@ pub trait ResolutionLookup {
             return None;
         }
         self.apply_qualifier_or_caller_scope(cands, r)
+    }
+
+    /// A member call named by a core library member of the language (a hook) that no in-tree owner answered.
+    /// Name resolution would bind it to an unrelated in-tree member, so it declines.
+    #[must_use]
+    fn is_core_member_call(&self, r: &Reference) -> bool {
+        self.interner()
+            .and_then(|interner| interner.try_resolve(&r.callee_name))
+            .is_some_and(|name| r.lang.semantics().is_untyped_core_member(name))
     }
 
     #[must_use]

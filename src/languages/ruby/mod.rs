@@ -71,6 +71,15 @@ const RUBY_STD_MEMBERS: &[&str] = &[
     "match?",
 ];
 
+const RUBY_AMBIENT_CORE: &[&str] = &[
+    "write", "respond_to?", "include", "extend", "bytesize", "split", "puts", "print", "p", "pp", "printf",
+    "sprintf", "format", "gets", "readline", "readlines", "close", "closed?", "flush", "rewind", "eof?",
+    "string", "sync", "fail", "raise", "warn", "exit", "send", "public_send", "freeze", "dup", "clone",
+    "to_s", "to_str", "to_proc", "inspect", "is_a?", "kind_of?", "instance_of?", "tap", "then", "each_line",
+];
+
+const RUBY_AMBIENT_SHARED: &[&str] = &["call", "each", "read", "select"];
+
 const RUBY_STD_QUALIFIERS: &[&str] = &[
     "File", "Dir", "IO", "JSON", "YAML", "Time", "Date", "DateTime", "Regexp", "Kernel", "Object",
     "Array", "Hash", "String", "Integer", "Float", "Symbol", "Proc", "Thread", "Mutex", "ENV",
@@ -197,6 +206,18 @@ impl LanguageSemantics for RubyLanguage {
 
     fn std_member_names(&self) -> &'static [&'static str] {
         RUBY_STD_MEMBERS
+    }
+
+    fn ambient_core_names(&self) -> &'static [&'static str] {
+        RUBY_AMBIENT_CORE
+    }
+
+    fn modules_are_mixins(&self) -> bool {
+        true
+    }
+
+    fn ambient_shared_names(&self) -> &'static [&'static str] {
+        RUBY_AMBIENT_SHARED
     }
     super::impl_grammar_method!(crate tree_sitter_ruby::LANGUAGE, "tags.scm");
 

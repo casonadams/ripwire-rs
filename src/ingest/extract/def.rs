@@ -36,6 +36,9 @@ pub(super) fn record_def_item(
     let (Some(raw_name), Some((kind, sub, start, end, line))) = (&ext.name, ext.def) else {
         return;
     };
+    let kind = lang
+        .semantics()
+        .refine_def_kind(kind, ext.def_node, source_bytes);
     let (orig_name, inline_scope) = split_top_level_qualified(raw_name);
     let gate_ctx = crate::languages::DefCaptureGateContext {
         kind,
@@ -96,5 +99,6 @@ pub(super) fn record_def_item(
         takes_self: lang.semantics().def_takes_self(&gate_ctx),
         accessor: lang.semantics().def_is_accessor(&gate_ctx),
         registered: lang.semantics().def_is_registered(&gate_ctx),
+        constructor: lang.semantics().def_is_constructor(&gate_ctx),
     });
 }

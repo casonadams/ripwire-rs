@@ -1,7 +1,7 @@
 use crate::domain::{RefRole, SymKind};
 
 /// Raw definition extracted before deduplication and global ID assignment.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RawDef {
     pub name: String,
     pub scope: Option<String>,
@@ -22,6 +22,7 @@ pub struct RawDef {
     pub takes_self: bool,
     pub accessor: bool,
     pub registered: bool,
+    pub constructor: bool,
 }
 
 impl RawDef {
@@ -29,23 +30,32 @@ impl RawDef {
     pub fn span(name: String, kind: SymKind, line: u32, bytes: std::ops::Range<usize>) -> Self {
         Self {
             name,
-            scope: None,
             kind,
             line,
             start_byte: bytes.start,
-            doc_len: 0,
             body_byte: bytes.start,
             end_byte: bytes.end,
             loc: 1,
-            params: 0,
-            metrics: crate::metrics::ComplexityMetrics::default(),
-            binding: crate::domain::Binding::Mutable,
-            contract_member: false,
-            takes_self: false,
-            accessor: false,
-            registered: false,
+            ..Self::default()
         }
     }
+}
+
+/// A receiver chain whose base type is bound in its own file, while its member steps may be declared in
+/// another: `doc.select()` has base `Document` and step `select()`. Typed once every file is parsed.
+#[derive(Debug, Clone)]
+pub struct PendingChain {
+    pub base: String,
+    pub steps: Vec<String>,
+}
+
+/// A member a class declares: `owner.member` (a method is `name()`) has declared type `ty`. The member
+/// `EXTENDS` names a class's superclass instead.
+#[derive(Debug, Clone)]
+pub struct MemberType {
+    pub owner: String,
+    pub member: String,
+    pub ty: String,
 }
 
 /// Raw reference extracted before enclosing symbol attribution.
@@ -70,6 +80,8 @@ pub struct RawRef {
     pub member_call: bool,
     /// The name is reached through a path (`Type::f`), so a method's receiver is written as its first argument.
     pub path_call: bool,
+    /// The receiver chain this reference could not type within its file, for the cross-file pass.
+    pub receiver_chain: Option<PendingChain>,
 }
 
 /// Parsed facts from a single file.
@@ -81,5 +93,6 @@ pub struct FileParseResult {
     pub refs: Vec<RawRef>,
     pub foreign_exports: Vec<crate::languages::ForeignExport>,
     pub callable_bindings: Vec<crate::languages::CallableBinding>,
+    pub members: Vec<MemberType>,
     pub implementations: Vec<crate::languages::Implementation>,
 }

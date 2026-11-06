@@ -50,6 +50,7 @@ pub(super) fn scan_macro_body_calls(
                 lang: None,
                 receiver: None,
                 receiver_type: None,
+                receiver_chain: None,
                 callable_field: false,
                 macro_arg: false,
                 member_call: false,

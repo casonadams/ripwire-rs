@@ -38,6 +38,9 @@ pub struct Symbol {
     /// Registered by a decorator (a route, a hook, a task): reached without a call by name.
     #[serde(default)]
     pub registered: bool,
+    /// A constructor or factory: reached through its class name (`C.make(...)`), never as an instance member.
+    #[serde(default)]
+    pub constructor: bool,
 }
 
 impl Symbol {
@@ -76,6 +79,7 @@ impl Symbol {
             takes_self: false,
             accessor: false,
             registered: false,
+            constructor: false,
         }
     }
 

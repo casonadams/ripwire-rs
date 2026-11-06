@@ -255,14 +255,7 @@ pub(super) fn nominal_name<'s>(source: &'s [u8], ty: tree_sitter::Node<'_>) -> O
 }
 
 fn enclosing_container(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut curr = node.parent();
-    while let Some(n) = curr {
-        if matches!(n.kind(), "impl_item" | "trait_item") {
-            return Some(n);
-        }
-        curr = n.parent();
-    }
-    None
+    crate::languages::reads::enclosing_scope(node, |kind| matches!(kind, "impl_item" | "trait_item"))
 }
 
 pub(super) fn enclosing_self_type(cx: &TypeCx<'_>, node: tree_sitter::Node<'_>) -> Option<String> {

@@ -10,6 +10,7 @@ mod names;
 mod scalar;
 mod test_runner;
 mod tsconfig;
+mod types;
 
 pub(super) use self::access::{is_write_target_root, javascript_read_position};
 pub(super) use self::binding::{javascript_binding_scope, javascript_binding_scope_in};
@@ -128,9 +129,12 @@ impl LanguageSemantics for JavaScriptLanguage {
         root: tree_sitter::Node<'_>,
         source: &'a [u8],
     ) -> super::reads::ReadBindings<'a> {
-        super::reads::ReadBindings::collect_with_ancestors(root, source, |node, ancestors| {
-            javascript_binding_scope_in(node, ancestors).map(|scope| scope.byte_range())
-        })
+        types::typed_read_bindings(root, source)
+    }
+
+    /// A receiver typed by an object type or a plain name the index does not know keeps name resolution.
+    fn unindexed_receiver_type_uses_names(&self, _receiver_type: &str) -> bool {
+        true
     }
 
     fn extensions(&self) -> &'static [&'static str] {

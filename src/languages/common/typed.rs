@@ -1,6 +1,6 @@
 //! Java and C# grammars label types and names with fields, so bindings read them by field name.
 
-use super::reads::{ReadBindings, enclosing_scope, nodes};
+use super::reads::{EXTENDS, ReadBindings, enclosing_scope, nodes};
 use crate::languages::{Implementation, is_plain_type_name};
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -25,31 +25,113 @@ pub struct TypedSyntax {
     pub class_params: &'static [&'static str],
 }
 
-pub fn class_implementations(
+/// Field facts per `(class, field)`: `None` marks fields given two different types.
+pub type FieldFacts = HashMap<(String, String), Option<String>>;
+
+pub fn record_fact(facts: &mut FieldFacts, owner: &str, field: &str, ty: String) {
+    facts
+        .entry((owner.to_string(), field.to_string()))
+        .and_modify(|slot| {
+            if slot.as_deref() != Some(ty.as_str()) {
+                *slot = None;
+            }
+        })
+        .or_insert(Some(ty));
+}
+
+/// Gathers field facts from every class of `class_kinds` under `root`, with `facts` filling the explicit
+/// and derived maps of each class body, then folds them into `bindings`: an explicit fact wins over a
+/// derived one, and a field whose facts disagree stays untyped.
+pub fn record_field_facts(
+    bindings: &mut ReadBindings<'_>,
     root: Node<'_>,
     source: &[u8],
-    syntax: &TypedSyntax,
+    class_kinds: &[&str],
+    mut facts: impl FnMut(&ReadBindings<'_>, &str, Node<'_>, &mut FieldFacts, &mut FieldFacts),
+) {
+    let mut explicit = FieldFacts::new();
+    let mut derived = FieldFacts::new();
+    for (owner, body) in class_bodies(root, source, class_kinds) {
+        facts(bindings, owner, body, &mut explicit, &mut derived);
+    }
+    for ((owner, field), ty) in &explicit {
+        if let Some(ty) = ty {
+            bindings.insert_member(owner, field, ty.clone());
+        }
+    }
+    for ((owner, field), ty) in &derived {
+        if explicit.contains_key(&(owner.clone(), field.clone())) {
+            continue;
+        }
+        if let Some(ty) = ty {
+            bindings.insert_member(owner, field, ty.clone());
+        }
+    }
+}
+
+/// The `(name, body)` of every class of `class_kinds` under `root` that has both.
+fn class_bodies<'t, 's>(
+    root: Node<'t>,
+    source: &'s [u8],
+    class_kinds: &[&str],
+) -> Vec<(&'s str, Node<'t>)> {
+    nodes(root)
+        .filter(|class| class_kinds.contains(&class.kind()))
+        .filter_map(|class| {
+            let name = class.child_by_field_name("name")?.utf8_text(source).ok()?;
+            Some((name, class.child_by_field_name("body")?))
+        })
+        .collect()
+}
+
+/// Every class of `class_kinds` with its own span, then one implementation per base name that
+/// `base_names` yields for it. `class_name` returns `None` to skip a class.
+pub fn class_implementations<'s>(
+    root: Node<'_>,
+    source: &'s [u8],
+    class_kinds: &[&str],
+    class_name: impl Fn(Node<'_>, &'s [u8]) -> Option<&'s str>,
+    base_names: impl Fn(Node<'_>, &'s [u8]) -> Vec<&'s str>,
 ) -> Vec<Implementation> {
     let mut out = Vec::new();
-    for class in nodes(root).filter(|n| syntax.classes.contains(&n.kind())) {
-        let Some(subject) = text_of(class.child_by_field_name("name"), source)
-            .filter(|name| is_plain_type_name(name))
-        else {
+    for class in nodes(root).filter(|n| class_kinds.contains(&n.kind())) {
+        let Some(subject) = class_name(class, source) else {
             continue;
         };
         let span = (class.start_byte(), class.end_byte());
         out.push(implementation(subject, None, span));
-        let mut cursor = class.walk();
-        for clause in class
-            .named_children(&mut cursor)
-            .filter(|n| syntax.supertype_clauses.contains(&n.kind()))
-        {
-            out.extend(
-                type_names(clause, source).map(|name| implementation(subject, Some(name), span)),
-            );
-        }
+        out.extend(
+            base_names(class, source)
+                .into_iter()
+                .map(|base| implementation(subject, Some(base), span)),
+        );
     }
     out
+}
+
+/// Java and C# shaped grammars: the classes and supertype clauses named by `syntax`.
+pub fn typed_class_implementations(
+    root: Node<'_>,
+    source: &[u8],
+    syntax: &TypedSyntax,
+) -> Vec<Implementation> {
+    class_implementations(
+        root,
+        source,
+        syntax.classes,
+        |class, source| {
+            text_of(class.child_by_field_name("name"), source)
+                .filter(|name| is_plain_type_name(name))
+        },
+        |class, source| {
+            let mut cursor = class.walk();
+            class
+                .named_children(&mut cursor)
+                .filter(|n| syntax.supertype_clauses.contains(&n.kind()))
+                .flat_map(|clause| type_names(clause, source))
+                .collect()
+        },
+    )
 }
 
 fn type_names<'a>(clause: Node<'_>, source: &'a [u8]) -> impl Iterator<Item = &'a str> {
@@ -206,6 +288,7 @@ fn record_class<'a>(
             .and_then(|clause| type_names(clause, source).next());
         if let Some(base) = base {
             bindings.insert(keyword, body.byte_range(), Some(base.to_string()));
+            bindings.insert_member(name, EXTENDS, base.to_string());
         }
     }
     let mut cursor = body.walk();
@@ -234,6 +317,37 @@ fn record_class<'a>(
         }
         bindings.insert(field_name, body.byte_range(), ty);
     }
+    for (method, ty) in class_method_returns(body, source, syntax) {
+        bindings.insert_member(name, &format!("{method}()"), ty);
+    }
+}
+
+/// The declared result type of each method of a class body; an overloaded name counts only when its
+/// overloads agree on the type.
+fn class_method_returns<'a>(
+    body: Node<'_>,
+    source: &'a [u8],
+    syntax: &TypedSyntax,
+) -> Vec<(&'a str, String)> {
+    let mut returns = AgreedReturns::default();
+    let mut cursor = body.walk();
+    for method in body
+        .named_children(&mut cursor)
+        .filter(|n| syntax.functions.contains(&n.kind()))
+    {
+        let Some(name) = text_of(method.child_by_field_name("name"), source) else {
+            continue;
+        };
+        let ty = text_of(method.child_by_field_name(syntax.return_type_field), source)
+            .filter(|ty| is_plain_type_name(ty))
+            .map(str::to_string);
+        returns.note(name, ty);
+    }
+    returns
+        .0
+        .into_iter()
+        .filter_map(|(name, ty)| Some((name, ty?)))
+        .collect()
 }
 
 fn binding_name<'a>(node: Node<'_>, source: &'a [u8], syntax: &TypedSyntax) -> Option<&'a str> {
@@ -261,17 +375,19 @@ fn record_parameter<'a>(
     source: &'a [u8],
     syntax: &TypedSyntax,
 ) {
-    let (Some(name), Some(function)) = (
-        binding_name(param, source, syntax),
-        enclosing_scope(param, |kind| syntax.functions.contains(&kind)),
-    ) else {
+    let Some(name) = binding_name(param, source, syntax) else {
         return;
     };
-    bindings.insert(
-        name,
-        function.byte_range(),
-        declared_type(param, source, syntax),
-    );
+    // A for-each variable is bound in its loop alone; other parameters in their function.
+    let scope = if param.kind() == "enhanced_for_statement" {
+        param.byte_range()
+    } else {
+        let Some(function) = enclosing_scope(param, |kind| syntax.functions.contains(&kind)) else {
+            return;
+        };
+        function.byte_range()
+    };
+    bindings.insert(name, scope, declared_type(param, source, syntax));
 }
 
 fn record_local<'a>(
@@ -337,8 +453,8 @@ fn constructed_type(declarator: Node<'_>, source: &[u8], syntax: &TypedSyntax) -
     construction_type(construction, source)
 }
 
-/// PHP `new Connector()` names the class in a bare `name` node.
-fn construction_type(construction: Node<'_>, source: &[u8]) -> Option<String> {
+/// PHP `new Connector()` names the class in a bare `name` node; JavaScript `new C()` is its first named child.
+pub(crate) fn construction_type(construction: Node<'_>, source: &[u8]) -> Option<String> {
     let ty = construction
         .child_by_field_name("type")
         .or_else(|| construction.named_child(0));

@@ -209,10 +209,12 @@ impl TraitIndex {
 
 fn nominals_by_name(symbols: &[Symbol]) -> HashMap<Spur, Vec<NodeId>> {
     let mut map: HashMap<Spur, Vec<NodeId>> = HashMap::new();
-    for s in symbols
-        .iter()
-        .filter(|s| s.lang.semantics().indexes_implementations() && s.kind.is_type_container())
-    {
+    for s in symbols.iter().filter(|s| {
+        let semantics = s.lang.semantics();
+        semantics.indexes_implementations()
+            && (s.kind.is_type_container()
+                || (s.kind == SymKind::Section && semantics.modules_are_mixins()))
+    }) {
         map.entry(s.name).or_default().push(s.id);
     }
     map
@@ -220,16 +222,24 @@ fn nominals_by_name(symbols: &[Symbol]) -> HashMap<Spur, Vec<NodeId>> {
 
 fn methods_by_file(symbols: &[Symbol]) -> MethodsByFile {
     let mut map: MethodsByFile = HashMap::new();
-    for s in symbols
-        .iter()
-        .filter(|s| s.kind == SymKind::Method && s.lang.semantics().indexes_implementations())
-    {
+    for s in symbols.iter().filter(|s| is_indexed_method(s)) {
         map.entry(s.file_id).or_default().push(s.id);
     }
     for ids in map.values_mut() {
         ids.sort_unstable_by_key(|&id| symbols[id as usize].sig_start_byte);
     }
     map
+}
+
+/// A method the trait index lists: a `Method`, or a type-scoped function in a language whose functions
+/// are its type's members.
+fn is_indexed_method(s: &Symbol) -> bool {
+    let semantics = s.lang.semantics();
+    semantics.indexes_implementations()
+        && (s.kind == SymKind::Method
+            || (s.kind == SymKind::Function
+                && s.scope.is_some()
+                && semantics.functions_are_type_members()))
 }
 
 fn file_methods(methods: &MethodsByFile, file_id: u32) -> &[NodeId] {

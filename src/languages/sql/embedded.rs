@@ -124,6 +124,7 @@ fn scan_sql_tokens_in_literal(text: &str, start_byte: usize, line: u32, refs: &m
                     lang: Some(Lang::Sql),
                     receiver: None,
                     receiver_type: None,
+                    receiver_chain: None,
                     callable_field: false,
                 macro_arg: false,
                     member_call: false,

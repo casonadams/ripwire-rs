@@ -1,6 +1,6 @@
 use super::capture::{extract_match_captures, record_extracted_item};
-use super::qualifier::receiver_type_at;
-use super::types::{FileParseResult, RawDef, RawRef};
+use super::qualifier::{pending_chain_at, receiver_type_at};
+use super::types::{FileParseResult, MemberType, RawDef, RawRef};
 use crate::domain::{Lang, RefRole, SymKind};
 use crate::ingest::registry::PARSER_STATE;
 use crate::languages::reads::ReadBindings;
@@ -52,8 +52,20 @@ pub fn parse_file_tree(
             foreign_exports: lang.semantics().foreign_exports(ctx.root, source_bytes),
             callable_bindings: lang.semantics().callable_bindings(ctx.root, source_bytes),
             implementations: lang.semantics().implementations(ctx.root, source_bytes),
+            members: member_types(&bindings),
         }
     })
+}
+
+fn member_types(bindings: &ReadBindings<'_>) -> Vec<MemberType> {
+    bindings
+        .member_entries()
+        .map(|(owner, member, ty)| MemberType {
+            owner: owner.to_string(),
+            member: member.to_string(),
+            ty: ty.to_string(),
+        })
+        .collect()
 }
 
 fn collect_items(
@@ -85,11 +97,15 @@ fn drop_shadowed_refs(refs: &mut Vec<RawRef>, bindings: &ReadBindings<'_>) {
 
 fn attach_receiver_types(refs: &mut [RawRef], bindings: &ReadBindings<'_>, lang: Lang) {
     for r in refs {
-        if r.receiver_type.is_none()
-            && let Some(receiver) = &r.receiver
-            && let Some(ty) = receiver_type_at(receiver, r.start_byte, bindings, lang)
-        {
-            r.receiver_type = Some(ty);
+        let Some(receiver) = r.receiver.as_deref() else {
+            continue;
+        };
+        if r.receiver_type.is_some() {
+            continue;
+        }
+        match receiver_type_at(receiver, r.start_byte, bindings, lang) {
+            Some(ty) => r.receiver_type = Some(ty),
+            None => r.receiver_chain = pending_chain_at(receiver, r.start_byte, bindings),
         }
     }
 }

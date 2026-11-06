@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Symbol kind corresponding to the terse XML attribute `t="..."`.
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SymKind {
     Function = 0,
     Method,
@@ -14,6 +14,7 @@ pub enum SymKind {
     Section,
     Macro,
     Field,
+    #[default]
     Other,
     ModuleScope,
 }

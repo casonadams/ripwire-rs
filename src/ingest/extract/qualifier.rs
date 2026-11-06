@@ -1,4 +1,5 @@
 use super::scope::find_enclosing_scope;
+use super::types::PendingChain;
 use crate::domain::Lang;
 use crate::languages::is_plain_type_name;
 
@@ -65,6 +66,9 @@ pub(super) fn bare_member_receiver(
     if let Some(name) = lang.semantics().call_receiver_name(recv, source_bytes) {
         return Some(format!("{name}()"));
     }
+    if let Some(chain) = lang.semantics().receiver_chain(recv, source_bytes) {
+        return Some(chain);
+    }
     let raw = recv.utf8_text(source_bytes).ok()?.trim();
     let text = lang.semantics().receiver_text(raw);
     text.split('.')
@@ -85,11 +89,19 @@ pub(super) fn receiver_type_at(
     bindings: &crate::languages::reads::ReadBindings<'_>,
     lang: Lang,
 ) -> Option<String> {
+    if let Some(cast) = receiver.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
+        // A cast receiver `((T) x).m()` is typed by its cast.
+        return is_plain_type_name(cast).then(|| cast.to_string());
+    }
     if let Some((base, method)) = receiver.strip_suffix("()").and_then(|c| c.rsplit_once('.')) {
         // `self.method()`: the declared return of the method on the base's type.
-        let base_ty = receiver_type_at(base, byte, bindings, lang)?;
+        let base_ty = if base == "this" {
+            bindings.type_at(base, byte)?.to_string()
+        } else {
+            receiver_type_at(base, byte, bindings, lang)?
+        };
         return bindings
-            .member_type(&base_ty, &format!("{method}()"))
+            .inherited_member_type(&base_ty, &format!("{method}()"))
             .filter(|ty| is_plain_type_name(ty))
             .map(str::to_string);
     }
@@ -114,11 +126,28 @@ pub(super) fn receiver_type_at(
     }
     for segment in segments {
         ty = bindings
-            .member_type(&ty, segment)
+            .inherited_member_type(&ty, segment)
             .map(str::to_string)
             .or_else(|| lang.semantics().member_receiver_type(&ty, segment))?;
     }
     is_plain_type_name(&ty).then_some(ty)
+}
+
+/// The base type and member steps of a receiver chain whose base is bound in this file (`doc.select()` has
+/// base `Document`, step `select()`). The cross-file pass types the steps.
+pub(super) fn pending_chain_at(
+    receiver: &str,
+    byte: usize,
+    bindings: &crate::languages::reads::ReadBindings<'_>,
+) -> Option<PendingChain> {
+    let mut parts = receiver.split('.');
+    let first = parts.next()?;
+    let base = bindings.type_at(first, byte)?.to_string();
+    let steps: Vec<String> = parts.map(str::to_string).collect();
+    let member_steps = steps
+        .iter()
+        .all(|step| is_plain_type_name(step.strip_suffix("()").unwrap_or(step)));
+    (!steps.is_empty() && member_steps).then_some(PendingChain { base, steps })
 }
 
 pub(super) fn find_call_qualifier(

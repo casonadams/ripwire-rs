@@ -1,25 +1,28 @@
 //! Kotlin's grammar labels no fields; children are positional.
 
 use crate::languages::reads::{ReadBindings, enclosing_scope, nodes};
-use crate::languages::typed::{AgreedReturns, implementation};
+use crate::languages::typed::AgreedReturns;
 use crate::languages::{Implementation, is_plain_type_name};
 use tree_sitter::Node;
 
 pub(super) fn class_implementations(root: Node<'_>, source: &[u8]) -> Vec<Implementation> {
-    nodes(root)
-        .filter(|node| node.kind() == "class_declaration")
-        .filter_map(|class| {
-            let subject = child_text(class, "type_identifier", source)?;
-            let span = (class.start_byte(), class.end_byte());
-            let mut out = vec![implementation(subject, None, span)];
-            out.extend(
-                supertypes(class, source)
-                    .into_iter()
-                    .map(|(name, _)| implementation(subject, Some(name), span)),
-            );
-            Some(out)
-        })
-        .flatten()
+    crate::languages::typed::class_implementations(
+        root,
+        source,
+        &["class_declaration"],
+        kotlin_class_name,
+        kotlin_bases,
+    )
+}
+
+fn kotlin_class_name<'s>(class: Node<'_>, source: &'s [u8]) -> Option<&'s str> {
+    child_text(class, "type_identifier", source)
+}
+
+fn kotlin_bases<'s>(class: Node<'_>, source: &'s [u8]) -> Vec<&'s str> {
+    supertypes(class, source)
+        .into_iter()
+        .map(|(name, _)| name)
         .collect()
 }
 

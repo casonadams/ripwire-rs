@@ -57,6 +57,16 @@ pub(super) fn python_binding_scope(node: tree_sitter::Node<'_>) -> Option<tree_s
     None
 }
 
+/// The byte range a binding of `node` is in scope over: its scope's body.
+pub(super) fn python_binding_range(node: tree_sitter::Node<'_>) -> Option<std::ops::Range<usize>> {
+    python_binding_scope(node).map(|scope| {
+        scope
+            .child_by_field_name("body")
+            .unwrap_or(scope)
+            .byte_range()
+    })
+}
+
 const NON_VALUE: NonValueRules = NonValueRules {
     always: &[
         "type",

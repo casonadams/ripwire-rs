@@ -65,6 +65,10 @@ const DART_STD_MEMBERS: &[&str] = &[
     "encode",
 ];
 
+/// Core Dart and test-framework members that an untyped receiver is far more likely to hold than an in-tree
+/// member of the same name: a call to one is declined rather than bound by name (`isA` is package:matcher).
+const DART_CORE_UNTYPED_MEMBERS: &[&str] = &["isA", "removeAt", "removeLast", "flatten", "abs"];
+
 const DART_STD_QUALIFIERS: &[&str] = &[
     "Future",
     "Stream",
@@ -208,6 +212,35 @@ fn selector_receiver(selector: tree_sitter::Node<'_>) -> Option<tree_sitter::Nod
     Some(receiver)
 }
 
+/// The dotted receiver of a member step (`a.b.c` for the `.c` selector): identifiers, plain member
+/// selectors and call steps (`a.b().c` for the `.c` selector), so an index in the chain declines.
+fn dart_member_chain(selector: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
+    if selector.kind() != "selector" {
+        return None;
+    }
+    let access = selector.named_child(0)?;
+    match access.kind() {
+        "unconditional_assignable_selector" => {
+            let member = access.named_child(0)?.utf8_text(source).ok()?;
+            let base = dart_chain_base(selector.prev_named_sibling()?, source)?;
+            Some(format!("{base}.{member}"))
+        }
+        "argument_part" => {
+            let callee = dart_chain_base(selector.prev_named_sibling()?, source)?;
+            Some(format!("{callee}()"))
+        }
+        _ => None,
+    }
+}
+
+/// The text of a chain's base: an identifier, or the chain a member or call selector reaches.
+fn dart_chain_base(base: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
+    match base.kind() {
+        "identifier" => Some(base.utf8_text(source).ok()?.to_string()),
+        _ => dart_member_chain(base, source),
+    }
+}
+
 fn dart_call_qualifier(name_node: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
     let selector = name_node.parent()?.parent()?;
     if selector.kind() != "selector" {
@@ -235,11 +268,25 @@ fn is_named_constructor_class_name(name_node: Option<tree_sitter::Node<'_>>) -> 
     })
 }
 
-/// An unnamed constructor or factory: its only identifier is the class name.
-fn is_unnamed_constructor(name_node: Option<tree_sitter::Node<'_>>) -> bool {
-    name_node.is_some_and(|name| {
-        name.parent().is_some_and(is_constructor_signature) && name.prev_named_sibling().is_none()
-    })
+/// An unnamed constructor or factory: its only identifier is the name of the class that declares it.
+/// A factory named otherwise (`factory parse(...)`) is an ordinary method.
+fn is_unnamed_constructor(ctx: &DefCaptureGateContext<'_>) -> bool {
+    let Some(name) = ctx.name_node else {
+        return false;
+    };
+    name.parent().is_some_and(is_constructor_signature)
+        && name.prev_named_sibling().is_none()
+        && enclosing_class_name(name, ctx.source_bytes) == name.utf8_text(ctx.source_bytes).ok()
+}
+
+fn enclosing_class_name<'a>(node: tree_sitter::Node<'a>, source: &'a [u8]) -> Option<&'a str> {
+    let decl = std::iter::successors(node.parent(), |n| n.parent())
+        .find(|n| matches!(n.kind(), "class_definition" | "enum_declaration"))?;
+    let mut cursor = decl.walk();
+    let name = decl
+        .named_children(&mut cursor)
+        .find(|c| c.kind() == "identifier")?;
+    name.utf8_text(source).ok()
 }
 
 fn is_constructor_signature(node: tree_sitter::Node<'_>) -> bool {
@@ -292,6 +339,10 @@ impl LanguageSemantics for DartLanguage {
             .prev_named_sibling()
             .filter(|callee| is_argument_selector && callee.kind() == "identifier")?;
         callee.utf8_text(source).ok()
+    }
+
+    fn receiver_chain(&self, receiver: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
+        dart_member_chain(receiver, source)
     }
 
     fn read_bindings<'a>(
@@ -372,7 +423,15 @@ impl LanguageSemantics for DartLanguage {
     /// An unnamed constructor or factory (`C()`) shares its class's name. Only by-name calls to
     /// `C` reach it, and they bind to the class: the constructor is excluded from those candidates.
     fn is_contract_member(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
-        ctx.kind == SymKind::Method && is_unnamed_constructor(ctx.name_node)
+        ctx.kind == SymKind::Method && is_unnamed_constructor(ctx)
+    }
+
+    fn def_is_constructor(&self, ctx: &DefCaptureGateContext<'_>) -> bool {
+        ctx.kind == SymKind::Method
+            && ctx
+                .name_node
+                .and_then(|name| name.parent())
+                .is_some_and(is_constructor_signature)
     }
 
     fn is_symbol_name_public(&self, sym_name: &str) -> bool {
@@ -385,6 +444,27 @@ impl LanguageSemantics for DartLanguage {
 
     fn std_member_names(&self) -> &'static [&'static str] {
         DART_STD_MEMBERS
+    }
+
+    fn refine_def_kind(
+        &self,
+        kind: SymKind,
+        def_node: Option<tree_sitter::Node<'_>>,
+        source: &[u8],
+    ) -> SymKind {
+        let is_abstract = def_node.is_some_and(|class| {
+            class.kind() == "class_definition"
+                && source[class.start_byte()..].starts_with(b"abstract ")
+        });
+        if kind == SymKind::Class && is_abstract {
+            SymKind::Interface
+        } else {
+            kind
+        }
+    }
+
+    fn is_untyped_core_member(&self, name: &str) -> bool {
+        DART_CORE_UNTYPED_MEMBERS.contains(&name)
     }
 
     fn std_qualifier_names(&self) -> &'static [&'static str] {

@@ -59,6 +59,19 @@ class Other {\n    fun close() {}\n}\n\
 class Account\nclass Order\n\
 class Desk(private val orders: OrderStore) : Base() {\n    lateinit var accounts: AccountStore\n    fun viaThisField() { this.accounts.lookup(1) }\n    fun viaField() { accounts.lookup(1) }\n    fun viaConstructorProperty() { orders.lookup(1) }\n    fun viaLocal() { val store: OrderStore = orders; store.lookup(2) }\n    fun viaSuper() { super.close() }\n    fun make(): AccountStore = accounts\n    fun viaCallResult() { make().lookup(3) }\n}\n";
 
+const RUBY_PIPE: &str = "class Sink\n  def write(line)\n    1\n  end\n\n  def respond_to?(name)\n    true\n  end\nend\n\
+DEFAULT_LOG = Sink.new\n\
+class Pipe\n  def initialize\n    @sink = Sink.new\n  end\n\n\
+  def typed(line)\n    @sink.write(line)\n  end\n\n\
+  def untyped(io, line)\n    io.write(line)\n  end\n\n\
+  def probe(obj)\n    obj.respond_to?(:write)\n  end\n\n\
+  def constant_receiver\n    DEFAULT_LOG.write(\"x\")\n  end\nend\n";
+
+const RUBY_TASKS: &str = "class Task\n  def call(env)\n    1\n  end\n\n\
+  def run(app)\n    app.call(2)\n  end\nend\n";
+
+const RUBY_RUNNER: &str = "class Runner\n  def go(app)\n    app.call(1)\n  end\nend\n";
+
 const SCALA_STORES: &str = "trait AccountStore {\n  def lookup(id: Int): Account\n}\n\
 trait OrderStore {\n  def lookup(id: Int): Order\n}\n\
 class Base {\n  def close(): Unit = ()\n}\n\
@@ -76,6 +89,12 @@ const PHP_SERVICE: &str = "<?php\nclass Service {\n  private DiskStore $store;\n
   public function viaParam(MemoryStore $memory) { $memory->open(); }\n\
   public function viaLocal() { $local = new DiskStore(); $local->open(); }\n\
   public function viaStatic() { throw WriteFailed::forPath('p'); }\n}\n";
+
+const PY_TEXT: &str = "class Text:\n    def split(self):\n        return 1\n\n    @classmethod\n    def from_markup(cls, s) -> Text:\n        return cls()\n\n\nclass Store:\n    def get(self, key):\n        return key\n";
+
+const PY_HOLDER: &str = "from text_mod import Text\n\nprogress = Text()\n\n\nclass Holder:\n    def __init__(self, text: Text):\n        self.text = text\n        self.size = Text.from_markup(\"x\")\n        self.store = Store()\n\n    def via_field(self):\n        self.text.split()\n\n    def via_call_result(self):\n        self.size.split()\n\n    def via_module(self):\n        progress.split()\n\n    def via_with(self):\n        with Text() as handle:\n            handle.split()\n\n    def via_builtin(self, mapping: dict):\n        return mapping.get(1)\n\n    def via_own_get(self):\n        self.store.get(2)\n";
+
+const PY_RESULT: &str = "class Text:\n    def split(self):\n        return 1\n\n    @classmethod\n    def from_markup(cls, s) -> Text:\n        return cls()\n\nclass H:\n    def __init__(self):\n        self.size = Text.from_markup(\"x\")\n\n    def via(self):\n        self.size.split()\n";
 
 const RUBY_APP: &str = "module Web\n  class FakeRequest\n    def get(uri)\n      1\n    end\n  end\n  class Router\n    def get(uri)\n      2\n    end\n  end\n  class Logger\n    def write(line)\n      3\n    end\n  end\n  class Sink\n    def write(line)\n      4\n    end\n  end\nend\n\
 class App\n  def initialize\n    @log = Web::Logger.new\n  end\n  def via_chain\n    Web::FakeRequest.new(self).get(\"/\")\n  end\n  def via_local\n    fake = Web::FakeRequest.new(self)\n    fake.get(\"/\")\n  end\n  def via_ivar\n    @log.write(\"x\")\n  end\nend\n";
@@ -99,6 +118,9 @@ const CPP_CANVAS_IN: &str =
 const CPP_CANVAS_OUT: &str = "static void release_all() {}\nclass Canvas {\npublic:\n  void flush();\n};\nCanvas::~Canvas() { release_all(); }\n";
 
 const PY_CACHE: &str = "class Cache:\n    def fetch_one(self, k):\n        return k\n\nclass Queue:\n    def fetch_one(self, k):\n        return k\n\ndef use(c: Cache):\n    return c.fetch_one(3)\n\ndef build():\n    cache = Cache()\n    return cache.fetch_one(1)\n\ndef mixed(c: Cache):\n    c = Queue()\n    return c.fetch_one(2)\n";
+
+const RUBY_MIXIN: &str = "module Helpers\n  def escape(value)\n    value\n  end\nend\n\
+class Renderer\n  include Helpers\n  def render(text)\n    escape(text)\n  end\nend\n";
 
 const TYPED_ROWS: &[Row] = &[
     Row {
@@ -202,6 +224,47 @@ const TYPED_ROWS: &[Row] = &[
                 Expect::Exactly(&[".Queue", "Cache.fetch_one", "Queue.fetch_one"]),
             ),
         ],
+    },
+    Row {
+        files: &[
+            ("pkg/text_mod.py", Lang::Python, PY_TEXT),
+            ("pkg/holder.py", Lang::Python, PY_HOLDER),
+        ],
+        cases: &[
+            ("via_field", Expect::Exactly(&["Text.split"])),
+            ("via_module", Expect::Exactly(&["Text.split"])),
+            ("via_with", Expect::Exactly(&[".Text", "Text.split"])),
+            ("via_builtin", Expect::Excludes("Store.get")),
+            ("via_own_get", Expect::Exactly(&["Store.get"])),
+        ],
+    },
+    Row {
+        files: &[("pkg/result.py", Lang::Python, PY_RESULT)],
+        cases: &[("via", Expect::Exactly(&["Text.split"]))],
+    },
+    Row {
+        files: &[("lib/pipe.rb", Lang::Ruby, RUBY_PIPE)],
+        cases: &[
+            ("typed", Expect::Exactly(&["Sink.write"])),
+            ("untyped", Expect::Exactly(&[])),
+            ("probe", Expect::Excludes("Sink.respond_to?")),
+            ("constant_receiver", Expect::Exactly(&["Sink.write"])),
+        ],
+    },
+    Row {
+        files: &[("lib/task.rb", Lang::Ruby, RUBY_TASKS)],
+        cases: &[("run", Expect::Exactly(&["Task.call"]))],
+    },
+    Row {
+        files: &[
+            ("lib/task.rb", Lang::Ruby, RUBY_TASKS),
+            ("lib/runner.rb", Lang::Ruby, RUBY_RUNNER),
+        ],
+        cases: &[("go", Expect::Exactly(&[]))],
+    },
+    Row {
+        files: &[("lib/renderer.rb", Lang::Ruby, RUBY_MIXIN)],
+        cases: &[("render", Expect::Exactly(&["Helpers.escape"]))],
     },
 ];
 

@@ -70,6 +70,21 @@ impl TraitIndex {
             .unwrap_or_default()
     }
 
+    /// Targets `name` in every ancestor of `subject`: the overloads a subclass inherits beside its own.
+    #[must_use]
+    pub fn inherited_subject_targets(
+        &self,
+        subject: NodeId,
+        name: Spur,
+        symbols: &[Symbol],
+    ) -> Vec<NodeId> {
+        let mut out = Vec::new();
+        for ancestor in self.ancestors(subject) {
+            out.extend(self.own_subject_targets(ancestor, name, symbols));
+        }
+        sort_dedup(out)
+    }
+
     fn own_subject_targets(&self, subject: NodeId, name: Spur, symbols: &[Symbol]) -> Vec<NodeId> {
         let mut out = Vec::new();
         for &i in self

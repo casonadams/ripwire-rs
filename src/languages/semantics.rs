@@ -61,6 +61,16 @@ pub trait LanguageSemantics: Sync {
     ) -> Option<&'a str> {
         None
     }
+    /// The receiver text of a call whose receiver is itself a call chain or a cast: `a.b().c()` names
+    /// `a.b()`, and `((T) x).c()` names `(T)`. The text is read by `receiver_type_at`.
+    fn receiver_chain(&self, _receiver: tree_sitter::Node<'_>, _source: &[u8]) -> Option<String> {
+        None
+    }
+    /// True where an import reference's qualifier is the package its name is imported from
+    /// (`import a.b.C;` names `C` with qualifier `a.b`), so the import's full path is `qualifier.name`.
+    fn import_names_full_path(&self) -> bool {
+        false
+    }
     fn has_class_inheritance(&self) -> bool {
         false
     }
@@ -481,6 +491,21 @@ pub trait LanguageSemantics: Sync {
         &[]
     }
 
+    /// The kind a definition captured as `kind` takes in this language. Dart: an `abstract class` is an interface.
+    fn refine_def_kind(
+        &self,
+        kind: SymKind,
+        _def_node: Option<tree_sitter::Node<'_>>,
+        _source: &[u8],
+    ) -> SymKind {
+        kind
+    }
+
+    /// True if `name`, called on a receiver whose type is unknown, names a core library member of this language
+    /// (declined rather than bound by name to an unrelated in-tree member).
+    fn is_untyped_core_member(&self, _name: &str) -> bool {
+        false
+    }
     /// True if a method name belongs to the language's standard container/string/builtin types (declined on untyped receivers).
     fn is_std_or_builtin_member(&self, name: &str) -> bool {
         self.std_member_names().contains(&name)
@@ -520,6 +545,11 @@ pub trait LanguageSemantics: Sync {
 
     /// Registered by a decorator that hands it to a framework (a route, a hook, a task).
     fn def_is_registered(&self, _ctx: &DefCaptureGateContext<'_>) -> bool {
+        false
+    }
+
+    /// A constructor or factory declared in a class (only the class name reaches it).
+    fn def_is_constructor(&self, _ctx: &DefCaptureGateContext<'_>) -> bool {
         false
     }
 
@@ -619,6 +649,27 @@ pub trait LanguageSemantics: Sync {
     /// True where declared implementations (Rust `impl`, TypeScript `class … implements`) feed the trait index.
     fn indexes_implementations(&self) -> bool {
         self.has_trait_impls()
+    }
+    /// True where a function scoped to a type is that type's method although it is tagged as a plain
+    /// function (Python tags every `def`, so a class body's `def` is a `Function`). Such functions join
+    /// the trait index's method lists.
+    fn functions_are_type_members(&self) -> bool {
+        false
+    }
+    /// True where a module is a mixin type: its methods join the trait index and a class that includes it
+    /// reaches them (Ruby `module`, tagged as a section, is otherwise not a nominal type).
+    fn modules_are_mixins(&self) -> bool {
+        false
+    }
+    /// Core runtime method names (Object, Kernel, IO, String, Array, Hash) that an untyped receiver or an
+    /// unqualified call may mean. A name-only binding of such a call needs in-tree evidence for its owner.
+    fn ambient_core_names(&self) -> &'static [&'static str] {
+        &[]
+    }
+    /// Names that user classes also define (`call`, `each`): an untyped call binds only within the caller's
+    /// own type chain or file, never by name across the whole tree.
+    fn ambient_shared_names(&self) -> &'static [&'static str] {
+        &[]
     }
     /// True where a receiver whose declared type text is not an indexed type may use name resolution.
     fn unindexed_receiver_type_uses_names(&self, _receiver_type: &str) -> bool {
