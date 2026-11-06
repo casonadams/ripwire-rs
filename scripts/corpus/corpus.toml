@@ -15,6 +15,9 @@
 #   index                shell that writes {out} (= /out/<index_file>)
 #   precision_floor, recall_floor
 #                        lowest accepted --eval=scip values, set just under the measured value
+#   image                docker image (default ripwire-corpus:local); tags per platform, e.g. ripwire-corpus-swift:arm64
+#   platform             linux/amd64 (default) or linux/arm64: the docker --platform the indexer runs under; the image must
+#                        be built for it, and the runner refuses one that is not
 #   status               measured | unverified | blocked; blocked entries need a reason
 #
 # This file holds the inputs and the floors. The measured numbers live in baseline.toml, the ratchet written by
@@ -314,11 +317,12 @@ index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .ex,.exs -
 name = "godot-steering-ai-framework"
 languages = ["gdscript"]
 status = "blocked"
-reason = "Godot 4.7.2 headless language server starts, imports and accepts the bridge, but under amd64 emulation it answered none of 1067 definition requests in over two hours; needs a native arm64 build."
+reason = "native linux/arm64 Godot 4.7.2 also fails, so emulation is not the cause: the editor loads and accepts the bridge on 6005, and the bridge sends 1067 definition requests, but no window of answers completes in 60 minutes; with --timeout 60 the bridge still had not raised after 20 minutes, so the server answers slowly or stalls. The server log shows no error."
 license = "MIT"
 url = "https://github.com/GDQuest/godot-steering-ai-framework"
 sha = "9d7cf0deff805d8f2a5316c33f3c85cffa3376a7"
-image = "ripwire-corpus-lsp:local"
+image = "ripwire-corpus-godot:arm64"
+platform = "linux/arm64"
 indexer = "lsp2scip"
 indexer_version = "godot-4.7.2"
 index = "godot --headless --editor --path /src/godot --audio-driver Dummy >/out/godot.log 2>&1 &\npython3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .gd --language-id gdscript --out {out} --connect 127.0.0.1:6005 --settle 30"
@@ -367,11 +371,12 @@ index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .erl,.hrl 
 name = "argparse-swift"
 languages = ["swift"]
 status = "blocked"
-reason = "sourcekit-lsp 6.1 under linux/amd64 emulation exits before answering the first definition request on a SwiftPM package that builds cleanly (swift build succeeds in 17 s); a native arm64 image is the next thing to try. The first candidate, a macOS app, cannot compile on Linux (no SwiftUI)."
+reason = "native linux/arm64 sourcekit-lsp 6.1 builds the package, then sourcekitd crashes in IDE inspection once the bridge opens its 171 files: TypeCheckASTNodeAtLocRequest on Sources/ArgumentParser/Parsing/CommandParser.swift (init(_:) overload; ConstraintSystem::simplifyAppliedOverloads), a Swift 6.1 compiler crash. Under the 3 GiB cap it was OOM-killed silently. Not an emulation problem."
 license = "Apache-2.0"
 url = "https://github.com/apple/swift-argument-parser"
 sha = "38ca4eceb349155836701b88da3e0986eb9d1e1c"
-image = "ripwire-corpus-swift:local"
+image = "ripwire-corpus-swift:arm64"
+platform = "linux/arm64"
 setup = "swift build 2>&1 | tail -5"
 indexer = "lsp2scip"
 indexer_version = "sourcekit-lsp-6.1"

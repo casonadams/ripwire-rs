@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Score call resolution against compiler SCIP indexes of pinned public repositories, locally.
 
-scripts/corpus/Dockerfile holds every indexer in one linux/amd64 image. corpus.toml pins each repository to
+scripts/corpus/Dockerfile holds every indexer in one linux/amd64 image; an entry with platform = linux/arm64 runs in its own
+arm64 image. corpus.toml pins each repository to
 a full commit SHA, its indexer command and the precision and recall floors measured on it. Checkouts,
 indexes and logs live under ~/.cache/ripwire-corpus; nothing is written into this repository.
 
@@ -33,6 +34,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 MANIFEST = pathlib.Path(__file__).with_name("corpus.toml")
 CACHE = pathlib.Path.home() / ".cache" / "ripwire-corpus"
 IMAGE = "ripwire-corpus:local"
+DEFAULT_PLATFORM = "linux/amd64"
+PLATFORMS = (DEFAULT_PLATFORM, "linux/arm64")
 DEFAULT_BIN = ROOT / "target" / "release" / "ripwire-rs"
 TIMEOUT = 3600
 MARGIN = 0.002
@@ -70,12 +73,16 @@ class Entry:
     setup: str
     index: str
     image: str
+    platform: str
     reason: str
     precision_floor: float | None
     recall_floor: float | None
 
     @classmethod
     def from_table(cls, table):
+        platform = table.get("platform", DEFAULT_PLATFORM)
+        if platform not in PLATFORMS:
+            raise ValueError(f"{table['name']}: platform {platform!r} must be one of {', '.join(PLATFORMS)}")
         return cls(
             name=table["name"],
             languages=tuple(table.get("languages", ())),
@@ -91,6 +98,7 @@ class Entry:
             setup=table.get("setup", ""),
             index=table.get("index", ""),
             image=table.get("image", IMAGE),
+            platform=platform,
             reason=table.get("reason", ""),
             precision_floor=table.get("precision_floor"),
             recall_floor=table.get("recall_floor"),
@@ -190,8 +198,14 @@ def docker_ready(entry):
         raise Skip("docker is not installed")
     if subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True).returncode:
         raise Skip("docker daemon is not running")
-    if subprocess.run(["docker", "image", "inspect", entry.image], capture_output=True).returncode:
-        raise Skip(f"image {entry.image} is not built: run the make target that builds it (corpus-image, corpus-image-lsp)")
+    inspect = subprocess.run(
+        ["docker", "image", "inspect", "--format", "{{.Architecture}}", entry.image], capture_output=True, text=True
+    )
+    if inspect.returncode:
+        raise Skip(f"image {entry.image} is not built: run the make target that builds it (see the corpus-image* targets)")
+    arch = inspect.stdout.strip()
+    if arch != entry.platform.partition("/")[2]:
+        raise Skip(f"image {entry.image} is {arch}, but {entry.name} runs on {entry.platform}: build it for that platform")
 
 
 def container_script(entry):
@@ -200,8 +214,9 @@ def container_script(entry):
 
 
 def docker_command(entry, src, out):
+    capped = ["--memory=3g"] if entry.platform == DEFAULT_PLATFORM else []
     return [
-        "docker", "run", "--rm", "--platform", "linux/amd64", "--memory=3g",
+        "docker", "run", "--rm", "--platform", entry.platform, *capped,
         "--user", f"{os.getuid()}:{os.getgid()}",
         "-v", f"{src}:/src", "-v", f"{out}:/out", "-v", f"{CACHE / 'home'}:/corpus-home",
         "-w", "/src",

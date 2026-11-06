@@ -125,11 +125,12 @@ extensions = ["f", "for", "f90", "f95", "f03", "f08"]
 [gdscript]
 oracle = "lsp"
 status = "blocked"
-reason = "Godot 4.7.2 headless language server starts, imports and accepts the bridge, but under amd64 emulation it answered none of 1067 definition requests in over two hours; needs a native arm64 build."
+reason = "Godot 4.7.2 headless language server on a native linux/arm64 image accepts the bridge but answers no definition request in 60 minutes of 1067 requests; the same under amd64 emulation. The server log shows no error."
 server = "godot"
 indexer = "lsp2scip"
 indexer_version = "godot-4.7.2"
-image = "ripwire-corpus-lsp:local"
+image = "ripwire-corpus-godot:arm64"
+platform = "linux/arm64"
 index = '''godot --headless --editor --path /src/godot --audio-driver Dummy >/out/godot.log 2>&1 &
 python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .gd --language-id gdscript --out {out} --connect 127.0.0.1:6005 --settle 30'''
 extensions = ["gd"]
@@ -302,11 +303,12 @@ extensions = ["sql", "sqlx"]
 [swift]
 oracle = "lsp"
 status = "blocked"
-reason = "sourcekit-lsp 6.1 under linux/amd64 emulation exits before answering the first definition request on a SwiftPM package that builds cleanly (swift build succeeds in 17 s); a native arm64 image is the next thing to try. The first candidate, a macOS app, cannot compile on Linux (no SwiftUI)."
+reason = "sourcekit-lsp 6.1 on a native linux/arm64 image builds the package, then sourcekitd crashes in IDE inspection of Sources/ArgumentParser/Parsing/CommandParser.swift once the bridge opens the files (Swift 6.1 compiler crash in init(_:) overload solving). The first candidate, a macOS app, cannot compile on Linux (no SwiftUI)."
 server = "sourcekit-lsp"
 indexer = "lsp2scip"
 indexer_version = "sourcekit-lsp-6.1"
-image = "ripwire-corpus-swift:local"
+image = "ripwire-corpus-swift:arm64"
+platform = "linux/arm64"
 setup = "swift build 2>&1 | tail -5"
 index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .swift --language-id swift --out {out} --settle 60 -- sourcekit-lsp"
 extensions = ["swift"]

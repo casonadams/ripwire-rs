@@ -258,6 +258,8 @@ Call resolution scored against an oracle over real public repositories. Two orac
 
 Reference: `make corpus-index`, `corpus-eval`, `corpus-measure` and `corpus-diff OLD=path/to/old/ripwire-rs` (per-site verdict changes between two binaries) remain for single-purpose runs; `NAME=<entry>` limits any target to one entry.
 
+An entry whose language server cannot run under emulation sets `platform = "linux/arm64"` and a native image (`make corpus-image-swift-arm64`, `make corpus-image-godot-arm64`); the `platform` field is documented in `scripts/corpus/corpus.toml`.
+
 Measured on a release build of this tree. Ranges span the entries of a language; a single value is one entry. Floors are set for the LSP-bridge entries (just under measurement); SCIP entries keep their floors until ratcheted.
 
 | Language | Oracle | Status | Precision | Recall |
@@ -273,7 +275,7 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | elixir | LSP bridge (elixir-ls) | blocked: elixir-ls mix install fails on Elixir 1.18.3 (vendored dependency does not compile) | - | - |
 | erlang | LSP bridge (ELP 2026-10-14) | blocked: the ELP tarball has no pinned sha256 and its download was blocked; the repo has 34 source files | - | - |
 | fortran | LSP bridge (fortls) | measured | 0.9980 | 0.9845 |
-| gdscript | LSP bridge (Godot 4.7.2 language server) | blocked: starts and accepts the bridge but answered none of 1067 definition requests in over two hours under amd64 emulation; needs a native arm64 build | - | - |
+| gdscript | LSP bridge (Godot 4.7.2 language server) | blocked: a native linux/arm64 build also answers none of 1067 definition requests in 60 minutes (emulation is not the cause) | - | - |
 | go | LSP bridge (gopls) | measured | 0.9534 | 0.9586 |
 | graphql | none wired | not attempted: no MIT repo with fragment-spread references found yet | - | - |
 | hcl | not applicable: reference edges are builtin function calls only | not applicable | - | - |
@@ -293,7 +295,7 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | scala | SCIP indexer (scip-java, Scala) | measured | 0.9017 | 0.8439 |
 | solidity | LSP bridge (solidity language server) | measured | 0.9576 | 0.8966 |
 | sql | not applicable to --eval=scip: table and column references are not scored | not applicable | - | - |
-| swift | LSP bridge (sourcekit-lsp 6.1; scripts/corpus/Dockerfile.swift) | blocked: the server exits before answering under amd64 emulation on a package that builds cleanly; try a native arm64 image | - | - |
+| swift | LSP bridge (sourcekit-lsp 6.1; native linux/arm64 image, scripts/corpus/Dockerfile.swift) | blocked: the package builds natively, then sourcekitd crashes in IDE inspection of one ArgumentParser file (Swift 6.1 compiler crash in overload solving) | - | - |
 | toml | not applicable: no reference captures | not applicable | - | - |
 | typescript | SCIP indexer (scip-typescript) | measured | 0.9882 | 0.9882 |
 | yaml | not applicable: no reference captures | not applicable | - | - |

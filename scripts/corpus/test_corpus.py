@@ -2,7 +2,9 @@
 
 import importlib.util
 import pathlib
+import subprocess
 import unittest
+from unittest import mock
 
 _SPEC = importlib.util.spec_from_file_location("corpus", pathlib.Path(__file__).with_name("corpus.py"))
 corpus = importlib.util.module_from_spec(_SPEC)
@@ -120,6 +122,50 @@ class Manifest(unittest.TestCase):
 
     def test_default_image_is_the_scip_indexer_image(self):
         self.assertEqual(corpus.Entry.from_table(table()).image, corpus.IMAGE)
+
+
+class Platform(unittest.TestCase):
+    def test_default_platform_is_amd64(self):
+        self.assertEqual(corpus.Entry.from_table(table()).platform, "linux/amd64")
+
+    def test_docker_run_takes_the_entry_platform_and_caps_only_emulated_runs(self):
+        src, out = pathlib.Path("/src"), pathlib.Path("/out")
+        native = corpus.docker_command(
+            corpus.Entry.from_table(table(platform="linux/arm64", image="ripwire-corpus-swift:arm64")), src, out)
+        emulated = corpus.docker_command(corpus.Entry.from_table(table()), src, out)
+        self.assertEqual(native[native.index("--platform") + 1], "linux/arm64")
+        self.assertIn("ripwire-corpus-swift:arm64", native)
+        self.assertNotIn("--memory=3g", native)
+        self.assertIn("--memory=3g", emulated)
+
+    def test_unknown_platform_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "linux/s390x"):
+            corpus.Entry.from_table(table(platform="linux/s390x"))
+
+
+class DockerReady(unittest.TestCase):
+    def ready(self, entry, arch="", inspect_code=0):
+        def run(args, **_kwargs):
+            if args[1] == "info":
+                return subprocess.CompletedProcess(args, 0, "27.0", "")
+            return subprocess.CompletedProcess(args, inspect_code, arch + "\n", "")
+
+        with mock.patch.object(corpus.shutil, "which", return_value="/usr/bin/docker"), \
+                mock.patch.object(corpus.subprocess, "run", side_effect=run):
+            corpus.docker_ready(entry)
+
+    def test_image_built_for_the_entry_platform_is_ready(self):
+        self.ready(corpus.Entry.from_table(table(platform="linux/arm64", image="x:arm64")), arch="arm64")
+
+    def test_image_built_for_another_platform_is_refused(self):
+        entry = corpus.Entry.from_table(table(platform="linux/arm64", image="x:arm64"))
+        with self.assertRaisesRegex(corpus.Skip, "is amd64, but demo runs on linux/arm64"):
+            self.ready(entry, arch="amd64")
+
+    def test_missing_image_is_refused(self):
+        with self.assertRaisesRegex(corpus.Skip, "is not built"):
+            self.ready(corpus.Entry.from_table(table(image="x:arm64")), inspect_code=1)
+
 
 
 def field(number, payload):
