@@ -271,3 +271,33 @@ fn dart_core_member_on_an_untyped_receiver_is_not_bound_by_name() {
 fn dart_core_member_on_a_typed_receiver_still_binds_to_its_class() {
     assert_eq!(core_callees("viaTyped"), ["Box.isA"]);
 }
+
+const CHECKS: &str = "class Seq {}\nSubject<T> check<T>(T value) => Subject<T>();\nclass Subject<T> {}\n\
+Condition<Seq> isSeq(Object? expected) =>\n    (Subject<Seq> subject) => subject.isSeq(expected);\n\
+extension SeqCheck on Subject<Seq> {\n  void isSeq(Object? expected) {}\n}\n";
+
+const CHECK_CALLER: &str = "import '../lib/checks.dart';\nvoid viaCheck(Seq result) {\n  check(result).isSeq([3]);\n}\n\
+void viaBare(Seq result) {\n  isSeq([3]);\n}\n";
+
+const MIXIN_FILE: &str = "mixin Writer {\n  String toXmlString({bool pretty = false}) => 'x';\n}\n\
+class Direct with Writer {}\n\
+class Base {}\nabstract class Holder extends Base with Writer {}\n\
+class Leaf extends Holder {}\n";
+
+const MIXIN_CALLER: &str = "void viaDirect(Direct d) {\n  d.toXmlString(pretty: true);\n}\n\
+void viaLeaf(Leaf l) {\n  l.toXmlString(pretty: true);\n}\n";
+
+const RESOLVE_FILES: &[(&str, Lang, &[u8])] = &[
+    ("lib/checks.dart", Lang::Dart, CHECKS.as_bytes()),
+    ("test/check_test.dart", Lang::Dart, CHECK_CALLER.as_bytes()),
+    ("lib/mixins.dart", Lang::Dart, MIXIN_FILE.as_bytes()),
+    ("lib/use.dart", Lang::Dart, MIXIN_CALLER.as_bytes()),
+];
+
+#[test]
+fn dart_member_calls_bind_to_the_member_they_name() {
+    let callees = |caller| owner_qualified_callees(RESOLVE_FILES, caller);
+    assert_eq!(callees("viaCheck"), [".check", "SeqCheck.isSeq"]);
+    assert_eq!(callees("viaBare"), [".isSeq"]);
+    assert_eq!(callees("viaDirect"), ["Writer.toXmlString"]);
+}

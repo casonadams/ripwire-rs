@@ -467,6 +467,10 @@ impl LanguageSemantics for DartLanguage {
         DART_CORE_UNTYPED_MEMBERS.contains(&name)
     }
 
+    fn member_call_targets_members_only(&self) -> bool {
+        true
+    }
+
     fn std_qualifier_names(&self) -> &'static [&'static str] {
         DART_STD_QUALIFIERS
     }

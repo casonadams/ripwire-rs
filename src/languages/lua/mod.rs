@@ -1,5 +1,6 @@
 use super::{ComplexityKinds, DialectGroup, LanguageSemantics, SyntaxKinds, VisibilityMode};
 use crate::domain::Lang;
+use std::collections::HashMap;
 
 pub struct LuaLanguage;
 pub static LUA_LANG: LuaLanguage = LuaLanguage;
@@ -23,6 +24,49 @@ const LUA_STD_QUALIFIERS: &[&str] = &[
     "bit",
     "vim",
 ];
+
+/// The module a `local x = require "mod"` (or `require("mod")`) declaration loads, and the name it binds.
+/// None for anything else: `require "m" . field` binds a field of the module, not the module.
+fn lua_require(raw: &str) -> Option<(&str, &str)> {
+    let (lhs, rhs) = raw.trim().strip_prefix("local")?.split_once('=')?;
+    let bound = lhs.trim();
+    if bound.is_empty() || !bound.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+        return None;
+    }
+    let call = rhs.trim().strip_prefix("require")?.trim_start();
+    let (args, parenthesized) = match call.strip_prefix('(') {
+        Some(inner) => (inner.trim_start(), true),
+        None => (call, false),
+    };
+    let quote = args.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+    let body = &args[1..];
+    let end = body.find(quote)?;
+    let module = &body[..end];
+    let tail = body[end + 1..].trim();
+    let closed = if parenthesized { tail == ")" } else { tail.is_empty() };
+    let valid = !module.is_empty()
+        && module
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'));
+    (closed && valid).then_some((module, bound))
+}
+
+/// The `.lua` file a dotted module names: `pl.url` is `pl/url.lua` or `pl/url/init.lua` under any root.
+/// Unique matches only; two candidates decline rather than pick one.
+fn lua_module_file(module: &str, file_index: &HashMap<&str, u32>) -> Option<u32> {
+    let path = module.replace('.', "/");
+    let suffixes = [format!("{path}.lua"), format!("{path}/init.lua")];
+    let mut found = file_index
+        .iter()
+        .filter(|(file, _)| {
+            suffixes
+                .iter()
+                .any(|sfx| *file == sfx || file.ends_with(&format!("/{sfx}")))
+        })
+        .map(|(_, id)| *id);
+    let first = found.next()?;
+    found.next().is_none().then_some(first)
+}
 
 const KINDS: ComplexityKinds = ComplexityKinds {
     paths: &[],
@@ -117,6 +161,26 @@ impl LanguageSemantics for LuaLanguage {
             source_bytes,
             "",
         )
+    }
+
+    fn import_binding<'a>(&self, raw_target: &'a str) -> Option<(&'a str, &'a str)> {
+        lua_require(raw_target)
+    }
+
+    fn import_module_bindings(&self, raw_target: &str) -> Vec<(String, String)> {
+        lua_require(raw_target)
+            .map(|(module, bound)| vec![(module.to_string(), bound.to_string())])
+            .unwrap_or_default()
+    }
+
+    fn resolve_import_target(
+        &self,
+        _importer_path: &str,
+        raw_target: &str,
+        file_index: &HashMap<&str, u32>,
+    ) -> Option<u32> {
+        let module = lua_require(raw_target).map_or(raw_target, |(module, _)| module);
+        lua_module_file(module, file_index)
     }
 
     fn std_member_names(&self) -> &'static [&'static str] {

@@ -84,6 +84,9 @@ pub struct RawRef {
     pub path_call: bool,
     /// The receiver chain this reference could not type within its file, for the cross-file pass.
     pub receiver_chain: Option<PendingChain>,
+    /// The file that declares the member a cross-file chain typed `receiver_type` through. The type name is
+    /// written in that file, so its imports (not the reference's own file's) name the type.
+    pub receiver_file: Option<u32>,
 }
 
 /// Parsed facts from a single file.

@@ -1,16 +1,9 @@
-use crate::support::callees::callees_described;
-use ripwire_rs::{IngestResult, Interner, Lang, LanguageRegistry, SymKind, ingest_in_memory_files};
-
-/// A callee as `file:name`.
-fn location(ingest: &IngestResult, interner: &Interner, id: u32) -> String {
-    let sym = &ingest.symbols[id as usize];
-    let file = interner.resolve(&ingest.files[sym.file_id as usize].path);
-    format!("{file}:{}", interner.resolve(&sym.name))
-}
+use crate::support::callees::callee_file_names;
+use ripwire_rs::{Interner, Lang, LanguageRegistry, SymKind, ingest_in_memory_files};
 
 /// Callee symbols of `caller`, as `file:name`, across an in-memory multi-file ingest.
 fn callee_locations(files: &[(&str, Lang, &[u8])], caller: &str) -> Vec<String> {
-    callees_described(files, caller, location)
+    callee_file_names(files, caller)
 }
 
 #[test]
@@ -51,16 +44,50 @@ fn zig_return_type_is_not_a_definition_and_methods_scope_to_their_struct() {
     );
 }
 
+/// `const x = @import("m.zig")` binds `x` to that file: `x.f()` and `x.T.f()` bind into it. Each case is
+/// `(label, files as (path, source), caller, callees the caller must have)`.
 #[test]
-fn zig_import_binding_pins_qualified_calls_into_the_imported_file() {
-    let files: &[(&str, Lang, &[u8])] = &[
+fn zig_import_bound_qualifiers_bind_into_the_imported_file() {
+    type Case<'a> = (&'a str, &'a [(&'a str, &'a [u8])], &'a str, &'a [&'a str]);
+    let cases: &[Case<'_>] = &[
         (
-            "src/store.zig",
-            Lang::Zig,
-            b"const util = @import(\"util.zig\");\npub fn push(v: u32) void {\n    util.log(v);\n}\n",
+            "a module function",
+            &[
+                (
+                    "src/store.zig",
+                    b"const util = @import(\"util.zig\");\npub fn push(v: u32) void {\n    util.log(v);\n}\n",
+                ),
+                ("src/util.zig", b"pub fn log(v: u32) void {\n    _ = v;\n}\n"),
+                ("src/other.zig", b"pub fn log(v: u32) void {\n    _ = v;\n}\n"),
+            ],
+            "push",
+            &["src/util.zig:log"],
         ),
-        ("src/util.zig", Lang::Zig, b"pub fn log(v: u32) void {\n    _ = v;\n}\n"),
-        ("src/other.zig", Lang::Zig, b"pub fn log(v: u32) void {\n    _ = v;\n}\n"),
+        (
+            "a type a module declares, beside a same-named type and a same-file init",
+            &[
+                (
+                    "src/ast.zig",
+                    b"pub const Type = struct {\n    pub fn init() Type {\n        return .{};\n    }\n};\n",
+                ),
+                (
+                    "src/other.zig",
+                    b"pub const Type = struct {\n    pub fn init() Type {\n        return .{};\n    }\n};\n",
+                ),
+                (
+                    "src/parser.zig",
+                    b"const ast = @import(\"ast.zig\");\nfn init() void {}\npub fn run() void {\n    _ = ast.Type.init();\n}\n",
+                ),
+            ],
+            "run",
+            &["src/ast.zig:init"],
+        ),
     ];
-    assert_eq!(callee_locations(files, "push"), ["src/util.zig:log"]);
+    for (label, sources, caller, expected) in cases {
+        let files: Vec<(&str, Lang, &[u8])> = sources
+            .iter()
+            .map(|(path, source)| (*path, Lang::Zig, *source))
+            .collect();
+        assert_eq!(callee_locations(&files, caller), *expected, "{label}");
+    }
 }

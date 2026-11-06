@@ -131,6 +131,14 @@ impl LanguageSemantics for ZigLanguage {
         name.utf8_text(source_bytes).ok().map(str::to_string)
     }
 
+    fn import_binding<'a>(&self, raw_target: &'a str) -> Option<(&'a str, &'a str)> {
+        zig_import(raw_target).and_then(|(path, bound)| Some((path, bound?)))
+    }
+
+    fn module_member_qualifiers(&self) -> bool {
+        true
+    }
+
     fn import_module_bindings(&self, raw_target: &str) -> Vec<(String, String)> {
         match zig_import(raw_target) {
             Some((path, Some(bound))) => vec![(path.to_string(), bound.to_string())],

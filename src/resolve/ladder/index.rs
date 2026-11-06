@@ -73,9 +73,7 @@ pub fn index_module_qualifiers(
         };
         let importer_path = interner.resolve(&importer.path);
         for (target, bound) in r.lang.semantics().import_module_bindings(&raw) {
-            let Some(bound) = interner.get(&bound) else {
-                continue;
-            };
+            let bound = interner.intern(&bound);
             if let Some(file) = crate::languages::resolve_import(
                 r.lang,
                 importer_path,

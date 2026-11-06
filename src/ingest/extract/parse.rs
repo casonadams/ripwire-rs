@@ -183,7 +183,8 @@ fn dedup_conditional_macros(defs: &mut Vec<RawDef>) {
     defs.retain(|d| d.kind != SymKind::Macro || seen_macros.insert(d.name.clone()));
 }
 
-/// Give `alias.f()` the qualifier `alias` when this file's own imports bind `alias`.
+/// Give `alias.f()` the qualifier `alias` when this file's own imports bind `alias`; where the language names
+/// module members through their module, `alias.T.f()` takes the qualifier `alias::T`.
 fn qualify_import_bound_receivers(refs: &mut [RawRef], lang: Lang) {
     let bound: Vec<String> = refs
         .iter()
@@ -194,9 +195,21 @@ fn qualify_import_bound_receivers(refs: &mut [RawRef], lang: Lang) {
     if bound.is_empty() {
         return;
     }
+    let module_members = lang.semantics().module_member_qualifiers();
     for r in refs.iter_mut() {
         if r.receiver.as_ref().is_some_and(|recv| bound.contains(recv)) {
             r.qualifier = r.receiver.take();
+        } else if module_members
+            && let Some(qualifier) = module_member_qualifier(r.receiver.as_deref(), &bound)
+        {
+            r.qualifier = Some(qualifier);
+            r.receiver = None;
         }
     }
+}
+
+/// `alias::T` for the receiver text `alias.T` when `alias` is an import this file binds.
+fn module_member_qualifier(receiver: Option<&str>, bound: &[String]) -> Option<String> {
+    let (module, ty) = receiver?.split_once('.')?;
+    (bound.iter().any(|b| b == module) && !ty.contains('.')).then(|| format!("{module}::{ty}"))
 }

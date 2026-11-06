@@ -51,6 +51,7 @@ pub(super) fn scan_macro_body_calls(
                 receiver: None,
                 receiver_type: None,
                 receiver_chain: None,
+                receiver_file: None,
                 callable_field: false,
                 macro_arg: false,
                 member_call: false,

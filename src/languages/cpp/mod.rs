@@ -251,6 +251,10 @@ impl LanguageSemantics for CppLanguage {
         true
     }
 
+    fn untyped_member_declines_caller_class(&self) -> bool {
+        true
+    }
+
     fn extensions(&self) -> &'static [&'static str] {
         &["h", "cpp", "cc", "cxx", "hpp", "hxx", "hh"]
     }

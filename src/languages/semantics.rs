@@ -85,6 +85,11 @@ pub trait LanguageSemantics: Sync {
     fn keeps_path_qualifier(&self) -> bool {
         false
     }
+    /// True where a type a module declares is named through the module that imports it (Zig `ast.Type.init()`
+    /// after `const ast = @import("ast.zig")`): the call's qualifier is `ast::Type`, narrowed to that file.
+    fn module_member_qualifiers(&self) -> bool {
+        false
+    }
     /// Path suffixes of the files that root a crate/package module tree (Rust `src/lib.rs`).
     fn crate_root_suffixes(&self) -> &'static [&'static str] {
         &[]
@@ -621,6 +626,12 @@ pub trait LanguageSemantics: Sync {
         false
     }
 
+    /// True where a member call `x.f()` cannot reach a free function named `f` (Dart: a function is never a member,
+    /// so only methods and fields answer `x.f()`).
+    fn member_call_targets_members_only(&self) -> bool {
+        false
+    }
+
     /// Multiplier for this language's symbols in task retrieval; below 1 for declaration-only formats.
     fn retrieval_weight(&self) -> f64 {
         1.0
@@ -701,6 +712,11 @@ pub trait LanguageSemantics: Sync {
     }
     /// Dart: `extends` and mixins are not indexed, so a miss on a typed receiver proves nothing.
     fn typed_receiver_miss_uses_names(&self) -> bool {
+        false
+    }
+    /// True where an untyped member call whose name the caller's own class also declares declines instead of
+    /// binding to that class: a standard or core member name, or a member another in-tree class declares too.
+    fn untyped_member_declines_caller_class(&self) -> bool {
         false
     }
     /// True where a call receiver whose result type is not declared (`make().m()`) declines instead of name resolution.

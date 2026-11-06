@@ -7,22 +7,38 @@ pub(super) fn class_implementations(root: Node<'_>, source: &[u8]) -> Vec<Implem
     crate::languages::typed::class_implementations(
         root,
         source,
-        &["class_definition"],
+        &["class_definition", "mixin_declaration"],
         dart_class_name,
         dart_bases,
     )
 }
 
+/// A class's name is its `name` field; a mixin names itself with a bare identifier.
 fn dart_class_name<'s>(class: Node<'_>, source: &'s [u8]) -> Option<&'s str> {
-    class.child_by_field_name("name")?.utf8_text(source).ok()
+    let name = class.child_by_field_name("name").or_else(|| {
+        let mut cursor = class.walk();
+        class
+            .named_children(&mut cursor)
+            .find(|child| child.kind() == "identifier")
+    })?;
+    name.utf8_text(source).ok()
 }
 
 /// Dart names the superclass and the interfaces as `type_identifier`s under those fields.
 fn dart_bases<'s>(class: Node<'_>, source: &'s [u8]) -> Vec<&'s str> {
-    ["superclass", "interfaces"]
+    let direct = ["superclass", "interfaces"]
         .into_iter()
         .filter_map(|field| class.child_by_field_name(field))
-        .flat_map(|clause| named_children_of_kind(clause, "type_identifier"))
+        .flat_map(|clause| named_children_of_kind(clause, "type_identifier"));
+    // `extends B with M` nests the mixins under the superclass clause (or beside it, by grammar version).
+    let mixins = class
+        .child_by_field_name("superclass")
+        .into_iter()
+        .chain(std::iter::once(class))
+        .flat_map(|parent| named_children_of_kind(parent, "mixins"))
+        .flat_map(|list| named_children_of_kind(list, "type_identifier"));
+    direct
+        .chain(mixins)
         .filter_map(|ty| ty.utf8_text(source).ok())
         .collect()
 }

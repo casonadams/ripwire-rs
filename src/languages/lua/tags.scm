@@ -2,7 +2,7 @@
 ; tree-sitter-grammars/tree-sitter-lua v0.5.0 node-types.json and verified against real parses
 ; (test/luafix + the lua/busted shape-recall run).
 ;
-; Lua has no `class` and no `import`. Everything a module exports is a VALUE stored in a table, so the
+; Lua has no `class` and no import statement. Everything a module exports is a VALUE stored in a table, so the
 ; five definition shapes below are the five spellings the language actually uses for "here is a named
 ; function", and they are the whole of the OOP-ish structure a call graph can see:
 ;   1. function f( .. )              — a free (global or local) function
@@ -32,10 +32,9 @@
 ;     `lua/plenary/path.lua`, which defines `shorten` and `_get_parent` this way. It degrades honestly
 ;     rather than guessing — `--uses=_get_parent` reports `defs="0" external="1" count="2"`, i.e. "two
 ;     use-sites, no definition found here", never a wrong definition.
-;   - `require "mod"` is NOT an import directive — Lua has no import syntax; require is an ordinary
-;     global function. It is therefore captured by the plain call pattern below (exactly as Ruby's
-;     `require` is), NOT by ingest.cpp::captureIncludes, and Lua is correspondingly absent from
-;     lintrules.h's dependencyCapable set: a Lua file is never a node in the --deps/--arch graph.
+;   - `require "mod"` is NOT an import directive, and a bare `require "mod"` binds nothing. Only the
+;     declaration `local x = require "mod"` is captured as an import (the last pattern below): it binds `x`
+;     to the file `mod` names, so `x.f()` resolves into that file. Lua has no dependency graph node for it.
 
 ; ---- definitions ----
 
@@ -90,3 +89,13 @@
     (method_index_expression
       method: (identifier) @name)
   ]) @reference.call
+
+; `local url = require 'pl.url'` — the whole declaration is the import node, so the bound name travels with
+; the module path and `url.f()` can bind into that file (languages/lua/mod.rs parses the text). Tags run
+; without predicates, so every `local x = f 'str'` matches here and the parser keeps only `require`.
+(variable_declaration
+  (assignment_statement
+    (expression_list
+      value: (function_call
+        name: (identifier)
+        arguments: (arguments (string)))))) @import.path

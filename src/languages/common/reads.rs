@@ -19,6 +19,24 @@ pub struct ReadBindings<'a> {
     module: HashMap<&'a str, Option<String>>,
 }
 
+/// The entry of member `member` of `owner`, or of the nearest ancestor that declares it, climbing the `EXTENDS`
+/// entries (`superclass` reads the class name an `EXTENDS` entry holds).
+pub fn inherited_entry<'m, V>(
+    members: &'m HashMap<(String, String), V>,
+    owner: &str,
+    member: &str,
+    superclass: impl Fn(&V) -> &str,
+) -> Option<&'m V> {
+    let mut current = owner.to_string();
+    for _ in 0..MAX_ANCESTORS {
+        if let Some(entry) = members.get(&(current.clone(), member.to_string())) {
+            return Some(entry);
+        }
+        current = superclass(members.get(&(current, EXTENDS.to_string()))?).to_string();
+    }
+    None
+}
+
 /// The member a class records for its superclass, so a member lookup can climb to the ancestor that declares it.
 pub const EXTENDS: &str = "extends";
 const MAX_ANCESTORS: usize = 16;
@@ -143,14 +161,7 @@ impl<'a> ReadBindings<'a> {
     /// Declared type of member `member` of `owner`, or of the nearest ancestor that declares it (climbing the
     /// `EXTENDS` members each class records).
     pub fn inherited_member_type(&self, owner: &str, member: &str) -> Option<&str> {
-        let mut current = owner.to_string();
-        for _ in 0..MAX_ANCESTORS {
-            if let Some(ty) = self.members.get(&(current.clone(), member.to_string())) {
-                return Some(ty.as_str());
-            }
-            current = self.members.get(&(current, EXTENDS.to_string()))?.clone();
-        }
-        None
+        inherited_entry(&self.members, owner, member, String::as_str).map(String::as_str)
     }
 
     /// Every recorded member type, as `(owner, member, type)`.

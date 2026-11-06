@@ -24,6 +24,9 @@ pub struct Reference {
     pub member_call: bool,
     /// The name is reached through a path (`Type::f`), so a method's receiver is written as its first argument.
     pub path_call: bool,
+    /// The file whose imports name `receiver_type`, when that file is not this reference's own (a field's declared
+    /// type, written in the file that declares the field).
+    pub receiver_file: Option<u32>,
 }
 
 impl Reference {
@@ -52,6 +55,7 @@ impl Reference {
             macro_arg: false,
             member_call: false,
             path_call: false,
+            receiver_file: None,
         }
     }
 

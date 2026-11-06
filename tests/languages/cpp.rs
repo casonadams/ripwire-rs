@@ -283,3 +283,17 @@ fn cpp_receiver_typed_as_an_explicit_specialization_binds_its_members_or_decline
     let owned = owner_qualified_callees(tied, "read_int");
     assert!(!owned.iter().any(|c| c.starts_with("Slot")), "{owned:?}");
 }
+
+#[test]
+fn cpp_untyped_member_call_declines_rather_than_preferring_the_callers_own_class() {
+    let sink = b"class sink {\npublic:\n  void flush();\n  void push_back(int v);\n};\nvoid sink::flush() {}\nvoid sink::push_back(int v) {}\n";
+    let pool = b"class pool {\npublic:\n  void flush();\n  void push_back(int v);\n  void drain(auto& q) { q.flush(); }\n  void fill(auto& q) { q.push_back(1); }\n};\nvoid pool::flush() {}\nvoid pool::push_back(int v) {}\n";
+    let files: &[(&str, Lang, &[u8])] = &[
+        ("src/sink.cpp", Lang::Cpp, sink),
+        ("src/pool.cpp", Lang::Cpp, pool),
+    ];
+    let drained = owner_qualified_callees(files, "drain");
+    let filled = owner_qualified_callees(files, "fill");
+    assert!(!drained.iter().any(|c| c == "pool.flush"), "{drained:?}");
+    assert!(!filled.iter().any(|c| c == "pool.push_back"), "{filled:?}");
+}

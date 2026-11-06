@@ -209,6 +209,7 @@ fn push_link_ref(callee: String, line: u32, start_byte: usize, refs: &mut Vec<Ra
         receiver: None,
         receiver_type: None,
         receiver_chain: None,
+        receiver_file: None,
         callable_field: false,
         macro_arg: false,
         member_call: false,

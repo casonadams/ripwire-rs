@@ -24,9 +24,10 @@ fn degree_callees(ingest: &IngestResult, graph: &Graph, interner: &Interner) -> 
 }
 
 /// `state.graph.in_degree()` reaches the owner through the field, without an import of `Graph` in the caller.
-/// A second declaration of `Graph` makes the owner ambiguous, so the same call declines.
+/// The field's type is named in the file that declares the field, so a second declaration of `Graph` elsewhere in
+/// the tree does not make the call ambiguous: the declaring file's import selects the owner.
 #[test]
-fn field_typed_receiver_binds_only_a_unique_owner() {
+fn field_typed_receiver_names_its_type_through_the_declaring_file() {
     let (ingest, graph, interner) = index_files(&[
         ("src/graph/mod.rs", Lang::Rust, GRAPH),
         ("src/state.rs", Lang::Rust, STATE),
@@ -42,5 +43,8 @@ fn field_typed_receiver_binds_only_a_unique_owner() {
         ("src/state.rs", Lang::Rust, STATE),
         ("src/report/mod.rs", Lang::Rust, REPORT),
     ]);
-    assert!(degree_callees(&ingest, &graph, &interner).is_empty());
+    assert_eq!(
+        degree_callees(&ingest, &graph, &interner),
+        vec!["in_degree@src/graph/mod.rs".to_string()]
+    );
 }

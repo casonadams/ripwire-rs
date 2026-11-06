@@ -50,6 +50,7 @@ pub fn build_file_references(
             if let Some(rt) = &r.receiver_type {
                 reference.receiver_type = Some(interner.intern(rt));
             }
+            reference.receiver_file = r.receiver_file;
             reference.callable_field = r.callable_field;
             reference.macro_arg = r.macro_arg;
             reference.member_call = r.member_call;

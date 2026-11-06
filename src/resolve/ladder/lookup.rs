@@ -64,7 +64,10 @@ pub trait ResolutionLookup {
             qualifier_file: &qualifier_file,
             reaches: &reaches,
         };
-        trait_idx.resolve_receiver_owner(text, r.file_id, r.start_byte, &env)
+        let (file, byte) = r
+            .receiver_file
+            .map_or((r.file_id, r.start_byte), |f| (f, 0));
+        trait_idx.resolve_receiver_owner(text, file, byte, &env)
     }
 
     /// True when a typed receiver names no indexed type and the language lets its call use names.
@@ -185,6 +188,17 @@ pub trait ResolutionLookup {
         (!out.is_empty()).then_some(out)
     }
 
+    /// A free function (no owning scope) is no member, so a member call `x.f()` on an untyped receiver never
+    /// reaches it where the language says so.
+    #[must_use]
+    fn is_free_function_of_member_call(&self, r: &Reference, sym: &Symbol) -> bool {
+        r.member_call
+            && r.qualifier.is_none()
+            && sym.kind == crate::domain::SymKind::Function
+            && sym.scope.is_none()
+            && r.lang.semantics().member_call_targets_members_only()
+    }
+
     #[must_use]
     fn is_compatible_target(&self, r: &Reference, sym: &Symbol) -> bool {
         if sym.constructor && r.qualifier != sym.scope {
@@ -209,6 +223,10 @@ pub trait ResolutionLookup {
             && r.lang.semantics().member_call_targets_callables_only()
         {
             // `res.json()` calls a property of an unknown receiver; a same-named variable is no callee.
+            return false;
+        }
+        if self.is_free_function_of_member_call(r, sym) {
+            // `x.f()` on an untyped receiver never reaches a free function `f` of the same name.
             return false;
         }
         if r.role == RefRole::Call
@@ -408,6 +426,29 @@ pub trait ResolutionLookup {
         [free, in_module].into_iter().find(|set| !set.is_empty())
     }
 
+    /// `module::Type` names a type the file `module` imports declares: the compatible candidates scoped to
+    /// `Type` in that file. Checked before the core-member decline, so `ast.Type.init()` is not a core `init`.
+    fn module_member_candidates(
+        &self,
+        all_cands: &[NodeId],
+        r: &Reference,
+        q: Spur,
+    ) -> Option<CandBuffer> {
+        let interner = self.interner()?;
+        let (module, ty) = interner.try_resolve(&q)?.split_once("::")?;
+        let module_file = self.qualifier_module_file(r.file_id, interner.get(module)?)?;
+        let ty = interner.get(ty)?;
+        let symbols = self.symbols();
+        let mut members = CandBuffer::default();
+        for &id in all_cands {
+            let sym = &symbols[id as usize];
+            if sym.file_id == module_file && sym.scope == Some(ty) {
+                members.push(id);
+            }
+        }
+        (!members.is_empty()).then_some(members)
+    }
+
     /// Candidates a qualified reference can mean: those scoped by the qualifier, else those in the module
     /// file the qualifier is bound to by an import, else all of them unless the qualifier is std/builtin, or a
     /// macro argument names a type the index does not bind (its path is read from flat tokens: no evidence).
@@ -475,6 +516,9 @@ pub trait ResolutionLookup {
         if let Some(caller_sc) = symbols.get(r.from_symbol as usize).and_then(|cs| cs.scope) {
             let qualified = filter_matching_scope(&cands, symbols, caller_sc);
             if !qualified.is_empty() {
+                if self.untyped_member_contested(r, &cands, caller_sc) {
+                    return None;
+                }
                 return Some((qualified, Narrowing::CallerScope));
             }
             if let Some(inherited) = self.inherited_candidates(r, caller_sc) {
@@ -491,6 +535,29 @@ pub trait ResolutionLookup {
             return (!local.is_empty()).then_some((local, Narrowing::None));
         }
         Some((cands, Narrowing::None))
+    }
+
+    /// An untyped member call (no receiver type, no qualifier) that the caller's own class would win by name is
+    /// contested when the name is a standard or core member, or when another in-tree class declares it too. Such a
+    /// call declines: the receiver, not the caller's class, says whose member it is.
+    #[must_use]
+    fn untyped_member_contested(&self, r: &Reference, cands: &CandBuffer, caller_sc: Spur) -> bool {
+        if !r.member_call || r.receiver_type.is_some() || r.qualifier.is_some() {
+            return false;
+        }
+        let semantics = r.lang.semantics();
+        if !semantics.untyped_member_declines_caller_class() {
+            return false;
+        }
+        let Some(name) = self.interner().and_then(|i| i.try_resolve(&r.callee_name)) else {
+            return false;
+        };
+        let symbols = self.symbols();
+        semantics.is_std_or_builtin_member(name)
+            || semantics.core_member_names().contains(&name)
+            || cands
+                .iter()
+                .any(|&id| symbols[id as usize].scope.is_some_and(|s| s != caller_sc))
     }
 
     /// Whether `r` is a call of one of `names`, a language's ambient names for method calls.
@@ -549,6 +616,11 @@ pub trait ResolutionLookup {
             {
                 return None;
             }
+        }
+        if let Some(q) = r.qualifier
+            && let Some(members) = self.module_member_candidates(all_cands, r, q)
+        {
+            return Some((members, Narrowing::Import));
         }
         if r.member_call && self.is_core_member_call(r) {
             return None;
