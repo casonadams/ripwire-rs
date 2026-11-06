@@ -14,20 +14,23 @@
 #   index                shell that writes {out} (= /out/<index_file>)
 #   precision_floor, recall_floor
 #                        lowest accepted --eval=scip values, set just under the measured value
-#                        (corpus.py measure prints suggestions)
 #   status               measured | unverified | blocked; blocked entries need a reason
 #
 # Repo URLs and SHAs live only in this file (see AGENTS.md).
 
+# path = "." snapshots the working tree (tracked and unignored files), so its index and floors follow the
+# content being measured, not a commit; re-measure after resolver changes. This repo is not pinned to a SHA.
 [[repo]]
 name = "ripwire-rs"
 languages = ["rust"]
-status = "unverified"
+status = "measured"
 license = "Apache-2.0"
 path = "."
 indexer = "rust-analyzer"
 indexer_version = "1.98.1"
 index = "rust-analyzer scip /src --output {out}"
+precision_floor = 0.9838
+recall_floor = 0.9754
 
 [[repo]]
 name = "rich"
@@ -104,14 +107,15 @@ recall_floor = 0.6505
 [[repo]]
 name = "kotlinpoet"
 languages = ["kotlin"]
-status = "blocked"
-reason = "scip-java 0.12.3 Kotlin semanticdb plugin rejects KotlinPoet's Kotlin compiler (PluginProcessingError: incompatible with the current version of the compiler); scip-java 0.13.x writes SCIP typed_range, which the resolver's scip crate 0.10.0 ignores; 0.14.0 needs an artifact not on Maven Central"
+status = "measured"
 license = "Apache-2.0"
 url = "https://github.com/square/kotlinpoet"
 sha = "4ce5d54547614aa245dd3cc8d9e0732bbe9c44de"
 indexer = "scip-java"
-indexer_version = "0.12.3"
-index = "cd /src && scip-java index --output={out}"
+indexer_version = "0.13.2"
+index = "cd /src && scip-java-0.13.2 index --output={out}"
+precision_floor = 0.8294
+recall_floor = 0.5030
 
 [[repo]]
 name = "jsoup"
@@ -127,16 +131,27 @@ precision_floor = 0.9399
 recall_floor = 0.8319
 
 [[repo]]
-name = "os-lib"
+name = "scalacheck"
 languages = ["scala"]
-status = "blocked"
-reason = "scip-java 0.12.3 reports 'No build tool detected' for os-lib (Mill 1.x build.mill) even with --build-tool=mill; sbt is not installed in the image, and no sbt-based Scala repo was indexed"
-license = "MIT"
-url = "https://github.com/com-lihaoyi/os-lib"
-sha = "8871ab0bda9bbcc4edbef9b1a402eb4c47ef9398"
+status = "measured"
+license = "BSD-3-Clause"
+url = "https://github.com/typelevel/scalacheck"
+sha = "c62df5d5e47670c847f93fcdb7ef8ee3ad6f864e"
 indexer = "scip-java"
 indexer_version = "0.12.3"
-index = "cd /src && scip-java index --build-tool=mill --output={out}"
+setup = '''mkdir -p /tmp/work /tmp/codegen/classes && cp -r /src/core /tmp/work/ && cat > /tmp/codegen/Generate.scala <<'EOF'
+object Generate {
+  def main(args: Array[String]): Unit = {
+    val dir = java.nio.file.Paths.get(args(0))
+    java.nio.file.Files.createDirectories(dir)
+    codegen.genAll.foreach(f => java.nio.file.Files.writeString(dir.resolve(f.name), f.code))
+  }
+}
+EOF
+java -cp "$(cat /opt/scala-compiler-classpath.txt)" dotty.tools.dotc.Main -classpath "$(cat /opt/scala-library-classpath.txt)" -d /tmp/codegen/classes /src/project/codegen.scala /tmp/codegen/Generate.scala && java -cp "/tmp/codegen/classes:$(cat /opt/scala-library-classpath.txt)" Generate /tmp/work/core/shared/src/main/scala-generated/org/scalacheck'''
+index = '''cd /tmp/work && find core/shared/src/main core/shared/src/test core/jvm/src/main core/jvm/src/test -name '*.scala' -not -path '*/scala-2.12-/*' | sort > /tmp/sources.txt && scala-semanticdb /tmp/classes /tmp/semanticdb $(cat /tmp/sources.txt) && scip-java index-semanticdb --output={out} /tmp/semanticdb'''
+precision_floor = 0.8997
+recall_floor = 0.8419
 
 [[repo]]
 name = "spdlog"
@@ -182,12 +197,13 @@ recall_floor = 0.9776
 [[repo]]
 name = "uuid"
 languages = ["php"]
-status = "blocked"
-reason = "scip-php 0.0.2 exits at start: 'Invalid scip-php vendor directory' (it expects its vendor dir at a nested path composer does not create); its protobuf dependency is blocked by a security advisory (--no-security-blocking) and its php-parser pin conflicts with uuid dev dependencies"
+status = "measured"
 license = "MIT"
 url = "https://github.com/ramsey/uuid"
 sha = "dc681915388ca5fd55a7fcb7c85bd9202f20fd4a"
 indexer = "scip-php"
 indexer_version = "0.0.2"
-setup = "composer install --no-interaction --no-progress --no-scripts && composer require --dev --with-all-dependencies --no-interaction --no-progress --no-scripts --no-security-blocking davidrjenni/scip-php:0.0.2"
-index = "cd /src && vendor/bin/scip-php && mv index.scip {out}"
+setup = "composer install --no-interaction --no-progress --no-scripts --no-security-blocking"
+index = "cd /src && scip-php && mv index.scip {out}"
+precision_floor = 0.9347
+recall_floor = 0.8850

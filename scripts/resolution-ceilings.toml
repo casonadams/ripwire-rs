@@ -1,16 +1,19 @@
 # Resolver gauges on this repository, read by scripts/check-resolution.py (make resolution).
-# Ceilings sit about a tenth above the measured value. Raise one only with a reason in the commit;
+# Ceilings sit about 2% above the measured value. Raise one only with a reason in the commit;
 # lower one in the commit that improves resolution so the gain cannot be lost.
-# Measured with the three Python gate scripts indexed: graph_ambiguous=555, graph_unresolved=855
-# (each script adds standard-library calls the resolver cannot bind).
+# Measured with tests/resolve/declared_receiver_owner.rs in the tree: graph_ambiguous=572, graph_unresolved=950.
+# The unresolved count rose from 865 at 15de2fe: about 80 calls named kind or walk (tree-sitter Node methods in
+# newly added parser code, which no in-tree definition answers) and 7 typed Graph receivers. Graph is declared
+# twice on this tree (src/graph/mod.rs and a type alias in tests/git/history.rs), so the owner is not unique from
+# the calling file and those calls decline by design.
 
 [[ceiling]]
 gauge = "graph_ambiguous"
-max = 605
+max = 583
 
 [[ceiling]]
 gauge = "graph_unresolved"
-max = 930
+max = 969
 
 # SCIP oracle (rust-analyzer), measured on this repository: precision=0.9858, recall=0.9774.
 # Floors sit just under the measurement; raise one in the commit that improves it.

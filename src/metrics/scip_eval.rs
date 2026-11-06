@@ -285,3 +285,23 @@ pub fn serialize_scip_eval_xml<W: Write>(
     }
     writeln!(out, "</scip-eval>")
 }
+
+/// Every covered call site's verdict, one `<verdict v= p= callee=/>` per site, agreements included.
+/// The corpus harness diffs two builds' verdicts with it; it is written only for `--eval-sites`.
+pub fn serialize_scip_verdicts_xml<W: Write>(
+    report: &ScipEvalReport,
+    ingest: &IngestResult,
+    interner: &Interner,
+    out: &mut W,
+) -> io::Result<()> {
+    writeln!(out, "<scip-verdicts>")?;
+    for site in &report.sites {
+        let r = &ingest.references[site.reference];
+        write!(out, "<verdict v=\"{}\" p=\"", site.verdict.label())?;
+        escape_xml_write(out, ingest.file_path(r.file_id, interner))?;
+        write!(out, ":{}\" callee=\"", r.name_line)?;
+        escape_xml_write(out, interner.resolve(&r.callee_name))?;
+        writeln!(out, "\"/>")?;
+    }
+    writeln!(out, "</scip-verdicts>")
+}

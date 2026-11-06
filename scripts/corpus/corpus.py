@@ -33,7 +33,15 @@ DEFAULT_BIN = ROOT / "target" / "release" / "ripwire-rs"
 TIMEOUT = 3600
 MARGIN = 0.002
 EVAL_TAG = re.compile(r"<scip-eval ([^>]*)>")
-SITE_TAG = re.compile(r"<site ([^>]*)/>")
+VERDICT_TAG = re.compile(r"<verdict ([^>]*)/>")
+# Verdicts scored as right or wrong; unindexed sites are neither (see scip_eval.rs SiteVerdict).
+STATE = {
+    "exact": "right", "split-hit": "right", "external-agreed": "right",
+    "wrong": "wrong", "missed": "wrong", "false-edge": "wrong",
+    "unindexed": "neutral",
+}
+RANK = {"neutral": 0, "right": 1, "wrong": 2}
+FLIPS = ("right->wrong", "wrong->right", "entered", "left")
 ATTR = re.compile(r'([\w-]+)="([^"]*)"')
 SAMPLE_SHOWN = 5
 
@@ -244,14 +252,25 @@ def find_binary(path):
     return found
 
 
-def scip_eval(binary, src, index, samples):
-    """Run `ripwire-rs SRC --scip INDEX --eval=scip`; return (raw output, attributes of <scip-eval>)."""
-    args = [binary, str(src), "--scip", str(index), "--eval=scip", f"--samples={samples}"]
+def run_eval(args, binary):
+    """Run an eval command; return (raw output, attributes of <scip-eval>)."""
     done = subprocess.run(args, capture_output=True, text=True, timeout=TIMEOUT)
     found = EVAL_TAG.search(done.stdout)
     if done.returncode or not found:
         raise Skip(f"{binary} --eval=scip failed: {done.stderr.strip()[-300:]}")
     return done.stdout, dict(ATTR.findall(found[1]))
+
+
+def scip_eval(binary, src, index, samples):
+    """Score a build against an index: (raw output, attributes of <scip-eval>)."""
+    args = [binary, str(src), "--scip", str(index), "--eval=scip", f"--samples={samples}"]
+    return run_eval(args, binary)
+
+
+def scip_verdicts(binary, src, index):
+    """Score a build and list every covered site's verdict (--eval-sites)."""
+    args = [binary, str(src), "--scip", str(index), "--eval=scip", "--samples=0", "--eval-sites"]
+    return run_eval(args, binary)
 
 
 def ratio(attrs, key):
@@ -334,53 +353,68 @@ def cmd_measure(args):
     return 1 if args.strict and skipped else 0
 
 
-def parse_sites(text):
-    """Disagreeing call sites keyed by (file:line, callee); agreeing sites are not printed by --eval=scip."""
-    sites = {}
-    for tag in SITE_TAG.findall(text):
+def parse_states(text):
+    """Each covered call site's state, keyed by (file:line, callee): right, wrong or neutral (unindexed).
+
+    --eval-sites prints one <verdict> per covered reference. A key with several references takes the
+    worst of them: one wrong reference makes the site wrong.
+    """
+    states = {}
+    for tag in VERDICT_TAG.findall(text):
         attrs = dict(ATTR.findall(tag))
-        sites.setdefault((attrs.get("p", ""), attrs.get("callee", "")), attrs)
-    return sites
+        key = (attrs.get("p", ""), attrs.get("callee", ""))
+        state = STATE[attrs["v"]]
+        states[key] = max(states.get(key, "neutral"), state, key=RANK.get)
+    return states
 
 
-def classify(old, new):
-    """Sites that entered, left, or changed in the disagreement list between two binaries."""
-    entered = sorted(key for key in new if key not in old)
-    left = sorted(key for key in old if key not in new)
-    changed = sorted(
-        key for key in new
-        if key in old and (new[key].get("v"), new[key].get("ours")) != (old[key].get("v"), old[key].get("ours"))
-    )
-    return entered, left, changed
+def flips(old, new):
+    """Sites by flip between two builds. A site missing from a build is 'absent' there.
+
+    right->wrong is a regression, wrong->right a fix, entered a site that now disagrees but was not wrong
+    before, left a wrong site that no longer disagrees. Right->neutral and neutral->right are not reported.
+    """
+    out = {name: [] for name in FLIPS}
+    for key in sorted(set(old) | set(new)):
+        before, after = old.get(key, "absent"), new.get(key, "absent")
+        if (before, after) == ("right", "wrong"):
+            out["right->wrong"].append(key)
+        elif (before, after) == ("wrong", "right"):
+            out["wrong->right"].append(key)
+        elif after == "wrong" and before != "wrong":
+            out["entered"].append(key)
+        elif before == "wrong" and after != "wrong":
+            out["left"].append(key)
+    return out
 
 
-def report_diff(name, old_attrs, new_attrs, old_sites, new_sites):
-    entered, left, changed = classify(old_sites, new_sites)
+def report_diff(name, old_attrs, new_attrs, old_states, new_states, samples):
+    result = flips(old_states, new_states)
     print(f"{name}: calls {old_attrs.get('calls')} -> {new_attrs.get('calls')}, "
           f"precision {old_attrs.get('precision')} -> {new_attrs.get('precision')}, "
           f"recall {old_attrs.get('recall')} -> {new_attrs.get('recall')}")
-    print(f"  entered disagreement (right->wrong or new): {len(entered)}")
-    print(f"  left disagreement (wrong->right or dropped): {len(left)}")
-    print(f"  same site, different verdict or edge: {len(changed)}")
-    for label, keys, sites in (("entered", entered, new_sites), ("left", left, old_sites), ("changed", changed, new_sites)):
-        for key in keys[:SAMPLE_SHOWN]:
-            print(f"    {label}: {key[0]} callee={key[1]} v={sites[key].get('v')} ours={sites[key].get('ours', '')}")
-    return len(entered), len(left), len(changed)
+    for label in FLIPS:
+        print(f"  {label}: {len(result[label])}")
+        for key in result[label][:samples]:
+            print(f"    {label}: {key[0]} callee={key[1]}")
+    return {label: len(result[label]) for label in FLIPS}
 
 
 def cmd_diff(args):
     old_bin, new_bin = find_binary(args.old), find_binary(args.new)
-    totals = [0, 0, 0]
+    totals = dict.fromkeys(FLIPS, 0)
 
     def action(entry):
         src, index = prepare(entry, force=False)
-        old_text, old_attrs = scip_eval(old_bin, src, index, args.samples)
-        new_text, new_attrs = scip_eval(new_bin, src, index, args.samples)
-        counts = report_diff(entry.name, old_attrs, new_attrs, parse_sites(old_text), parse_sites(new_text))
-        totals[:] = [a + b for a, b in zip(totals, counts)]
+        old_text, old_attrs = scip_verdicts(old_bin, src, index)
+        new_text, new_attrs = scip_verdicts(new_bin, src, index)
+        counts = report_diff(entry.name, old_attrs, new_attrs,
+                             parse_states(old_text), parse_states(new_text), args.samples)
+        for label, count in counts.items():
+            totals[label] += count
 
     skipped = run_entries(select(args.names), action)
-    print(f"total: entered {totals[0]}, left {totals[1]}, changed {totals[2]}")
+    print("total: " + ", ".join(f"{label} {totals[label]}" for label in FLIPS))
     return 1 if args.strict and skipped else 0
 
 
@@ -409,7 +443,8 @@ def build_parser():
     diff.add_argument("old")
     diff.add_argument("new")
     diff.add_argument("names", nargs="*")
-    diff.add_argument("--samples", type=int, default=100000)
+    diff.add_argument("--samples", type=int, default=SAMPLE_SHOWN,
+                      help="sites printed per flip (the counts are always exact)")
     diff.add_argument("--strict", action="store_true")
     return parser
 

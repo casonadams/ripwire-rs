@@ -4,7 +4,8 @@ use ripwire_rs::resolve::scip_sites;
 use ripwire_rs::{
     Graph, IngestResult, Interner, Lang, LanguageRegistry, PageRankConfig, ingest_in_memory_files,
 };
-use scip::types::{Document, Index, Occurrence, SymbolRole};
+use scip::types::occurrence::Typed_range;
+use scip::types::{Document, Index, MultiLineRange, Occurrence, SingleLineRange, SymbolRole};
 
 const SOURCES: &[(&str, Lang, &[u8])] = &[
     (
@@ -24,17 +25,48 @@ const SOURCES: &[(&str, Lang, &[u8])] = &[
     ),
 ];
 
+#[derive(Clone, Copy)]
+enum Form {
+    Packed,
+    SingleLine,
+    MultiLine,
+}
+
 fn occurrence(symbol: &str, line: i32, definition: bool) -> Occurrence {
-    Occurrence {
+    occurrence_in(Form::Packed, symbol, line, definition)
+}
+
+fn occurrence_in(form: Form, symbol: &str, line: i32, definition: bool) -> Occurrence {
+    let mut occ = Occurrence {
         symbol: symbol.to_string(),
-        range: vec![line, 4, 7],
         symbol_roles: if definition {
             SymbolRole::Definition as i32
         } else {
             0
         },
         ..Occurrence::default()
+    };
+    match form {
+        Form::Packed => occ.range = vec![line, 4, 7],
+        Form::SingleLine => {
+            occ.typed_range = Some(Typed_range::SingleLineRange(SingleLineRange {
+                line,
+                start_character: 4,
+                end_character: 7,
+                ..SingleLineRange::default()
+            }));
+        }
+        Form::MultiLine => {
+            occ.typed_range = Some(Typed_range::MultiLineRange(MultiLineRange {
+                start_line: line,
+                start_character: 4,
+                end_line: line + 1,
+                end_character: 7,
+                ..MultiLineRange::default()
+            }));
+        }
     }
+    occ
 }
 
 fn document(path: &str, occurrences: Vec<Occurrence>) -> Document {
@@ -50,13 +82,20 @@ const Y_RUN: &str = "scip-python python app 1.0 b/y/run().";
 const LIB_RUN: &str = "scip-python python lib 2.0 lib/run().";
 
 fn index_bytes() -> Vec<u8> {
+    index_with(Form::Packed)
+}
+
+fn index_with(form: Form) -> Vec<u8> {
     Index {
         documents: vec![
-            document("a/x.py", vec![occurrence(X_RUN, 1, true)]),
-            document("b/y.py", vec![occurrence(Y_RUN, 1, true)]),
+            document("a/x.py", vec![occurrence_in(form, X_RUN, 1, true)]),
+            document("b/y.py", vec![occurrence_in(form, Y_RUN, 1, true)]),
             document(
                 "c/use.py",
-                vec![occurrence(Y_RUN, 1, false), occurrence(LIB_RUN, 4, false)],
+                vec![
+                    occurrence_in(form, Y_RUN, 1, false),
+                    occurrence_in(form, LIB_RUN, 4, false),
+                ],
             ),
         ],
         ..Index::default()
@@ -73,8 +112,11 @@ fn callees(sym: &str, scip: Option<&[u8]>) -> String {
 fn scip_index_pins_call_sites_the_name_ladder_declines() {
     let without = callees("go", None);
     assert!(without.contains("declined_calls=\"1\""), "{without}");
-    let bytes = index_bytes();
-    let with = callees("go", Some(&bytes));
+    assert_pins_run(&index_bytes());
+}
+
+fn assert_pins_run(bytes: &[u8]) {
+    let with = callees("go", Some(bytes));
     assert!(
         with.contains("<s t=\"fn\" n=\"run\" p=\"b/y.py:2\" prov=\"scip\"/>"),
         "{with}"
@@ -252,4 +294,65 @@ fn shared_navigation_reports_keep_scip_groups_and_unbound_sites_with_paging() {
     assert!(later.contains("<def ix=\"2\""), "{later}");
     assert!(later.contains("<dc in=\"unpinned\""), "{later}");
     assert!(later.contains("offset=\"1\" limit=\"1\""), "{later}");
+}
+
+#[test]
+fn every_range_form_pins_the_same_sites() {
+    for form in [Form::Packed, Form::SingleLine, Form::MultiLine] {
+        assert_pins_run(&index_with(form));
+    }
+}
+
+#[test]
+fn typed_range_takes_precedence_over_packed_range() {
+    let bytes = Index {
+        documents: vec![
+            document("a/x.py", vec![occurrence(X_RUN, 1, true)]),
+            document("b/y.py", vec![occurrence(Y_RUN, 1, true)]),
+            document(
+                "c/use.py",
+                vec![Occurrence {
+                    range: vec![40, 4, 7],
+                    ..occurrence_in(Form::SingleLine, Y_RUN, 1, false)
+                }],
+            ),
+        ],
+        ..Index::default()
+    }
+    .write_to_bytes()
+    .unwrap();
+    let with = callees("go", Some(&bytes));
+    assert!(
+        with.contains("<s t=\"fn\" n=\"run\" p=\"b/y.py:2\" prov=\"scip\"/>"),
+        "{with}"
+    );
+}
+
+#[test]
+fn index_whose_occurrences_have_no_readable_range_is_an_error() {
+    let (ingest, _, interner) = crate::support::index::index_files(SOURCES);
+    let bytes = Index {
+        documents: vec![document(
+            "c/use.py",
+            vec![Occurrence {
+                symbol: Y_RUN.to_string(),
+                ..Occurrence::default()
+            }],
+        )],
+        ..Index::default()
+    }
+    .write_to_bytes()
+    .unwrap();
+    let err = scip_sites(&bytes, &ingest, &interner).unwrap_err();
+    assert!(
+        err.to_string().contains("none has a readable range"),
+        "{err}"
+    );
+}
+
+#[test]
+fn index_without_occurrences_pins_nothing() {
+    let (ingest, _, interner) = crate::support::index::index_files(SOURCES);
+    let bytes = Index::default().write_to_bytes().unwrap();
+    assert!(scip_sites(&bytes, &ingest, &interner).unwrap().is_empty());
 }

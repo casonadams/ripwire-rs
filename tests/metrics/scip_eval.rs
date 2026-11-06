@@ -1,7 +1,13 @@
 use ripwire_rs::domain::{RefRole, ScipSite, ScipTarget};
-use ripwire_rs::metrics::scip_eval::{SiteVerdict, evaluate_against_scip, serialize_scip_eval_xml};
+use ripwire_rs::metrics::scip_eval::{
+    ScipEvalReport, SiteVerdict, evaluate_against_scip, serialize_scip_eval_xml,
+    serialize_scip_verdicts_xml,
+};
 use ripwire_rs::resolve::RefOutcome;
-use ripwire_rs::{EdgeProv, Interner, Lang, LanguageRegistry, ResolvedRef, ingest_in_memory_files};
+use ripwire_rs::{
+    EdgeProv, IngestResult, Interner, Lang, LanguageRegistry, ResolvedRef, ingest_in_memory_files,
+};
+use std::collections::HashSet;
 
 fn resolved(targets: Vec<u32>) -> RefOutcome {
     RefOutcome::Resolved(ResolvedRef {
@@ -51,8 +57,15 @@ fn verdicts_separate_exact_split_wrong_missed_and_external_cases() {
     );
 }
 
-#[test]
-fn only_pinned_sites_are_scored_and_rates_follow_the_verdicts() {
+/// `helper()` is called on lines 5 and 6 of `app.py`; the index pins line 5 to the definition
+/// and line 6 to an external symbol. The `print(1)` call on line 7 is never pinned.
+struct Fixture {
+    ingest: IngestResult,
+    interner: Interner,
+    sites: [ScipSite; 2],
+}
+
+fn fixture() -> Fixture {
     let registry = LanguageRegistry::new().unwrap();
     let interner = Interner::new();
     let ingest = ingest_in_memory_files(
@@ -71,16 +84,8 @@ fn only_pinned_sites_are_scored_and_rates_follow_the_verdicts() {
         .find(|s| interner.resolve(&s.name) == "helper")
         .unwrap()
         .id;
-    let call_at = |line: u32| {
-        ingest
-            .references
-            .iter()
-            .find(|r| r.role == RefRole::Call && r.name_line == line)
-            .map(|r| (r.file_id, r.callee_name))
-            .unwrap()
-    };
     let site = |line: u32, target| {
-        let (file_id, callee) = call_at(line);
+        let (file_id, callee) = call_at(&ingest, line);
         ScipSite {
             file_id,
             line,
@@ -92,15 +97,37 @@ fn only_pinned_sites_are_scored_and_rates_follow_the_verdicts() {
         site(5, ScipTarget::Def(helper)),
         site(6, ScipTarget::External),
     ];
-    let documented = std::collections::HashSet::from([call_at(5).0]);
-    let unjudged = evaluate_against_scip(&ingest, &interner, &sites, &Default::default());
+    Fixture {
+        ingest,
+        interner,
+        sites,
+    }
+}
+
+fn call_at(ingest: &IngestResult, line: u32) -> (u32, lasso::Spur) {
+    ingest
+        .references
+        .iter()
+        .find(|r| r.role == RefRole::Call && r.name_line == line)
+        .map(|r| (r.file_id, r.callee_name))
+        .unwrap()
+}
+
+fn documented_app(f: &Fixture) -> HashSet<u32> {
+    HashSet::from([call_at(&f.ingest, 5).0])
+}
+
+#[test]
+fn only_pinned_sites_are_scored_and_rates_follow_the_verdicts() {
+    let f = fixture();
+    let unjudged = evaluate_against_scip(&f.ingest, &f.interner, &f.sites, &Default::default());
     assert_eq!(
         unjudged.count(SiteVerdict::Unindexed),
         1,
         "an edge into a file the index never saw is not a false edge"
     );
     assert_eq!(unjudged.precision(), Some(1.0));
-    let report = evaluate_against_scip(&ingest, &interner, &sites, &documented);
+    let report = evaluate_against_scip(&f.ingest, &f.interner, &f.sites, &documented_app(&f));
     assert_eq!(report.covered, 2, "the unpinned print() call is not scored");
     assert!(report.calls >= 3);
     assert_eq!(report.count(SiteVerdict::Exact), 1);
@@ -109,7 +136,7 @@ fn only_pinned_sites_are_scored_and_rates_follow_the_verdicts() {
     assert_eq!(report.recall(), Some(1.0));
 
     let mut out = Vec::new();
-    serialize_scip_eval_xml(&report, &ingest, &interner, 10, &mut out).unwrap();
+    serialize_scip_eval_xml(&report, &f.ingest, &f.interner, 10, &mut out).unwrap();
     let text = String::from_utf8(out).unwrap();
     let doc = roxmltree::Document::parse(&text).unwrap();
     let root = doc.root_element();
@@ -131,4 +158,34 @@ fn only_pinned_sites_are_scored_and_rates_follow_the_verdicts() {
         "an external target names no in-tree symbol"
     );
     assert_eq!(sample.attribute("ours"), Some("helper@app.py:1"));
+}
+
+#[test]
+fn verdict_rows_cover_every_pinned_site_including_agreements() {
+    let f = fixture();
+    let report: ScipEvalReport =
+        evaluate_against_scip(&f.ingest, &f.interner, &f.sites, &documented_app(&f));
+    let mut verdicts = Vec::new();
+    serialize_scip_verdicts_xml(&report, &f.ingest, &f.interner, &mut verdicts).unwrap();
+    let text = String::from_utf8(verdicts).unwrap();
+    let doc = roxmltree::Document::parse(&text).unwrap();
+    let rows: Vec<_> = doc
+        .root_element()
+        .children()
+        .filter(|n| n.has_tag_name("verdict"))
+        .collect();
+    assert_eq!(
+        rows.len(),
+        report.covered,
+        "one verdict per covered site, agreements included"
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|n| n.attribute("v") == Some("exact") && n.attribute("p") == Some("app.py:5"))
+            .count(),
+        1
+    );
+    assert!(rows.iter().any(|n| n.attribute("v") == Some("false-edge")
+        && n.attribute("p") == Some("app.py:6")
+        && n.attribute("callee") == Some("helper")));
 }

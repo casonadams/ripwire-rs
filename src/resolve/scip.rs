@@ -1,19 +1,52 @@
 use crate::domain::{IngestResult, Interner, NodeId, RefRole, ScipSite, ScipTarget};
 use lasso::Spur;
 use protobuf::Message;
-use scip::types::{Document, Index, SymbolRole};
+use scip::types::occurrence::Typed_range;
+use scip::types::{Document, Index, Occurrence, SymbolRole};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
+
+/// Why a SCIP index cannot score call sites.
+#[derive(Debug)]
+pub enum ScipIndexError {
+    /// The bytes are not a SCIP index.
+    Decode(protobuf::Error),
+    /// The index holds occurrences and none carries a readable range, so every site would drop
+    /// silently and the index would score as zero recall.
+    NoDecodableRanges { occurrences: usize },
+}
+
+impl fmt::Display for ScipIndexError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Decode(e) => write!(f, "not a SCIP index: {e}"),
+            Self::NoDecodableRanges { occurrences } => write!(
+                f,
+                "SCIP index has {occurrences} occurrences and none has a readable range (neither typed_range nor range)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ScipIndexError {}
+
+impl From<protobuf::Error> for ScipIndexError {
+    fn from(e: protobuf::Error) -> Self {
+        Self::Decode(e)
+    }
+}
 
 /// Call sites a SCIP index pins: each indexed call reference whose site the index resolves to
 /// one of our definitions or to a symbol it defines nowhere (another package).
 ///
 /// # Errors
-/// Returns the protobuf decode error when `bytes` is not a SCIP index.
+/// Returns `Decode` when `bytes` is not a SCIP index, and `NoDecodableRanges` when no occurrence
+/// has a readable range.
 pub fn scip_sites(
     bytes: &[u8],
     ingest: &IngestResult,
     interner: &Interner,
-) -> Result<Vec<ScipSite>, protobuf::Error> {
+) -> Result<Vec<ScipSite>, ScipIndexError> {
     Ok(indexed_sites(bytes, ingest, interner)?.0)
 }
 
@@ -22,8 +55,9 @@ pub fn indexed_sites(
     bytes: &[u8],
     ingest: &IngestResult,
     interner: &Interner,
-) -> Result<(Vec<ScipSite>, HashSet<u32>), protobuf::Error> {
+) -> Result<(Vec<ScipSite>, HashSet<u32>), ScipIndexError> {
     let index = Index::parse_from_bytes(bytes)?;
+    check_ranges(&index)?;
     let mut overlay = Overlay::new(ingest, interner);
     for doc in &index.documents {
         overlay.note_definitions(doc);
@@ -42,13 +76,33 @@ pub fn indexed_sites(
     Ok((sites, documented))
 }
 
+/// Fails when the index has occurrences and none yields a line, so no site could be pinned.
+fn check_ranges(index: &Index) -> Result<(), ScipIndexError> {
+    let (mut occurrences, mut readable) = (0usize, 0usize);
+    for occ in index.documents.iter().flat_map(|doc| &doc.occurrences) {
+        occurrences += 1;
+        readable += usize::from(occurrence_line(occ).is_some());
+    }
+    if occurrences > 0 && readable == 0 {
+        return Err(ScipIndexError::NoDecodableRanges { occurrences });
+    }
+    Ok(())
+}
+
 fn is_definition(roles: i32) -> bool {
     roles & SymbolRole::Definition as i32 != 0
 }
 
-fn start_line(range: &[i32]) -> Option<u32> {
-    let line = u32::try_from(*range.first()?).ok()?;
-    Some(line + 1)
+/// The 1-based start line of an occurrence. Indexers write either the `typed_range` oneof (what
+/// scip-java 0.13 and later write, and what the protocol says new producers must write) or the
+/// deprecated packed `range`; `typed_range` wins when both are present.
+fn occurrence_line(occ: &Occurrence) -> Option<u32> {
+    let line = match &occ.typed_range {
+        Some(Typed_range::SingleLineRange(r)) => r.line,
+        Some(Typed_range::MultiLineRange(r)) => r.start_line,
+        _ => *occ.range.first()?,
+    };
+    Some(u32::try_from(line).ok()? + 1)
 }
 
 /// Line-sorted definitions per `(file, name)`: a SCIP definition sits on the identifier, at or
@@ -158,7 +212,7 @@ impl<'a> Overlay<'a> {
             .filter(|o| is_definition(o.symbol_roles))
         {
             self.defined.insert(occ.symbol.clone());
-            let (Some(file_id), Some(line)) = (file_id, start_line(&occ.range)) else {
+            let (Some(file_id), Some(line)) = (file_id, occurrence_line(occ)) else {
                 continue;
             };
             let Some(name) = self.leaf_name(&occ.symbol) else {
@@ -182,7 +236,7 @@ impl<'a> Overlay<'a> {
             .iter()
             .filter(|o| !is_definition(o.symbol_roles))
         {
-            let (Some(line), Some(callee)) = (start_line(&occ.range), self.leaf_name(&occ.symbol))
+            let (Some(line), Some(callee)) = (occurrence_line(occ), self.leaf_name(&occ.symbol))
             else {
                 continue;
             };

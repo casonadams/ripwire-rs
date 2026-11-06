@@ -16,6 +16,9 @@ pub struct EvalFlags {
     /// Sampled disagreements per verdict and reason for --eval=scip
     #[arg(long = "samples", value_name = "N", default_value_t = 10)]
     pub samples: usize,
+    /// With --eval=scip, also list every covered call site's verdict (one <verdict> per site)
+    #[arg(long = "eval-sites")]
+    pub eval_sites: bool,
 }
 
 pub struct Eval;
@@ -52,12 +55,12 @@ impl Command for Eval {
                     &mut stdout,
                 )
             })(),
-            _ => run_scip_eval(cli, root, flags.samples),
+            _ => run_scip_eval(cli, root, &flags),
         })
     }
 }
 
-fn run_scip_eval(cli: &Cli, root: &str, samples: usize) -> io::Result<()> {
+fn run_scip_eval(cli: &Cli, root: &str, flags: &EvalFlags) -> io::Result<()> {
     let path = cli.scip.as_deref().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -75,13 +78,23 @@ fn run_scip_eval(cli: &Cli, root: &str, samples: usize) -> io::Result<()> {
         &sites,
         &documented,
     );
+    let mut stdout = io::stdout().lock();
     crate::metrics::scip_eval::serialize_scip_eval_xml(
         &report,
         &ingest,
         &interner,
-        samples,
-        &mut io::stdout().lock(),
-    )
+        flags.samples,
+        &mut stdout,
+    )?;
+    if flags.eval_sites {
+        crate::metrics::scip_eval::serialize_scip_verdicts_xml(
+            &report,
+            &ingest,
+            &interner,
+            &mut stdout,
+        )?;
+    }
+    Ok(())
 }
 
 /// The analysis the SCIP index is scored against: resolved without the index overlaid on it.

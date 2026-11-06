@@ -8,9 +8,13 @@ _SPEC = importlib.util.spec_from_file_location("corpus", pathlib.Path(__file__).
 corpus = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(corpus)
 
-SITES = (
-    '<site v="wrong" why="declined" p="src/a.rs:10" callee="build" scip="x@1" ours="y@2"/>'
-    '<site v="missed" why="declined" p="src/b.rs:3" callee="open" scip="z@3" ours=""/>'
+VERDICTS = (
+    '<scip-verdicts>'
+    '<verdict v="exact" p="src/a.rs:10" callee="build"/>'
+    '<verdict v="wrong" p="src/b.rs:3" callee="open"/>'
+    '<verdict v="unindexed" p="src/c.rs:7" callee="far"/>'
+    '<verdict v="false-edge" p="src/a.rs:10" callee="build"/>'
+    '</scip-verdicts>'
 )
 
 
@@ -20,27 +24,62 @@ def table(**fields):
     return base
 
 
-class ParseSites(unittest.TestCase):
-    def test_keys_by_site_and_callee(self):
-        sites = corpus.parse_sites(SITES)
-        self.assertEqual(sites[("src/a.rs:10", "build")]["v"], "wrong")
-        self.assertEqual(sites[("src/b.rs:3", "open")]["v"], "missed")
+class ParseStates(unittest.TestCase):
+    def test_states_by_site_and_worst_reference_wins(self):
+        states = corpus.parse_states(VERDICTS)
+        self.assertEqual(states[("src/a.rs:10", "build")], "wrong")
+        self.assertEqual(states[("src/b.rs:3", "open")], "wrong")
+        self.assertEqual(states[("src/c.rs:7", "far")], "neutral")
+        self.assertEqual(len(states), 3)
 
-    def test_ignores_non_site_text(self):
-        self.assertEqual(corpus.parse_sites('<scip-eval precision="1"/>'), {})
+    def test_ignores_non_verdict_text(self):
+        self.assertEqual(corpus.parse_states('<scip-eval precision="1"/>'), {})
+
+    def test_unknown_verdict_is_loud(self):
+        with self.assertRaises(KeyError):
+            corpus.parse_states('<verdict v="bogus" p="a:1" callee="f"/>')
 
 
-class Classify(unittest.TestCase):
-    def test_entered_left_and_changed(self):
-        old = corpus.parse_sites(SITES)
-        new = corpus.parse_sites(
-            '<site v="wrong" why="declined" p="src/c.rs:1" callee="new" scip="" ours="q@1"/>'
-            '<site v="false-edge" why="declined" p="src/a.rs:10" callee="build" scip="x@1" ours="y@2"/>'
-        )
-        entered, left, changed = corpus.classify(old, new)
-        self.assertEqual(entered, [("src/c.rs:1", "new")])
-        self.assertEqual(left, [("src/b.rs:3", "open")])
-        self.assertEqual(changed, [("src/a.rs:10", "build")])
+class Flips(unittest.TestCase):
+    def test_each_flip_is_classified_exactly(self):
+        old = {("a", "x"): "right", ("b", "x"): "wrong", ("c", "x"): "right",
+               ("d", "x"): "neutral", ("e", "x"): "wrong", ("f", "x"): "wrong",
+               ("h", "x"): "wrong"}
+        new = {("a", "x"): "wrong", ("b", "x"): "right", ("c", "x"): "neutral",
+               ("d", "x"): "wrong", ("e", "x"): "wrong", ("g", "x"): "wrong"}
+        self.assertEqual(corpus.flips(old, new), {
+            "right->wrong": [("a", "x")],
+            "wrong->right": [("b", "x")],
+            "entered": [("d", "x"), ("g", "x")],
+            "left": [("f", "x"), ("h", "x")],
+        })
+
+    def test_right_to_neutral_and_wrong_to_wrong_are_not_flips(self):
+        flipped = corpus.flips({("a", "x"): "right"}, {("a", "x"): "neutral"})
+        self.assertTrue(all(keys == [] for keys in flipped.values()), flipped)
+        still = corpus.flips({("a", "x"): "wrong"}, {("a", "x"): "wrong"})
+        self.assertEqual(still["entered"], [])
+        self.assertEqual(still["left"], [])
+
+
+class EvalCommand(unittest.TestCase):
+    def test_verdicts_run_with_the_sites_flag(self):
+        calls = []
+
+        class Done:
+            returncode = 0
+            stdout = '<scip-eval precision="1"/>'
+            stderr = ""
+
+        original = corpus.subprocess.run
+        corpus.subprocess.run = lambda args, **kwargs: calls.append(args) or Done()
+        try:
+            corpus.scip_verdicts("bin", "src", "idx.scip")
+            corpus.scip_eval("bin", "src", "idx.scip", 0)
+        finally:
+            corpus.subprocess.run = original
+        self.assertIn("--eval-sites", calls[0])
+        self.assertNotIn("--eval-sites", calls[1])
 
 
 class Floors(unittest.TestCase):

@@ -360,6 +360,8 @@ ripwire-rs . --scip=index.scip --eval=scip
 # Every disagreement, for triage (default 10 per class and reason). unindexed= counts edges into
 # files the index holds no document for; they are sampled but left out of precision.
 ripwire-rs . --scip=index.scip --eval=scip --samples=100000
+# Every covered site's verdict, one <verdict> per site, to diff two builds against the same index
+ripwire-rs . --scip=index.scip --eval=scip --eval-sites
 # Install 9 pre-packaged ripwire-rs agent skills to ~/.agents/skills (or custom path)
 ripwire-rs --add-skills
 

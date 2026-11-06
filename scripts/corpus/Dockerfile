@@ -44,14 +44,27 @@ ADD --checksum=sha256:6f1b891e1d4927d62740276c540fb490e47689e19e102c49e8da849794
 RUN printf '#!/bin/sh\nexec php /usr/local/lib/composer.phar "$@"\n' > /usr/local/bin/composer \
  && chmod 0755 /usr/local/bin/composer && chmod 0644 /usr/local/lib/composer.phar
 
-# Coursier 2.1.26 bootstraps scip-java 0.12.3 (Java and Kotlin) into one standalone jar. 0.13.x writes SCIP
-# `typed_range` only, which the `scip` crate the resolver reads (0.10.0, the latest) ignores; 0.14.0 needs a
-# scip-kotlin-analysis artifact that is not on Maven Central.
+# scip-php 0.0.2 (PHP), pinned to its tag's commit. It must be a root Composer project: its Composer.php reads
+# its own vendor/ at ../../vendor from src/Composer, which a `composer require` of the package never creates.
+# Target repos are indexed with their own vendor/ (composer install there); scip-php reads that and indexes.
+RUN git clone --quiet https://github.com/davidrjenni/scip-php /opt/scip-php \
+ && git -C /opt/scip-php checkout --quiet b12e0593cfb72e703fdd71f4ad91869502eeb566 \
+ && cd /opt/scip-php && composer install --no-dev --no-interaction --no-progress --no-scripts --no-security-blocking \
+ && printf '#!/bin/sh\nexec php /opt/scip-php/bin/scip-php "$@"\n' > /usr/local/bin/scip-php \
+ && chmod 0755 /usr/local/bin/scip-php \
+ && rm -rf /root/.composer /root/.cache
+
+# Coursier 2.1.26 bootstraps the scip-java launchers as standalone jars. Two versions are installed because
+# they serve different entries: scip-java 0.12.3 (Maven Central com.sourcegraph) indexes the Java entries as
+# measured; scip-java 0.13.2 (org.scip-code, the renamed project) is the first release whose Kotlin plugin
+# accepts the Kotlin compiler of KotlinPoet, and it writes SCIP typed_range, which the resolver reads.
 ADD --checksum=sha256:348e37bc2a8c706640e6b032c4551a0e055a7f1537485b4a91540e9d3598ec6d \
     https://github.com/coursier/coursier/releases/download/v2.1.26/cs-x86_64-pc-linux.gz /tmp/cs.gz
 RUN gunzip /tmp/cs.gz && mv /tmp/cs /usr/local/bin/cs && chmod 0755 /usr/local/bin/cs \
  && COURSIER_CACHE=/tmp/coursier cs bootstrap --standalone -o /usr/local/bin/scip-java \
       com.sourcegraph:scip-java_2.13:0.12.3 --main com.sourcegraph.scip_java.ScipJava \
+ && COURSIER_CACHE=/tmp/coursier cs bootstrap --standalone -o /usr/local/bin/scip-java-0.13.2 \
+      org.scip-code:scip-java:0.13.2 --main org.scip_code.scip_java.ScipJava \
  && rm -rf /tmp/coursier /tmp/cs.gz
 
 # Rust 1.98.1 minimal profile plus rust-analyzer (the Rust indexer; the toolchain matches rust-toolchain.toml).
@@ -76,8 +89,17 @@ ENV PUB_CACHE=/opt/pub-cache \
 RUN PATH=/opt/dart-sdk/bin:$PATH dart pub global activate scip_dart 1.8.1 \
  && dotnet tool install --tool-path /opt/dotnet-tools --version 0.2.16 scip-dotnet \
  && rm -rf /root/.nuget /root/.cache /root/.dart /tmp/* \
- && chmod -R a+rwX /opt/pub-cache /opt/rustup /opt/cargo
+ && chmod -R a+rwX /opt/pub-cache /opt/rustup /opt/cargo /opt/scip-php
 
 ENV PATH=/opt/dart-sdk/bin:/opt/pub-cache/bin:/opt/dotnet-tools:/opt/cargo/bin:$PATH
+
+# Scala 3.3.9 compiler, resolved here so indexing runs offline. Scala 3 writes SemanticDB itself (-Xsemanticdb);
+# scip-java 0.12.3 (above) converts those files with `index-semanticdb`, the converter scip-java 0.13 no longer ships.
+RUN COURSIER_CACHE=/opt/coursier-scala cs fetch --classpath org.scala-lang:scala3-compiler_3:3.3.9 \
+      > /opt/scala-compiler-classpath.txt \
+ && COURSIER_CACHE=/opt/coursier-scala cs fetch --classpath org.scala-lang:scala3-library_3:3.3.9 \
+      org.scala-sbt:test-interface:1.0 org.apache.commons:commons-lang3:3.21.0 > /opt/scala-library-classpath.txt
+COPY scala-semanticdb.sh /usr/local/bin/scala-semanticdb
+RUN chmod 0755 /usr/local/bin/scala-semanticdb && chmod -R a+rX /opt/coursier-scala /opt/scala-*-classpath.txt
 
 WORKDIR /src
