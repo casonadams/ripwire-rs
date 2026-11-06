@@ -37,11 +37,23 @@ more correct, or more honest.
   hand-written scorers and cut code while improving quality. Check determinism first (a seedable RNG), then
   the dependency footprint (`default-features = false`), then measure quality and latency against the code it
   replaces; adopt it when it is no worse on either.
-- **Compilers are the oracle for resolution.** `make resolution` scores the call graph against a
-  rust-analyzer SCIP index (`--eval=scip --scip=INDEX`): precision and recall floors live in
-  `scripts/resolution-ceilings.toml`. For another language, index a real corpus (`scip-typescript`,
-  `scip-python`, `scip-clang`) and score it before and after a change; a fixture alone does not show whether a
-  gap matters on real code. A resolver change that adds wrong edges is rejected even if recall rises.
+- **Compilers are the oracle for resolution.** `make resolution` scores the Rust call graph against a
+  rust-analyzer SCIP index (`--eval=scip --scip=INDEX`); floors and gauge ceilings live in
+  `scripts/resolution-ceilings.toml`. Other languages are scored locally on pinned public repos
+  (`scripts/corpus/`, Docker indexers, no CI): `make verify` prints precision and recall per language against
+  the committed `baseline.toml`; a resolver change that adds wrong edges is rejected even if recall rises.
+- **Tuning loop for precision and recall.** (1) `make verify-changed` (or `NAME=rack` / `LANG=dart`) before and
+  after the edit. (2) Group the misses by cause with `ripwire-rs REPO --eval=scip --scip=INDEX --samples=N`
+  (`<why>` rows: missed builtin/declined/ignored, wrong split/name, false-edge) and fix the largest cause.
+  (3) `make verify-diff` lists sites that flipped right to wrong; any flip needs a reason. (4) Add an in-memory
+  fixture with a std-name case, then `make verify-ratchet` (it only raises numbers) and commit the numbers.
+  Prefer a per-language `LanguageSemantics` hook over the shared resolver core, and decline when unsure. Three
+  traps: the repo's own tests and scripts are in the Rust corpus, so adding a test moves recall by about 0.001
+  and unresolved by a few (keep floors 0.002 and ceilings about 2 percent from measured); a helper named like a
+  std member (`index`, `get`, `kind`) is skipped by the resolver, so name helpers distinctively; the gate runs
+  the `ripwire-rs` on PATH, so keep `~/.cargo/bin` current (`make install`) or it reports bugs we already fixed.
+  Languages with no indexer are checked through the LSP bridge (`docs/GATES.md` section 13 lists status per
+  language); its recall is lower-confidence than a compiler index.
 - **Token prices are measured, not assumed.** `est_tokens=` and `budget_tokens=` come from
   `serialize::est_tokens` / `budget_bytes`, calibrated with a tokenizer (`make size` checks the disclosed
   price against tiktoken within 0.8 to 1.2). Change the constant only with a new measurement.
@@ -133,6 +145,7 @@ more correct, or more honest.
   that swaps the probes is a harness artefact, not a regression. `make size` needs `uv` for tiktoken and
   skips loudly without it.
 - **Parallel work uses git worktrees**, each with its own CARGO_TARGET_DIR, and every edit path under its
-  own worktree. Merge on `main`, rebuild, and run `make all` once. Never edit the main tree from a worktree.
+  own worktree (absolute paths: a relative path edits the main tree). Stage and commit in separate shell
+  commands, because a gate-blocked commit rolls back edits made in the same command. Merge on `main`, rebuild, and run `make all` once. Never edit the main tree from a worktree.
   Each worktree needs its own `CARGO_TARGET_DIR`; run `cargo clean` on it before removing the worktree, and
   `make sweep` prunes stale artifacts.
