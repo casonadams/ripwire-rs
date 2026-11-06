@@ -368,3 +368,16 @@ fn dart_member_calls_bind_to_the_member_they_name() {
     assert_eq!(callees("viaBare"), [".isSeq"]);
     assert_eq!(callees("viaDirect"), ["Writer.toXmlString"]);
 }
+
+const CASCADE_FILE: &str = "class Pipe {\n  void run() {}\n  Pipe add(int v) => this;\n}\n\
+class Other {\n  void run() {}\n  void add(int v) {}\n}\n\
+void typed(Pipe p) {\n  p..run()..add(1);\n}\n\
+void untyped(Pipe p) {\n  p.run();\n}\n";
+
+#[test]
+fn dart_cascade_sections_bind_through_the_cascade_target() {
+    let files: &[(&str, Lang, &[u8])] = &[("lib/pipe.dart", Lang::Dart, CASCADE_FILE.as_bytes())];
+    let callees = |caller| owner_qualified_callees(files, caller);
+    assert_eq!(callees("typed"), ["Pipe.add", "Pipe.run"]);
+    assert_eq!(callees("untyped"), ["Pipe.run"]);
+}
