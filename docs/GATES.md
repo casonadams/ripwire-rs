@@ -267,7 +267,7 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | c | SCIP indexer (scip-clang) | measured | 1.0000 | 1.0000 |
 | cobol | LSP bridge (COBOL language server on a JRE) | blocked: analysis fails with NPE `dialects is null` even when the settings answer `[]`; expected settings shape undetermined | - | - |
 | cpp | SCIP indexer (scip-clang) | measured | 0.9376 | 0.8100 |
-| csharp | SCIP indexer (scip-dotnet) | measured | 0.9882 | 0.9796 |
+| csharp | SCIP indexer (scip-dotnet) | measured | 0.8448-0.9882 | 0.8448-0.9796 |
 | cuda | LSP bridge (clangd) | measured: 307 covered call sites of 11541. Of 66 false edges, the sample shows resolver name binding (qualified `layout::Data(...)` constructor calls bound to the type, same-named members, macros); the bridge pins the constructor, so such calls count against precision | 0.5796 | 1.0000 |
 | dart | SCIP indexer (scip_dart) | measured | 0.9726 | 0.7593 |
 | elixir | LSP bridge (elixir-ls) | blocked: elixir-ls mix install fails on Elixir 1.18.3 (vendored dependency does not compile) | - | - |
@@ -285,7 +285,7 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | markdown | not applicable: no call resolution | not applicable | - | - |
 | metal | LSP bridge (clangd, compiled as C++ with Metal keywords stubbed) | measured | 0.9590 | 0.9590 |
 | objc | LSP bridge (clangd; candidates include message sends) | measured | 0.7429 | 0.6500 |
-| php | SCIP indexer (scip-php) | measured | 0.9367 | 0.8870 |
+| php | SCIP indexer (scip-php) | measured | 0.9367-0.9838 | 0.8792-0.9794 |
 | proto | not applicable to --eval=scip: type references are not scored | not applicable | - | - |
 | python | SCIP indexer (scip-python) | measured | 0.9860 | 0.9160 |
 | ruby | SCIP indexer (scip-ruby) | measured | 0.9864 | 0.9943 |
