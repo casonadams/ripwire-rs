@@ -1,4 +1,5 @@
-use crate::languages::reads::{NonValueRules, non_value};
+use crate::languages::common::util::ancestors;
+use crate::languages::reads::{NonValueRules, binding_scope_in, non_value};
 
 fn python_scope(kind: &str) -> bool {
     matches!(
@@ -34,32 +35,31 @@ fn python_binding_target(parent: tree_sitter::Node<'_>, node: tree_sitter::Node<
     crate::languages::reads::in_field(parent, node, field)
 }
 
-pub(super) fn python_binding_scope(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+pub(super) fn python_binding_scope<'t>(
+    root: tree_sitter::Node<'t>,
+    node: tree_sitter::Node<'t>,
+) -> Option<tree_sitter::Node<'t>> {
     if node.kind() != "identifier" {
         return None;
     }
-    let mut ancestor = node.parent();
-    while let Some(parent) = ancestor {
-        if python_binding_target(parent, node) {
-            let owner = if matches!(parent.kind(), "function_definition" | "class_definition") {
-                parent
-            } else {
-                node
-            };
-            return crate::languages::reads::enclosing_scope(owner, python_scope)
-                .filter(|scope| scope.kind() != "class_definition");
-        }
-        if python_scope(parent.kind()) {
-            break;
-        }
-        ancestor = parent.parent();
-    }
-    None
+    let mut chain = ancestors(root, node);
+    chain.reverse();
+    binding_scope_in(
+        node,
+        &chain,
+        python_binding_target,
+        python_scope,
+        |kind| matches!(kind, "function_definition" | "class_definition"),
+    )
+    .filter(|scope| scope.kind() != "class_definition")
 }
 
 /// The byte range a binding of `node` is in scope over: its scope's body.
-pub(super) fn python_binding_range(node: tree_sitter::Node<'_>) -> Option<std::ops::Range<usize>> {
-    python_binding_scope(node).map(|scope| {
+pub(super) fn python_binding_range(
+    root: tree_sitter::Node<'_>,
+    node: tree_sitter::Node<'_>,
+) -> Option<std::ops::Range<usize>> {
+    python_binding_scope(root, node).map(|scope| {
         scope
             .child_by_field_name("body")
             .unwrap_or(scope)
@@ -118,13 +118,22 @@ const EXPRESSION_PARENTS: &[&str] = &[
     "parenthesized_expression",
 ];
 
-pub(super) fn python_read_position(node: tree_sitter::Node<'_>) -> bool {
+pub(super) fn python_read_position(
+    node: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
+) -> bool {
     // Class namespaces are not lexical parents of method bodies. Class-body lookup is not
     // resolved by these bare non-local captures.
-    if crate::languages::reads::enclosing_scope(node, python_scope)
+    if crate::languages::reads::scope_in(ancestors, python_scope)
         .is_some_and(|scope| scope.kind() == "class_definition")
     {
         return false;
     }
-    crate::languages::reads::value_read(node, EXPRESSION_PARENTS, python_non_value, python_scope)
+    crate::languages::reads::value_read(
+        node,
+        ancestors,
+        EXPRESSION_PARENTS,
+        python_non_value,
+        python_scope,
+    )
 }

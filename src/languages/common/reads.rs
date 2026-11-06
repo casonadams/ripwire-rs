@@ -334,20 +334,61 @@ pub(crate) fn enclosing_scope<'a>(
     None
 }
 
+/// The innermost ancestor of a node, given its ancestor chain nearest first, whose kind passes `is_scope`.
+pub(crate) fn scope_in<'a>(
+    ancestors: &[Node<'a>],
+    is_scope: impl Fn(&str) -> bool,
+) -> Option<Node<'a>> {
+    ancestors
+        .iter()
+        .copied()
+        .find(|parent| is_scope(parent.kind()))
+}
+
+/// The scope a binding of `node` is declared in. `ancestors` run from the root down to `node`'s parent. The
+/// ancestor for which `declares(parent, node)` holds binds the name; when `owns_scope` holds for it, its own
+/// enclosing scope is searched, otherwise the binding's.
+pub(crate) fn binding_scope_in<'a>(
+    node: Node<'a>,
+    ancestors: &[Node<'a>],
+    declares: impl Fn(Node<'a>, Node<'a>) -> bool,
+    is_scope: impl Fn(&str) -> bool,
+    owns_scope: impl Fn(&str) -> bool,
+) -> Option<Node<'a>> {
+    for (depth, &parent) in ancestors.iter().enumerate().rev() {
+        if declares(parent, node) {
+            let above = if owns_scope(parent.kind()) {
+                &ancestors[..depth]
+            } else {
+                ancestors
+            };
+            return above
+                .iter()
+                .rev()
+                .copied()
+                .find(|scope| is_scope(scope.kind()));
+        }
+        if is_scope(parent.kind()) {
+            break;
+        }
+    }
+    None
+}
+
+/// `ancestors` is the chain of `node`'s ancestors, nearest first.
 pub(crate) fn value_position(
     node: Node<'_>,
+    ancestors: &[Node<'_>],
     excluded: impl Fn(Node<'_>, Node<'_>) -> bool,
     is_scope: impl Fn(&str) -> bool,
 ) -> bool {
-    let mut ancestor = node.parent();
-    while let Some(parent) = ancestor {
+    for &parent in ancestors {
         if excluded(parent, node) {
             return false;
         }
         if is_scope(parent.kind()) {
             break;
         }
-        ancestor = parent.parent();
     }
     true
 }
@@ -355,11 +396,13 @@ pub(crate) fn value_position(
 /// A read of `node` when its parent kind is one of `expression_parents` and no enclosing position excludes it.
 pub(crate) fn value_read(
     node: Node<'_>,
+    ancestors: &[Node<'_>],
     expression_parents: &[&str],
     excluded: impl Fn(Node<'_>, Node<'_>) -> bool,
     is_scope: impl Fn(&str) -> bool,
 ) -> bool {
-    node.parent()
+    ancestors
+        .first()
         .is_some_and(|parent| expression_parents.contains(&parent.kind()))
-        && value_position(node, excluded, is_scope)
+        && value_position(node, ancestors, excluded, is_scope)
 }

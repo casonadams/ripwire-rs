@@ -211,12 +211,22 @@ pub trait LanguageSemantics: Sync {
     }
 
     /// Reject declaration targets, labels, types and callees from broad read captures.
-    fn is_read_capture_allowed(&self, _node: tree_sitter::Node<'_>, _source: &[u8]) -> bool {
+    fn is_read_capture_allowed(
+        &self,
+        _node: tree_sitter::Node<'_>,
+        _ancestors: &[tree_sitter::Node<'_>],
+        _source: &[u8],
+    ) -> bool {
         true
     }
 
     /// Reject write captures whose identifier is not a real write target (a method call that does not mutate).
-    fn is_write_capture_allowed(&self, _node: tree_sitter::Node<'_>, _source: &[u8]) -> bool {
+    fn is_write_capture_allowed(
+        &self,
+        _node: tree_sitter::Node<'_>,
+        _ancestors: &[tree_sitter::Node<'_>],
+        _source: &[u8],
+    ) -> bool {
         true
     }
 
@@ -476,12 +486,21 @@ pub trait LanguageSemantics: Sync {
     }
 
     /// True if a captured call reference is a language builtin/macro that should not form a user call edge.
-    fn should_ignore_call(&self, _name_node: Option<tree_sitter::Node<'_>>, name: &str) -> bool {
+    fn should_ignore_call(
+        &self,
+        _name_node: Option<tree_sitter::Node<'_>>,
+        _ancestors: &[tree_sitter::Node<'_>],
+        name: &str,
+    ) -> bool {
         self.is_builtin_keyword(name)
     }
 
     /// True if this node is a value inside a macro argument, where a same-named local binding shadows a call.
-    fn is_macro_argument(&self, _node: tree_sitter::Node<'_>) -> bool {
+    fn is_macro_argument(
+        &self,
+        _node: tree_sitter::Node<'_>,
+        _ancestors: &[tree_sitter::Node<'_>],
+    ) -> bool {
         false
     }
 

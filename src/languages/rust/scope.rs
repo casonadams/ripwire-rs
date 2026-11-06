@@ -1,3 +1,4 @@
+use crate::languages::reads::binding_scope_in;
 use super::use_tree::collect_use_tree;
 
 pub(super) fn rust_scope(kind: &str) -> bool {
@@ -35,27 +36,13 @@ fn rust_binding_scope_in<'a>(
     if node.kind() != "identifier" {
         return None;
     }
-    for (depth, &parent) in ancestors.iter().enumerate().rev() {
-        if rust_binding_target(parent, node) {
-            let above = if matches!(
-                parent.kind(),
-                "const_item" | "static_item" | "function_item"
-            ) {
-                &ancestors[..depth]
-            } else {
-                ancestors
-            };
-            return above
-                .iter()
-                .rev()
-                .copied()
-                .find(|scope| rust_scope(scope.kind()));
-        }
-        if rust_scope(parent.kind()) {
-            break;
-        }
-    }
-    None
+    binding_scope_in(
+        node,
+        ancestors,
+        rust_binding_target,
+        rust_scope,
+        |kind| matches!(kind, "const_item" | "static_item" | "function_item"),
+    )
 }
 
 pub(super) fn rust_binding_range_in(

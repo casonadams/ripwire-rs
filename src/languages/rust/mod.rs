@@ -101,8 +101,13 @@ impl LanguageSemantics for RustLanguage {
 
     super::impl_grammar_method!(crate tree_sitter_rust::LANGUAGE, "tags.scm");
 
-    fn is_read_capture_allowed(&self, node: tree_sitter::Node<'_>, _source: &[u8]) -> bool {
-        rust_read_position(node)
+    fn is_read_capture_allowed(
+        &self,
+        node: tree_sitter::Node<'_>,
+        ancestors: &[tree_sitter::Node<'_>],
+        _source: &[u8],
+    ) -> bool {
+        rust_read_position(node, ancestors)
     }
 
     fn callable_bindings(
@@ -249,19 +254,30 @@ impl LanguageSemantics for RustLanguage {
         VisibilityMode::ExplicitModifier
     }
 
-    fn should_ignore_call(&self, name_node: Option<tree_sitter::Node<'_>>, name: &str) -> bool {
+    fn should_ignore_call(
+        &self,
+        name_node: Option<tree_sitter::Node<'_>>,
+        ancestors: &[tree_sitter::Node<'_>],
+        name: &str,
+    ) -> bool {
         let Some(node) = name_node else {
             return false;
         };
-        match node.parent().map(|p| p.kind()) {
+        match ancestors.first().map(|p| p.kind()) {
             Some("macro_invocation") => RUST_BUILTIN_MACROS.contains(&name),
-            Some("token_tree") => !(is_macro_argument_call(node) && is_function_name(name)),
+            Some("token_tree") => {
+                !(is_macro_argument_call(node, ancestors) && is_function_name(name))
+            }
             _ => false,
         }
     }
 
-    fn is_macro_argument(&self, node: tree_sitter::Node<'_>) -> bool {
-        std::iter::successors(Some(node), |n| n.parent()).any(|n| n.kind() == "token_tree")
+    fn is_macro_argument(
+        &self,
+        node: tree_sitter::Node<'_>,
+        ancestors: &[tree_sitter::Node<'_>],
+    ) -> bool {
+        node.kind() == "token_tree" || ancestors.iter().any(|n| n.kind() == "token_tree")
     }
 
     fn struct_update_base_type(

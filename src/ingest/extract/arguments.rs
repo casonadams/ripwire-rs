@@ -1,5 +1,3 @@
-use crate::languages::common::util::ancestors;
-
 /// Ruby passes trailing `key => value` pairs as one hash argument.
 fn count_arguments_in_list(child: tree_sitter::Node<'_>) -> u16 {
     let mut count = 0u16;
@@ -30,14 +28,15 @@ fn find_arguments_child(parent: tree_sitter::Node<'_>) -> Option<tree_sitter::No
     None
 }
 
+/// `ancestors` is the chain of `name_node`'s ancestors, nearest first.
 pub(super) fn count_call_arguments(
-    root: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
     name_node: tree_sitter::Node<'_>,
 ) -> (u16, bool) {
     if let Some(counted) = count_macro_token_arguments(name_node) {
         return counted;
     }
-    for parent in ancestors(root, name_node) {
+    for &parent in ancestors {
         let kind = parent.kind();
         if kind.contains("call") || kind == "invocation" || kind == "method_invocation" {
             if let Some(args_node) = find_arguments_child(parent) {
