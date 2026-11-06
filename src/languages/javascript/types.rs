@@ -5,10 +5,32 @@
 //! function whose every return is `new C()` has result type `C`. A name whose sites disagree stays untyped.
 
 use super::{javascript_binding_scope, javascript_binding_scope_in};
-use crate::languages::reads::{ReadBindings, enclosing_scope, nodes};
+use crate::languages::reads::{ReadBindings, enclosing_scope, named_child_of_kind, nodes};
 use crate::languages::typed::{agree, construction_type};
 use std::collections::HashMap;
 use tree_sitter::Node;
+
+/// Every class with its own method span (the subject its methods bind to) and the name its `extends` clause
+/// names, so a receiver typed `C` reaches the methods of the class `C` the file declares.
+pub(super) fn class_implementations(root: Node<'_>, source: &[u8]) -> Vec<crate::languages::Implementation> {
+    crate::languages::typed::class_implementations(
+        root,
+        source,
+        &["class_declaration", "class"],
+        declared_name,
+        |class, source| extends_name(class, source).into_iter().collect(),
+    )
+}
+
+/// The identifier a class's `extends` clause names: a JavaScript heritage holds one expression.
+fn extends_name<'s>(class: Node<'_>, source: &'s [u8]) -> Option<&'s str> {
+    let heritage = named_child_of_kind(class, "class_heritage")?;
+    heritage
+        .named_child(0)
+        .filter(|parent| parent.kind() == "identifier")?
+        .utf8_text(source)
+        .ok()
+}
 
 /// Read bindings with declared types.
 pub(super) fn typed_read_bindings<'a>(root: Node<'_>, source: &'a [u8]) -> ReadBindings<'a> {

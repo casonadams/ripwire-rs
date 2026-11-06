@@ -1,6 +1,6 @@
 //! Kotlin's grammar labels no fields; children are positional.
 
-use crate::languages::reads::{EXTENDS, ReadBindings, enclosing_scope, nodes};
+use crate::languages::reads::{EXTENDS, ReadBindings, child_text, enclosing_scope, named_child_of_kind, nodes};
 use crate::languages::typed::{AgreedReturns, agree, qualify_nested_type};
 use crate::languages::{Implementation, is_plain_type_name};
 use std::collections::HashMap;
@@ -445,15 +445,6 @@ fn type_name<'a>(ty: Node<'_>, source: &'a [u8]) -> Option<&'a str> {
     Some(name)
 }
 
-fn named_child_of_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
-    let mut cursor = node.walk();
-    node.named_children(&mut cursor).find(|n| n.kind() == kind)
-}
-
 fn has_child(node: Node<'_>, kind: &str) -> bool {
     named_child_of_kind(node, kind).is_some()
-}
-
-fn child_text<'a>(node: Node<'_>, kind: &str, source: &'a [u8]) -> Option<&'a str> {
-    named_child_of_kind(node, kind)?.utf8_text(source).ok()
 }

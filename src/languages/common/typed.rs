@@ -176,7 +176,6 @@ pub fn implementation(
         end_byte: span.1,
     }
 }
-
 pub fn typed_read_bindings<'a>(
     root: Node<'_>,
     source: &'a [u8],

@@ -1,5 +1,6 @@
 use crate::domain::Binding;
 use super::{ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds};
+use crate::languages::strip_import_quotes;
 use std::collections::HashMap;
 
 mod access;
@@ -19,6 +20,7 @@ pub(super) use self::defs::{
     js_definition_span_start, js_var_binding,
 };
 use self::defs::{is_cjs_export_target, is_member_assigned_function_name, is_prototype_member_target};
+use self::imports::js_import_refs;
 pub(super) use self::imports::resolve_web_import_target;
 pub(super) use self::names::{JS_STD_MEMBERS, JS_STD_QUALIFIERS};
 pub(super) use self::test_runner::{is_assertion_script, js_test_partner_subject, js_test_run_command};
@@ -115,6 +117,22 @@ impl LanguageSemantics for JavaScriptLanguage {
         file_name.ends_with(".min.js")
     }
     super::impl_grammar_method!(crate tree_sitter_javascript::LANGUAGE, "tags.scm");
+
+    fn indexes_implementations(&self) -> bool {
+        true
+    }
+
+    fn implementations(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+    ) -> Vec<crate::languages::Implementation> {
+        types::class_implementations(root, source)
+    }
+
+    fn has_class_inheritance(&self) -> bool {
+        true
+    }
 
     fn is_read_capture_allowed(&self, node: tree_sitter::Node<'_>, source: &[u8]) -> bool {
         javascript_read_position(node, source)
@@ -222,5 +240,19 @@ impl LanguageSemantics for JavaScriptLanguage {
         file_index: &HashMap<&str, u32>,
     ) -> Option<u32> {
         resolve_web_import_target(importer_path, raw_target, file_index)
+    }
+
+    fn import_binding<'a>(&self, raw_target: &'a str) -> Option<(&'a str, &'a str)> {
+        let (module, bound) = raw_target.split_once(" as ")?;
+        Some((strip_import_quotes(module), bound.trim()))
+    }
+
+    fn import_refs(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+        refs: &mut Vec<crate::ingest::RawRef>,
+    ) {
+        js_import_refs(root, source, refs);
     }
 }

@@ -19,7 +19,7 @@ indexer_version = "0.6.1"
 [[repo]]
 name = "async"
 precision = 1.0000
-recall = 0.7353
+recall = 1.0000
 sha = "3921e54bd0704157dbea238fdfcc0c3619abde1a"
 indexer_version = "0.6.1"
 
@@ -159,6 +159,6 @@ indexer_version = "clangd-19.0"
 [[repo]]
 name = "ripwire-rs-self"
 precision = 0.9873
-recall = 0.9798
+recall = 0.9799
 sha = "check-resolution"
 indexer_version = ""

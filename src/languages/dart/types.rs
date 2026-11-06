@@ -1,4 +1,4 @@
-use crate::languages::reads::{ReadBindings, named_children_of_kind, nodes};
+use crate::languages::reads::{ReadBindings, child_text, named_children_of_kind, nodes};
 use crate::languages::typed::AgreedReturns;
 use crate::languages::{Implementation, is_plain_type_name};
 use tree_sitter::Node;
@@ -262,12 +262,7 @@ fn record_local<'a>(bindings: &mut ReadBindings<'a>, definition: Node<'_>, sourc
 }
 
 fn declared_type(node: Node<'_>, source: &[u8]) -> Option<String> {
-    let mut cursor = node.walk();
-    let ty = node
-        .children(&mut cursor)
-        .find(|child| child.kind() == "type_identifier")?
-        .utf8_text(source)
-        .ok()?;
+    let ty = child_text(node, "type_identifier", source)?;
     is_plain_type_name(ty).then(|| ty.to_string())
 }
 

@@ -55,8 +55,9 @@ impl std::fmt::Display for SymKind {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RefRole {
+    #[default]
     Call = 0,
     Read,
     Write,
