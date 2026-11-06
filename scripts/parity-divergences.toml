@@ -213,11 +213,19 @@ why = "Default window (149 rows, 12.9 KB) against upstream's 25 rows (7.0 KB); d
 evidence = "measured at 575bd1e on src/gate/affected.rs,src/serialize/arch_xml.rs (the module is now arch_xml/mod.rs; numbers predate the move): rw 12923 B, 803 facts, 149 u rows; rip 7041 B, 190 facts; untested paths absent from upstream full set (15648 B full)"
 
 [[divergence]]
-id = "test-gate-set-2-registry-dispatch"
+id = "affected-arch-xml-reach"
+command = "--affected"
+case = "src/gate/affected.rs,src/serialize/arch_xml/mod.rs"
+kind = "richer"
+why = "Ours lists 51 test files in five hop groups (reached 470) where upstream lists 14 in three (reached 91): our call graph binds more edges out of the changed files, while upstream reports graph_unresolved=1419 and graph_ambiguous=101 on this tree. Upstream's hop-3 row is src/commands/test_gate.rs, a Rust module named test_ under src/, which is not a test since 06ecbed, so ours has no such row. The extra reach is measured, not verified against a SCIP index."
+evidence = "measured: bytes ours=1764 upstream=2161; facts ours=40 upstream=36; density ours=0.02268 upstream=0.01666; ours 5 <g> rows (hops 1-5) vs upstream 3 (hops 1, 2, 4) plus <test p=src/commands/test_gate.rs hops=3>."
+
+[[divergence]]
+id = "test-gate-dyn-dispatch-mod"
 command = "--test-gate"
-case = "src/commands/test_gate.rs,src/commands/gate.rs"
+case = "src/commands/mod.rs"
 kind = "fixes-upstream-defect"
-why = "Every untyped command.run() and command.options() call on &dyn Command now reaches the gate plugins, so the impacted set (86 vs 51) and its untested rows grow with the real dynamic-dispatch callers upstream binds to the trait declaration."
+why = "Every untyped command.run() and command.options() call on &dyn Command (the registry dispatch in src/commands/mod.rs) now reaches the gate plugins, so the impacted set (136 vs upstream's 52) and its untested rows (77 vs 14) grow with the real dynamic-dispatch callers upstream binds to the trait declaration."
 evidence = "tests/resolve/trait_dispatch.rs::dynamic_dispatch_does_not_discard_implementations_in_other_files"
 
 [[divergence]]
@@ -361,12 +369,28 @@ why = "Hits in the same enclosing symbol collapse into one <hit n=K> row, so the
 evidence = "measured: default page 85 hit rows; --limit=100000 lists 90 (the n=\"2\" rows split back into single-line hits)."
 
 [[divergence]]
+id = "grep-fit-rows-merged-hits"
+command = "--grep=fit_rows"
+case = ""
+kind = "smaller"
+why = "Two hits in the same enclosing symbol collapse into one <hit n=2> row, so the first page carries fewer rows than upstream's one-row-per-line list. The merged key is not a row of the unmerged full set, which the paged-row rule cannot express; same rule as grep-merges-hits-in-one-symbol."
+evidence = "measured: default page ours 16 hits in 15 rows, 3162 B; upstream default is capped at 10 of 16 hits, 3732 B including its header comment. Full (--limit=100000) sets: ours 16 hit rows, upstream 16 (the n=2 row splits back into two single-line hits)."
+
+[[divergence]]
 id = "edit-check-resolve-changed-static-closure-caller"
 command = "--edit-check=resolve_changed_or_spec_files"
 case = ""
 kind = "richer"
 why = "The SITU static (src/commands/situ.rs) calls resolve_changed_or_spec_files inside its MCP tool handler, a closure in the static's initializer. Ours lists SITU as a caller at that call; upstream's answer omits it (the cause on upstream is not traced). The row is a real call site, so the contract check names one more caller that an edit to the function must keep compiling."
 evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 4 <c> rows (SITU at src/commands/situ.rs:30 plus three shared); upstream 3 rows (the three shared)."
+
+[[divergence]]
+id = "safe-delete-resolve-changed-static-closure-caller"
+command = "--safe-delete=resolve_changed_or_spec_files"
+case = ""
+kind = "smaller"
+why = "The SITU static (src/commands/situ.rs) calls resolve_changed_or_spec_files inside its MCP tool handler, a closure in the static's initializer. Ours lists SITU as a caller at that call, the same row as edit-check-resolve-changed-static-closure-caller; upstream's paged full set omits it. The row is a real call site, so the safe-delete check names one more caller that deleting the function would break. Ours is smaller at equal facts."
+evidence = "measured: bytes ours=838 upstream=1756; facts ours=34 upstream=34; density ours=0.04057 upstream=0.01936; ours lists SITU (p=src/commands/situ.rs n=SITU) in its paged <c> set, which upstream's full set omits."
 
 [[divergence]]
 id = "around-fit-rows-name-only-callers"
