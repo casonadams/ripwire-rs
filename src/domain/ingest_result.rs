@@ -50,6 +50,9 @@ pub struct Implementation {
     pub trait_qualifier: Option<Spur>,
     pub subject_bound: Option<Spur>,
     pub generic_subject: bool,
+    /// The trait is the superclass the subject extends (its supertypes' members reach the subject).
+    #[serde(default)]
+    pub extends: bool,
     pub start_byte: u32,
     pub end_byte: u32,
 }

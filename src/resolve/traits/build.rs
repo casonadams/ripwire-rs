@@ -134,7 +134,12 @@ impl TraitIndex {
         }
         let trait_id = self.resolve_trait_of(imp, env);
         let (subject, bound) = self.resolve_subject_and_bound(imp, env);
-        if trait_id.is_none() && inherits {
+        let subject = subject.or_else(|| {
+            (inherits && imp.trait_name.is_some() && !imp.generic_subject)
+                .then(|| self.resolve_text(imp.subject, imp.file_id, imp.start_byte, env, Want::Any))
+                .flatten()
+        });
+        if inherits && (trait_id.is_none() || imp.extends) {
             self.record_supertype(imp, subject, env);
         }
         let external =
@@ -175,7 +180,8 @@ impl TraitIndex {
         let (Some(subject), Some(name)) = (subject, imp.trait_name) else {
             return;
         };
-        let base = self.resolve_text(name, imp.file_id, imp.start_byte, env, Want::Concrete);
+        let want = if imp.extends { Want::Any } else { Want::Concrete };
+        let base = self.resolve_text(name, imp.file_id, imp.start_byte, env, want);
         if let Some(base) = base.filter(|&base| base != subject) {
             let bases = self.supertypes.entry(subject).or_default();
             if !bases.contains(&base) {

@@ -414,6 +414,7 @@ pub(super) fn method_implementations(root: Node<'_>, source: &[u8]) -> Vec<Imple
                 trait_path: None,
                 subject_bound: None,
                 generic_subject: false,
+                extends: false,
                 start_byte: method.start_byte(),
                 end_byte: method.end_byte(),
             })
@@ -453,6 +454,7 @@ fn embedded_bases(spec: Node<'_>, source: &[u8]) -> Vec<Implementation> {
             trait_path: Some(base.to_string()),
             subject_bound: None,
             generic_subject: false,
+            extends: false,
             start_byte: spec.start_byte(),
             end_byte: spec.end_byte(),
         })

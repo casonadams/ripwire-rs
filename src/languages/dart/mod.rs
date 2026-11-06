@@ -289,6 +289,20 @@ fn enclosing_class_name<'a>(node: tree_sitter::Node<'a>, source: &'a [u8]) -> Op
     name.utf8_text(source).ok()
 }
 
+/// A bodyless member of a class or mixin (`void draw();` in an abstract class) is a `function_signature`
+/// under a `declaration`, not a `method_signature`; it is a method, so member calls can reach it.
+fn is_bodyless_member_signature(node: tree_sitter::Node<'_>) -> bool {
+    let Some(decl) = node.parent() else {
+        return false;
+    };
+    let Some(body) = decl.parent() else {
+        return false;
+    };
+    node.kind() == "function_signature"
+        && decl.kind() == "declaration"
+        && body.kind() == "class_body"
+}
+
 fn is_constructor_signature(node: tree_sitter::Node<'_>) -> bool {
     matches!(
         node.kind(),
@@ -452,6 +466,9 @@ impl LanguageSemantics for DartLanguage {
         def_node: Option<tree_sitter::Node<'_>>,
         source: &[u8],
     ) -> SymKind {
+        if kind == SymKind::Function && def_node.is_some_and(is_bodyless_member_signature) {
+            return SymKind::Method;
+        }
         let is_abstract = def_node.is_some_and(|class| {
             class.kind() == "class_definition"
                 && source[class.start_byte()..].starts_with(b"abstract ")

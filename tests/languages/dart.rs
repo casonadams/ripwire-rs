@@ -38,6 +38,73 @@ fn dart_typed_receiver_without_the_method_keeps_name_resolution() {
     assert_eq!(dart_callees("viaInherited"), ["Base.close"]);
 }
 
+const SHAPES: &str = "abstract class Shape {\n  void draw();\n}\n\
+class Circle extends Shape {\n  void draw() {}\n}\n\
+class Square extends Shape {\n  void draw() {}\n}\n\
+void render(Shape shape) {\n  shape.draw();\n}\n\
+void paint(Circle circle) {\n  circle.draw();\n}\n\
+abstract class Mapper {\n  List<int> map(List<int> xs);\n}\n\
+class Doubler extends Mapper {\n  List<int> map(List<int> xs) => xs;\n}\n\
+void builtinMap() {\n  [1, 2].map((n) => n);\n}\n";
+
+fn shape_callees(caller: &str) -> Vec<String> {
+    owner_qualified_callees(&[("lib/shapes.dart", Lang::Dart, SHAPES.as_bytes())], caller)
+}
+
+#[test]
+fn dart_bodyless_abstract_member_is_a_declaration_the_typed_receiver_reaches() {
+    assert_eq!(shape_callees("render"), ["Circle.draw", "Shape.draw", "Square.draw"]);
+    assert_eq!(shape_callees("paint"), ["Circle.draw"]);
+}
+
+const COLLECTIONS: &str = "class Kid {\n  void play() {}\n}\n\
+class Toy {\n  void play() {}\n}\n\
+class Nursery {\n  final List<Kid> kids = [];\n  Iterable<Kid> children() => kids;\n\
+  void playAll() {\n    children().map((k) => k.play());\n  }\n}\n\
+class Shelf {\n  Iterable<Toy> toys() => [];\n}\n\
+void playWithToys(Shelf shelf) {\n  shelf.toys().map((t) => t.play());\n}\n\
+void mapBuiltin(List<int> xs) {\n  xs.map((n) => n);\n}\n";
+
+fn collection_callees(caller: &str) -> Vec<String> {
+    owner_qualified_callees(
+        &[("lib/collections.dart", Lang::Dart, COLLECTIONS.as_bytes())],
+        caller,
+    )
+}
+
+#[test]
+fn dart_lambda_over_a_call_result_types_its_parameter_from_the_element() {
+    assert_eq!(collection_callees("playAll"), ["Kid.play", "Nursery.children"]);
+    assert_eq!(collection_callees("playWithToys"), ["Shelf.toys", "Toy.play"]);
+    assert!(collection_callees("mapBuiltin").is_empty());
+}
+
+const ABSTRACT_BASE: &str = "mixin Mix {\n  void mixed() {}\n}\n\
+class Core {\n  void core() {}\n}\n\
+abstract class Base extends Core with Mix {\n  void baseOnly() {}\n}\n\
+class Leaf extends Base {\n  void leafOnly() {}\n}\n\
+class Other {\n  void mixed() {}\n}\n\
+void viaMixin(Leaf leaf) {\n  leaf.mixed();\n}\n\
+void viaSuperclass(Leaf leaf) {\n  leaf.core();\n}\n";
+
+fn abstract_base_callees(caller: &str) -> Vec<String> {
+    owner_qualified_callees(
+        &[("lib/bases.dart", Lang::Dart, ABSTRACT_BASE.as_bytes())],
+        caller,
+    )
+}
+
+#[test]
+fn dart_mixin_behind_an_abstract_superclass_is_reachable_from_its_subclass() {
+    assert_eq!(abstract_base_callees("viaMixin"), ["Mix.mixed"]);
+    assert_eq!(abstract_base_callees("viaSuperclass"), ["Core.core"]);
+}
+
+#[test]
+fn dart_builtin_map_is_not_an_in_tree_abstract_member() {
+    assert!(shape_callees("builtinMap").is_empty());
+}
+
 #[test]
 fn dart_call_result_receiver_uses_the_factory_return_type() {
     assert_call_result_binds_factory_return(

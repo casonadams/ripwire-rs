@@ -171,6 +171,7 @@ pub fn implementation(
         trait_path: trait_path.map(str::to_string),
         subject_bound: None,
         generic_subject: false,
+        extends: false,
         start_byte: span.0,
         end_byte: span.1,
     }

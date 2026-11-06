@@ -4,13 +4,31 @@ use crate::languages::{Implementation, is_plain_type_name};
 use tree_sitter::Node;
 
 pub(super) fn class_implementations(root: Node<'_>, source: &[u8]) -> Vec<Implementation> {
-    crate::languages::typed::class_implementations(
+    let mut implementations = crate::languages::typed::class_implementations(
         root,
         source,
         &["class_definition", "mixin_declaration"],
         dart_class_name,
         dart_bases,
-    )
+    );
+    let superclasses: Vec<(String, String)> = nodes(root)
+        .filter(|n| n.kind() == "class_definition")
+        .filter_map(|class| {
+            let subject = dart_class_name(class, source)?;
+            let superclass = class
+                .child_by_field_name("superclass")
+                .and_then(|clause| declared_type(clause, source))?;
+            Some((subject.to_string(), superclass))
+        })
+        .collect();
+    for imp in &mut implementations {
+        imp.extends = imp.trait_path.as_ref().is_some_and(|path| {
+            superclasses
+                .iter()
+                .any(|(subject, superclass)| *subject == imp.subject && superclass == path)
+        });
+    }
+    implementations
 }
 
 /// A class's name is its `name` field; a mixin names itself with a bare identifier.
@@ -46,6 +64,11 @@ fn dart_bases<'s>(class: Node<'_>, source: &'s [u8]) -> Vec<&'s str> {
 pub(super) fn typed_read_bindings<'a>(root: Node<'_>, source: &'a [u8]) -> ReadBindings<'a> {
     let mut bindings = ReadBindings::default();
     let mut returns = AgreedReturns::default();
+    for class in nodes(root).filter(|n| n.kind() == "class_definition") {
+        if let Some((name, body)) = class_name_body(class, source) {
+            record_method_returns(&mut bindings, name, body, source);
+        }
+    }
     for node in nodes(root) {
         match node.kind() {
             "class_definition" => record_class(&mut bindings, node, source),
@@ -82,12 +105,7 @@ fn return_type(signature: Node<'_>, source: &[u8]) -> Option<String> {
 }
 
 fn record_class<'a>(bindings: &mut ReadBindings<'a>, class: Node<'_>, source: &'a [u8]) {
-    let (Some(name), Some(body)) = (
-        class
-            .child_by_field_name("name")
-            .and_then(|n| n.utf8_text(source).ok()),
-        class.child_by_field_name("body"),
-    ) else {
+    let Some((name, body)) = class_name_body(class, source) else {
         return;
     };
     bindings.insert("this", body.byte_range(), Some(name.to_string()));
@@ -128,7 +146,6 @@ fn record_class<'a>(bindings: &mut ReadBindings<'a>, class: Node<'_>, source: &'
             bindings.insert_member(name, member, ty);
         }
     }
-    record_method_returns(bindings, name, body, source);
 }
 
 /// Each method of a class is a member typed by its declared return, so `d.holder()` reaches its class.
@@ -154,6 +171,9 @@ fn record_method_returns<'a>(
             .and_then(|n| n.utf8_text(source).ok());
         if let (Some(member), Some(ty)) = (member, return_type(signature, source)) {
             bindings.insert_member(owner, &format!("{member}()"), ty);
+        }
+        if let (Some(member), Some(element)) = (member, declared_element(signature, source)) {
+            bindings.insert_member_element(owner, &format!("{member}()"), element);
         }
     }
  }
@@ -327,11 +347,51 @@ fn lambda_element(param: Node<'_>, bindings: &ReadBindings<'_>, source: &[u8]) -
         return None;
     }
     let receiver = method.prev_named_sibling()?;
-    if receiver.kind() != "identifier" {
+    match receiver.kind() {
+        "identifier" => {
+            let name = receiver.utf8_text(source).ok()?;
+            bindings
+                .element_at(name, param.start_byte())
+                .map(str::to_string)
+        }
+        "selector" => call_element(receiver, param.start_byte(), bindings, source),
+        _ => None,
+    }
+}
+
+/// The element type a call's result holds: `m(..)` on the enclosing class, or `x.m(..)` on the type `x` is
+/// bound to, when `m` declares a collection of one plain type (`Iterable<Kid> m()` holds `Kid`).
+fn call_element(
+    selector: Node<'_>,
+    byte: usize,
+    bindings: &ReadBindings<'_>,
+    source: &[u8],
+) -> Option<String> {
+    if selector.named_child(0)?.kind() != "argument_part" {
         return None;
     }
-    let name = receiver.utf8_text(source).ok()?;
+    let callee = selector.prev_named_sibling()?;
+    let (owner, member) = match callee.kind() {
+        "identifier" => (bindings.type_at("this", byte)?, callee),
+        "selector" => {
+            let access = callee.named_child(0)?;
+            let base = callee.prev_named_sibling()?;
+            if access.kind() != "unconditional_assignable_selector" || base.kind() != "identifier" {
+                return None;
+            }
+            let base_name = base.utf8_text(source).ok()?;
+            (bindings.type_at(base_name, byte)?, access.named_child(0)?)
+        }
+        _ => return None,
+    };
+    let member = member.utf8_text(source).ok()?;
     bindings
-        .element_at(name, param.start_byte())
+        .member_element(owner, &format!("{member}()"))
         .map(str::to_string)
+}
+
+/// A class's name and body, when it has both.
+fn class_name_body<'t, 's>(class: Node<'t>, source: &'s [u8]) -> Option<(&'s str, Node<'t>)> {
+    let name = class.child_by_field_name("name")?.utf8_text(source).ok()?;
+    Some((name, class.child_by_field_name("body")?))
 }

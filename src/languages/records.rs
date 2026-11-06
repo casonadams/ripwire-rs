@@ -15,6 +15,9 @@ pub struct Implementation {
     pub trait_path: Option<String>,
     pub subject_bound: Option<String>,
     pub generic_subject: bool,
+    /// The trait path is the superclass the subject extends, not an interface it implements. Only a superclass
+    /// carries its supertypes' members to the subject, even when the superclass is an interface-kind class.
+    pub extends: bool,
     pub start_byte: usize,
     pub end_byte: usize,
 }
