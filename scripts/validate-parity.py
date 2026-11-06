@@ -166,7 +166,7 @@ def report_error(message):
 
 
 def find_binaries():
-    rw_bin = os.path.abspath("target/release/ripwire-rs")
+    rw_bin = os.path.abspath(os.environ.get("RIPWIRE_BIN", "target/release/ripwire-rs"))
     if not os.path.exists(rw_bin):
         rw_bin = os.path.abspath("target/release/rw")
     if not os.path.exists(rw_bin):

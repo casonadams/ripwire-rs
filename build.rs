@@ -34,12 +34,14 @@ fn main() {
         "Missing 'vendor/grammars' directory. Run 'make update-grammars' or './scripts/update-grammars.sh' before building."
     );
 
-    println!("cargo:rerun-if-changed=src/languages");
+    println!("cargo:rerun-if-changed=src/languages/mod.rs");
     let mut plugins: Vec<_> = std::fs::read_dir("src/languages")
         .expect("src/languages")
         .flatten()
         .filter_map(|entry| {
-            let manifest = std::fs::read_to_string(entry.path().join("grammar.txt")).ok()?;
+            let manifest_path = entry.path().join("grammar.txt");
+            let manifest = std::fs::read_to_string(&manifest_path).ok()?;
+            println!("cargo:rerun-if-changed={}", manifest_path.display());
             Some((entry.file_name().to_string_lossy().into_owned(), manifest))
         })
         .collect();

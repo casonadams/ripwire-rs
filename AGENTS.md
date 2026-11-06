@@ -123,6 +123,10 @@ more correct, or more honest.
   the final step). There is no line-coverage or CRAP gate: cognitive complexity bounds each function, and
   `ripwire-rs --test-gate` / `--affected` check that changed code is reached by tests through the call graph
   (reachability, not executed lines).
+- **Fast loop**: `make quick` (check, then the integration tests) or `make t FILTER=resolve::` (cargo test, about 2 s
+  for all 734) while editing. The gates that run the binary (`size`, `resolution`, `docs-check`, `parity`, `corpus-*`)
+  build `target/fast` (`RELEASE_PROFILE`: release's optimizer, no fat LTO, about 8 s per edit, not 140 s).
+  `build-release`, `bench` and `install` stay on `target/release`.
 - **Gate hygiene**: Run `make all` on a clean, committed tree after `ripwire-rs . --quality-baseline`;
   a dirty tree or a stale baseline gives false parity and quality failures. Parity probe symbols are pinned in
   `scripts/validate-parity.py` (`PINNED_TARGETS`) because the ledger is measured on them; a ranking change

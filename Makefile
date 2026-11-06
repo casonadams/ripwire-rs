@@ -5,6 +5,11 @@ CPUS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || sy
 export CARGO_BUILD_JOBS ?= $(CPUS)
 export RUST_TEST_THREADS ?= $(CPUS)
 export RUSTFLAGS ?= -D warnings
+# Gates that run a binary (size, resolution, docs, parity, corpus-*) use the fast profile in Cargo.toml: release's
+# optimizer without fat LTO, so an edit rebuilds in seconds, not minutes. Shipping and bench use release.
+RELEASE_PROFILE ?= fast
+BIN ?= $(or $(CARGO_TARGET_DIR),target)/$(RELEASE_PROFILE)/ripwire-rs
+FILTER ?=
 
 .PHONY: help
 help: ## Display this help screen
@@ -33,6 +38,11 @@ build-release: ## Build the project in release mode
 	@$(MAKE) ensure-grammars
 	$(CARGO) build --release
 
+.PHONY: verify-bin
+verify-bin: ## Build the verification binary target/$(RELEASE_PROFILE)/ripwire-rs (fast by default: release optimizer, no fat LTO, incremental)
+	@$(MAKE) ensure-grammars
+	$(CARGO) build --profile $(RELEASE_PROFILE)
+
 .PHONY: check
 check: ## Type check all targets
 	@$(MAKE) ensure-grammars
@@ -60,14 +70,14 @@ clean: ## Clean cargo build artifacts
 	$(CARGO) clean
 
 .PHONY: sweep
-sweep: ## Remove stale build artifacts: cargo-sweep (unused for 14 days) when installed, else incremental and llvm-cov leftovers; target/release is never touched by the fallback
+sweep: ## Remove stale build artifacts: cargo-sweep (unused for 14 days) when installed, else incremental (debug and fast) and llvm-cov leftovers; target/release is never touched by the fallback
 	@target="$(or $(CARGO_TARGET_DIR),target)"; \
 	if $(CARGO) sweep --version >/dev/null 2>&1; then \
 		echo "sweep: cargo-sweep removing artifacts unused for 14 days"; \
 		$(CARGO) sweep --time 14; \
 	else \
-		echo "sweep: cargo-sweep not installed (cargo install cargo-sweep); deleting $$target/debug/incremental, $$target/llvm-cov-target and $$target/package"; \
-		rm -rf "$$target/debug/incremental" "$$target/llvm-cov-target" "$$target/package"; \
+		echo "sweep: cargo-sweep not installed (cargo install cargo-sweep); deleting $$target/debug/incremental, $$target/fast/incremental, $$target/llvm-cov-target and $$target/package"; \
+		rm -rf "$$target/debug/incremental" "$$target/fast/incremental" "$$target/llvm-cov-target" "$$target/package"; \
 	fi
 
 .PHONY: test
@@ -79,6 +89,15 @@ test: ## Run the workspace tests: nextest ci profile (plus doc tests) when insta
 	else \
 		$(CARGO) test --workspace; \
 	fi
+
+.PHONY: t
+t: ## Run the integration tests with cargo test, the fast loop (about 3 s for all 734): make t FILTER=resolve::
+	@$(MAKE) ensure-grammars
+	$(CARGO) test --test it $(FILTER)
+
+.PHONY: quick
+quick: ## Edit loop: cargo check --all-targets, then make t (FILTER=... narrows the tests)
+	@$(MAKE) check t FILTER="$(FILTER)"
 
 .PHONY: complexity
 complexity: ## Gate on cccc cognitive complexity <= 15 with GitHub error annotations
@@ -105,20 +124,20 @@ quality: ## Measure quality regressions against git HEAD with ripwire-rs
 	fi
 
 .PHONY: size
-size: build-release ## Fail when a default answer outgrows its byte budget, or discloses a wrong est_tokens (needs uv for tiktoken)
-	@if command -v uv >/dev/null 2>&1; then uv run --quiet --with tiktoken python3 ./scripts/check-output-size.py .; else python3 ./scripts/check-output-size.py .; fi
+size: verify-bin ## Fail when a default answer outgrows its byte budget, or discloses a wrong est_tokens (needs uv for tiktoken)
+	@if command -v uv >/dev/null 2>&1; then uv run --quiet --with tiktoken python3 ./scripts/check-output-size.py . --bin $(BIN); else python3 ./scripts/check-output-size.py . --bin $(BIN); fi
 
 .PHONY: docs
-docs: build-release ## Regenerate docs/REFERENCE.md (every CLI flag and MCP tool) from the binary
-	@python3 ./scripts/gen-reference.py
+docs: verify-bin ## Regenerate docs/REFERENCE.md (every CLI flag and MCP tool) from the binary
+	@python3 ./scripts/gen-reference.py --bin $(BIN)
 
 .PHONY: docs-check
-docs-check: build-release ## Fail when docs/REFERENCE.md is stale
-	@python3 ./scripts/gen-reference.py --check
+docs-check: verify-bin ## Fail when docs/REFERENCE.md is stale
+	@python3 ./scripts/gen-reference.py --check --bin $(BIN)
 
 .PHONY: resolution
-resolution: build-release ## Fail when call resolution gets worse than scripts/resolution-ceilings.toml
-	@python3 ./scripts/check-resolution.py .
+resolution: verify-bin ## Fail when call resolution gets worse than scripts/resolution-ceilings.toml
+	@python3 ./scripts/check-resolution.py . --bin $(BIN)
 
 CORPUS := python3 ./scripts/corpus/corpus.py
 NAME ?=
@@ -132,34 +151,34 @@ corpus-index: ## Index the corpus repos into ~/.cache/ripwire-corpus (NAME=click
 	@$(CORPUS) index $(NAME) $(if $(FORCE),--force)
 
 .PHONY: corpus-eval
-corpus-eval: build-release ## Score the resolver on the corpus and fail when a precision or recall floor is missed
-	@$(CORPUS) eval $(NAME) --bin target/release/ripwire-rs
+corpus-eval: verify-bin ## Score the resolver on the corpus and fail when a precision or recall floor is missed
+	@$(CORPUS) eval $(NAME) --bin $(BIN)
 
 .PHONY: corpus-measure
-corpus-measure: build-release ## Print measured precision and recall per corpus repo with suggested floors
-	@$(CORPUS) measure $(NAME) --bin target/release/ripwire-rs
+corpus-measure: verify-bin ## Print measured precision and recall per corpus repo with suggested floors
+	@$(CORPUS) measure $(NAME) --bin $(BIN)
 
 .PHONY: corpus-diff
-corpus-diff: build-release ## Diff resolver verdicts on the corpus between OLD=path/to/old/ripwire-rs and target/release/ripwire-rs
+corpus-diff: verify-bin ## Diff resolver verdicts on the corpus between OLD=path/to/old/ripwire-rs and the verification binary
 	@test -n "$(OLD)" || { echo "usage: make corpus-diff OLD=path/to/old/ripwire-rs"; exit 1; }
-	@$(CORPUS) diff "$(OLD)" target/release/ripwire-rs $(NAME)
+	@$(CORPUS) diff "$(OLD)" $(BIN) $(NAME)
 
 UPSTREAM_DIR ?= ../ripwire
 
 .PHONY: upstream-parity
-upstream-parity: build-release ## Run upstream regression.sh against target/release/ripwire-rs
+upstream-parity: verify-bin ## Run upstream regression.sh against the verification binary
 	@if [ ! -d "$(UPSTREAM_DIR)" ]; then \
 		echo "Error: Upstream repository not found at $(UPSTREAM_DIR)"; \
 		exit 1; \
 	fi
 	@echo "Running upstream regression test suite..."
-	@RIPWIRE_BIN="$$(pwd)/target/release/ripwire-rs" bash "$(UPSTREAM_DIR)/test/regression.sh"
+	@RIPWIRE_BIN="$(abspath $(BIN))" bash "$(UPSTREAM_DIR)/test/regression.sh"
 
 REPO ?= .
 
 .PHONY: parity
-parity: build-release ## Validate upstream parity on REPO: prints ledger measurements; fails on unrecorded, stale, or invalid entries in scripts/parity-divergences.toml (default: REPO=.)
-	@./scripts/validate-parity.sh "$(REPO)"
+parity: verify-bin ## Validate upstream parity on REPO: prints ledger measurements; fails on unrecorded, stale, or invalid entries in scripts/parity-divergences.toml (default: REPO=.)
+	@RIPWIRE_BIN="$(BIN)" ./scripts/validate-parity.sh "$(REPO)"
 
 .PHONY: validate
 validate: parity ## Alias for parity validation on REPO (e.g. make validate REPO=../cccc)

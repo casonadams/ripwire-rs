@@ -18,12 +18,13 @@ Usage: scripts/check-resolution.py [REPO] [--bin PATH]
 """
 
 import argparse
+import hashlib
+import os
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import tomllib
 
 BOUNDS = pathlib.Path(__file__).with_name("resolution-ceilings.toml")
@@ -39,17 +40,57 @@ def gauges(binary, repo):
     return {key: int(value) for key, value in re.findall(r'(graph_\w+)="(\d+)"', out)}
 
 
+CACHE = pathlib.Path.home() / ".cache" / "ripwire-corpus" / "resolution"
+KEEP = 4
+
+
+def tree_key(repo, indexer):
+    """Digest of the repo's files (tracked and untracked, by path and content) and the indexer; None outside git."""
+    try:
+        listing = subprocess.run(
+            ["git", "-C", repo, "ls-files", "-co", "--exclude-standard", "-z"], capture_output=True, check=True
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    digest = hashlib.sha256(f"{pathlib.Path(repo).resolve()}\0{indexer}\0".encode())
+    for name in sorted(filter(None, listing.decode().split("\0"))):
+        path = pathlib.Path(repo, name)
+        digest.update(name.encode() + b"\0")
+        if path.is_file() and not path.is_symlink():
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:24]
+
+
+def scip_index(repo, indexer):
+    """Path to rust-analyzer's SCIP index of repo; reused from the cache while the tree and indexer are unchanged."""
+    key = tree_key(repo, indexer)
+    if key is None:
+        return None
+    cached = CACHE / f"{key}.scip"
+    if cached.exists():
+        print(f"scip index reused: {cached}")
+        return cached
+    CACHE.mkdir(parents=True, exist_ok=True)
+    partial = cached.with_suffix(".partial")
+    built = run(["rust-analyzer", "scip", repo, "--output", str(partial)])
+    if built.returncode != 0 or not partial.exists():
+        print(built.stderr[-400:], file=sys.stderr)
+        partial.unlink(missing_ok=True)
+        return None
+    os.replace(partial, cached)
+    for old in sorted(CACHE.glob("*.scip"), key=os.path.getmtime)[:-KEEP]:
+        old.unlink()
+    return cached
+
+
 def scip_scores(binary, repo):
     """precision and recall against rust-analyzer's SCIP index, or None when it cannot be built."""
     if shutil.which("rust-analyzer") is None:
         return None
-    with tempfile.TemporaryDirectory() as tmp:
-        index = pathlib.Path(tmp) / "index.scip"
-        built = run(["rust-analyzer", "scip", repo, "--output", str(index)])
-        if built.returncode != 0 or not index.exists():
-            print(built.stderr[-400:], file=sys.stderr)
-            return None
-        out = run([binary, repo, "--scip", str(index), "--eval=scip", "--samples=0"]).stdout
+    index = scip_index(repo, run(["rust-analyzer", "--version"]).stdout.strip())
+    if index is None:
+        return None
+    out = run([binary, repo, "--scip", str(index), "--eval=scip", "--samples=0"]).stdout
     found = re.search(r'<scip-eval [^>]*precision="([\d.]+)" recall="([\d.]+)"', out)
     return {"precision": float(found[1]), "recall": float(found[2])} if found else None
 

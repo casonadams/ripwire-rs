@@ -121,9 +121,16 @@ make all
 # Run the test suite
 make test
 
+# Edit loop: type-check, then the integration tests (make t FILTER=resolve:: narrows them)
+make quick
+
 # Format code
 make fmt
 ```
+
+`make t` runs `tests/it.rs` with cargo test, which is about 6x faster than nextest here because nextest starts
+one process per test. `make size`, `make resolution`, `make docs-check` and `make parity` build `target/fast`
+(`RELEASE_PROFILE=release` to use the shipping profile), about 8 s per edit instead of about 140 s.
 
 `make all` and `make test` use the nextest `ci` profile when nextest is
 installed: passing tests stay quiet, failure output appears once at the end,
