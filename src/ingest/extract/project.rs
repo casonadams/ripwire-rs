@@ -33,10 +33,14 @@ impl Declared {
             .flatten()
             .flat_map(|(lang, file)| file.defs.iter().map(move |def| (*lang, def)))
         {
+            // A forward declaration (`class logger;`) has no body and declares no members.
+            let forward_only =
+                def.body_byte == 0 && lang.semantics().bodyless_types_are_forward_declarations();
             if matches!(
                 def.kind,
                 SymKind::Class | SymKind::Struct | SymKind::Interface
-            ) {
+            ) && !forward_only
+            {
                 *class_count.entry(owner_key(lang, def)).or_default() += 1;
             }
             if let Some(scope) = def.scope.as_deref()

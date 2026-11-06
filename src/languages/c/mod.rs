@@ -151,8 +151,12 @@ impl LanguageSemantics for CLanguage {
         true
     }
 
+    fn bodyless_types_are_forward_declarations(&self) -> bool {
+        true
+    }
+
     fn type_aliases(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, String)> {
-        type_aliases(root, source)
+        type_aliases(root, source, &[])
     }
 
     fn blank_error_macros(&self, source_bytes: &[u8]) -> Option<Vec<u8>> {

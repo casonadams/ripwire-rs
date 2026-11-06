@@ -227,6 +227,18 @@ fn nominals_by_name(symbols: &[Symbol]) -> HashMap<Spur, Vec<NodeId>> {
     }) {
         map.entry(s.name).or_default().push(s.id);
     }
+    for ids in map.values_mut() {
+        if ids.iter().any(|&id| symbols[id as usize].has_body()) {
+            ids.retain(|&id| {
+                let sym = &symbols[id as usize];
+                sym.has_body()
+                    || !sym
+                        .lang
+                        .semantics()
+                        .bodyless_types_are_forward_declarations()
+            });
+        }
+    }
     map
 }
 
