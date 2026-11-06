@@ -1,0 +1,136 @@
+# Measured precision and recall per corpus entry: the ratchet. Written only by make verify-ratchet, which never
+# lowers a number (scripts/corpus/verify.py). A record applies only while its sha and indexer_version match
+# corpus.toml; a new pin starts again from its measured values. corpus.toml holds the inputs and the floors.
+
+[[repo]]
+name = "rich"
+precision = 0.9860
+recall = 0.9160
+sha = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
+indexer_version = "0.6.8"
+
+[[repo]]
+name = "superstruct"
+precision = 0.9882
+recall = 0.9882
+sha = "e414c8afd3b69f6bc0173b8ee25f71d8e5694f01"
+indexer_version = "0.6.1"
+
+[[repo]]
+name = "async"
+precision = 1.0000
+recall = 0.7353
+sha = "3921e54bd0704157dbea238fdfcc0c3619abde1a"
+indexer_version = "0.6.1"
+
+[[repo]]
+name = "rack"
+precision = 0.9864
+recall = 0.9943
+sha = "da90464e3fa93e3cb49dc2d4ede798e6c6b70b4f"
+indexer_version = "0.5.1"
+
+[[repo]]
+name = "dart-xml"
+precision = 0.9726
+recall = 0.7593
+sha = "e083bbaf4188beccdebac514acacc9440297de53"
+indexer_version = "1.8.1"
+
+[[repo]]
+name = "kotlinpoet"
+precision = 0.8313
+recall = 0.5050
+sha = "4ce5d54547614aa245dd3cc8d9e0732bbe9c44de"
+indexer_version = "0.13.2"
+
+[[repo]]
+name = "jsoup"
+precision = 0.9623
+recall = 0.8963
+sha = "d90d57521d931db7bf7ee464a4c0a1a9293db088"
+indexer_version = "0.12.3"
+
+[[repo]]
+name = "scalacheck"
+precision = 0.9017
+recall = 0.8439
+sha = "c62df5d5e47670c847f93fcdb7ef8ee3ad6f864e"
+indexer_version = "0.12.3"
+
+[[repo]]
+name = "spdlog"
+precision = 0.9376
+recall = 0.8100
+sha = "6d9805df3f588402b17073dcd13eb569ceda864d"
+indexer_version = "0.4.1"
+
+[[repo]]
+name = "zlib"
+precision = 1.0000
+recall = 1.0000
+sha = "757f0527154291bcf6bfbd6396ecde6bedd2db95"
+indexer_version = "0.4.1"
+
+[[repo]]
+name = "guardclauses"
+precision = 0.9882
+recall = 0.9796
+sha = "61dde6c9d3e1715286bd100144a9edff1ad0664c"
+indexer_version = "0.2.16"
+
+[[repo]]
+name = "uuid"
+precision = 0.9367
+recall = 0.8870
+sha = "dc681915388ca5fd55a7fcb7c85bd9202f20fd4a"
+indexer_version = "0.0.2"
+
+[[repo]]
+name = "chi"
+precision = 0.8053
+recall = 0.8228
+sha = "9f8adb1aabaa8a91180a821111d3f8e668d1c0bf"
+indexer_version = "gopls-0.24.0"
+
+[[repo]]
+name = "penlight"
+precision = 0.8216
+recall = 0.8422
+sha = "7f3351f226c2f643aaa1d3afa8d7293dd8a1d985"
+indexer_version = "lua-language-server-3.19.2"
+
+[[repo]]
+name = "zls"
+precision = 0.8095
+recall = 0.8759
+sha = "b3e65123f1bf455cea491ba7069bebd5f93e6839"
+indexer_version = "zls-0.17.0"
+
+[[repo]]
+name = "fpm"
+precision = 0.9980
+recall = 0.9845
+sha = "4ccd0c1d0210a9ca25bee34de7ca6e0c1f629cef"
+indexer_version = "fortls-3.2.2"
+
+[[repo]]
+name = "forge-std"
+precision = 0.7103
+recall = 0.6651
+sha = "dc647cc030d9d65910d8f1172a0cde48d7106e32"
+indexer_version = "solidity-ls-0.9.3"
+
+[[repo]]
+name = "ohmybash"
+precision = 0.9983
+recall = 0.9960
+sha = "94c2977eda06f230aafa9628fcd869123f01896b"
+indexer_version = "bash-language-server-5.8.1"
+
+[[repo]]
+name = "ripwire-rs-self"
+precision = 0.9868
+recall = 0.9789
+sha = "check-resolution"
+indexer_version = ""

@@ -7,7 +7,8 @@
 # twice on this tree (src/graph/mod.rs and a type alias in tests/git/history.rs), so the owner is not unique from
 # the calling file and those calls decline by design.
 # The gauge later read 1001 after the corpus harness added Python scripts (lsp2scip and the corpus runner) whose
-# standard-library calls the resolver cannot bind; the ceiling is 2% above that reading.
+# standard-library calls the resolver cannot bind; the ceiling is 2% above that reading. It read 1055 after the
+# corpus verification tooling (scripts/corpus/verify.py, about 55 such calls) and the ceiling follows it.
 
 [[ceiling]]
 gauge = "graph_ambiguous"
@@ -15,7 +16,7 @@ max = 583
 
 [[ceiling]]
 gauge = "graph_unresolved"
-max = 1020
+max = 1076
 
 # SCIP oracle (rust-analyzer), measured on this repository: precision=0.9868, recall=0.9789.
 # Floors sit just under the measurement; raise one in the commit that improves it.

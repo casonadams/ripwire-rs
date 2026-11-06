@@ -16,6 +16,9 @@
 #                        lowest accepted --eval=scip values, set just under the measured value
 #   status               measured | unverified | blocked; blocked entries need a reason
 #
+# This file holds the inputs and the floors. The measured numbers live in baseline.toml, the ratchet written by
+# make verify-ratchet (scripts/corpus/verify.py): it records each entry's precision and recall and raises the floors
+# here to the measured value minus 0.002, and never lowers either. Edit a floor by hand only to lower it, with a reason.
 # Repo URLs and SHAs live only in this file (see AGENTS.md).
 
 # path = "." snapshots the working tree (tracked and unignored files), so its index and floors follow the
@@ -305,3 +308,103 @@ image = "ripwire-corpus-lsp:local"
 indexer = "lsp2scip"
 indexer_version = "elixir-ls-0.31.1"
 index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .ex,.exs --language-id elixir --out {out} --settle 30 -- /opt/elixir-ls/language_server.sh"
+
+[[repo]]
+name = "godot-steering-ai-framework"
+languages = ["gdscript"]
+status = "unverified"
+license = "MIT"
+url = "https://github.com/GDQuest/godot-steering-ai-framework"
+sha = "9d7cf0deff805d8f2a5316c33f3c85cffa3376a7"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "godot-4.7.2"
+index = "godot --headless --editor --path /src >/tmp/godot.log 2>&1 &\npython3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .gd --language-id gdscript --out {out} --connect 127.0.0.1:6005 --settle 30"
+
+[[repo]]
+name = "rodash"
+languages = ["brightscript"]
+status = "unverified"
+license = "MIT"
+url = "https://github.com/Tubitv/rodash"
+sha = "105b69ef98f2b5351dd3f02c9041a3a36886f717"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "brighterscript-0.73.8"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .brs,.bs --language-id brightscript --out {out} --settle 20 -- bsc --lsp"
+
+[[repo]]
+name = "cobolcraft"
+languages = ["cobol"]
+status = "unverified"
+license = "MIT"
+url = "https://github.com/meyfa/CobolCraft"
+sha = "e8c420df7a901b51b10c70bc08b56af7310d00f2"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "che-cobol-2.5.1"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .cob,.cpy --language-id cobol --out {out} --settle 30 --pattern '(?i)\\bPERFORM\\s+([A-Za-z0-9][A-Za-z0-9-]*)' -- cobol-language-server"
+
+[[repo]]
+name = "erlydtl"
+languages = ["erlang"]
+status = "blocked"
+reason = "ELP 2026-10-14 otp-27.3 is the candidate server, but its tarball is not pinned: the release API publishes no sha256 digest and the download was blocked. Pin it with ADD --checksum once computed. The repo has 31 .erl and 3 .hrl files, below the 50-file guide"
+license = "MIT"
+url = "https://github.com/erlydtl/erlydtl"
+sha = "aae414692b6052e96d890e03bbeeeca0f4dc01c2"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "elp-2026-10-14"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .erl,.hrl --language-id erlang --out {out} --settle 60 -- elp server"
+
+[[repo]]
+name = "eul"
+languages = ["swift"]
+status = "unverified"
+license = "MIT"
+url = "https://github.com/gao-sun/eul"
+sha = "b5c3bd0a5be2679ca7e22da676be5ac73e300f4a"
+image = "ripwire-corpus-swift:local"
+indexer = "lsp2scip"
+indexer_version = "sourcekit-lsp-6.1"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .swift --language-id swift --out {out} --settle 60 -- sourcekit-lsp"
+
+[[repo]]
+name = "masonry"
+languages = ["objc"]
+status = "unverified"
+license = "MIT"
+url = "https://github.com/SnapKit/Masonry"
+sha = "8bd77ea92bbe995e14c454f821200b222e5a8804"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "clangd-19.0"
+setup = "printf '%s\\n' -xobjective-c -fobjc-arc > /src/compile_flags.txt && find /src -name '*.h' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .m,.h --language-id objective-c --out {out} --settle 30 -- clangd"
+
+[[repo]]
+name = "deepgemm"
+languages = ["cuda"]
+status = "unverified"
+license = "MIT"
+url = "https://github.com/deepseek-ai/DeepGEMM"
+sha = "5081f8513af57e61696de4f4f04b0e707ffb503e"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "clangd-19.0"
+setup = "printf '%s\\n' -xcuda -std=c++17 --cuda-gpu-arch=sm_90 > /src/compile_flags.txt && find /src -name '*.cuh' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .cu,.cuh --language-id cuda --out {out} --settle 30 -- clangd"
+
+[[repo]]
+name = "satin"
+languages = ["metal"]
+status = "unverified"
+license = "MIT"
+url = "https://github.com/Hi-Rez/Satin"
+sha = "a91c469f517cef1946d5ed4dd9771df4843a30ef"
+image = "ripwire-corpus-lsp:local"
+indexer = "lsp2scip"
+indexer_version = "clangd-19.0"
+setup = "printf '%s\\n' -xmetal > /src/compile_flags.txt && find /src -name '*.h' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .metal --language-id metal --out {out} --settle 30 -- clangd"

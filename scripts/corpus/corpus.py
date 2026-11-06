@@ -11,6 +11,7 @@ Usage:
   corpus.py measure [NAME...] [--bin PATH] [--strict]
   corpus.py diff OLD_BIN NEW_BIN [NAME...] [--samples N] [--strict]
   corpus.py status [NAME...]
+  corpus.py verify [run|ratchet|changed|watch|status|warm] [NAME...] [--bin PATH] [--lang L] [--diff[=OLD_BIN]]
 """
 
 import argparse
@@ -226,6 +227,11 @@ def build_index(entry, src, target):
     shutil.move(produced, target)
 
 
+def index_path(entry, key):
+    """Where the index of ENTRY at KEY (a SHA prefix or a tree digest prefix) is cached."""
+    return CACHE / "index" / f"{entry.name}-{key}-{entry.indexer_version}.scip"
+
+
 def prepare(entry, force):
     """The checkout (or snapshot) and its SCIP index, built when missing or when FORCE."""
     if entry.path:
@@ -234,7 +240,7 @@ def prepare(entry, force):
     else:
         src = checkout(entry)
         key = entry.sha[:12]
-    index = CACHE / "index" / f"{entry.name}-{key}-{entry.indexer_version}.scip"
+    index = index_path(entry, key)
     if force or not index.exists():
         docker_ready(entry)
         build_index(entry, src, index)
@@ -269,9 +275,9 @@ def scip_eval(binary, src, index, samples):
     return run_eval(args, binary)
 
 
-def scip_verdicts(binary, src, index):
-    """Score a build and list every covered site's verdict (--eval-sites)."""
-    args = [binary, str(src), "--scip", str(index), "--eval=scip", "--samples=0", "--eval-sites"]
+def scip_verdicts(binary, src, index, samples=0):
+    """Score a build and list every covered site's verdict (--eval-sites); SAMPLES names disagreeing sites too."""
+    args = [binary, str(src), "--scip", str(index), "--eval=scip", f"--samples={samples}", "--eval-sites"]
     return run_eval(args, binary)
 
 
@@ -461,6 +467,11 @@ HANDLERS = {
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["verify"]:
+        import verify  # imports this module back; the verification commands build on its helpers
+
+        return verify.main(argv[1:])
     args = build_parser().parse_args(argv)
     return HANDLERS[args.cmd](args)
 

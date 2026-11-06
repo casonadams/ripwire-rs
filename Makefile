@@ -108,8 +108,8 @@ registry: ## Check every language and command plugin directory is registered
 	@python3 ./scripts/check-registry.py .
 
 .PHONY: script-tests
-script-tests: ## Run the unittest checks for scripts/ (parity rule logic, corpus runner parsing; no network)
-	@python3 -m unittest scripts/test_validate_parity.py scripts/corpus/test_corpus.py
+script-tests: ## Run the unittest checks for scripts/ (parity rule logic, corpus runner and verification parsing and baseline ratchet rules; no network)
+	@python3 -m unittest scripts/test_validate_parity.py scripts/corpus/test_corpus.py scripts/corpus/test_verify.py
 
 .PHONY: quality
 quality: verify-bin ## Measure quality regressions against git HEAD with the verification binary (BIN, built fresh by verify-bin; never a stale release or PATH copy)
@@ -142,6 +142,10 @@ corpus-image: ## Build the local SCIP indexer image (linux/amd64, needs Docker; 
 corpus-image-lsp: ## Build the local language-server image for the LSP bridge (linux/amd64, needs Docker; not part of all or ci)
 	docker build --platform linux/amd64 -f scripts/corpus/Dockerfile.lsp -t ripwire-corpus-lsp:local scripts/corpus
 
+.PHONY: corpus-image-swift
+corpus-image-swift: ## Build the local Swift language-server image for the LSP bridge (linux/amd64, needs Docker; not part of all or ci)
+	docker build --platform linux/amd64 -f scripts/corpus/Dockerfile.swift -t ripwire-corpus-swift:local scripts/corpus
+
 .PHONY: corpus-index
 corpus-index: ## Index the corpus repos into ~/.cache/ripwire-corpus (NAME=click for one; FORCE=1 to rebuild)
 	@$(CORPUS) index $(NAME) $(if $(FORCE),--force)
@@ -158,6 +162,45 @@ corpus-measure: verify-bin ## Print measured precision and recall per corpus rep
 corpus-diff: verify-bin ## Diff resolver verdicts on the corpus between OLD=path/to/old/ripwire-rs and the verification binary
 	@test -n "$(OLD)" || { echo "usage: make corpus-diff OLD=path/to/old/ripwire-rs"; exit 1; }
 	@$(CORPUS) diff "$(OLD)" $(BIN) $(NAME)
+
+# VERIFY_LANG reads LANG only when given on the command line, never from the shell's locale variable.
+VERIFY_LANG := $(if $(filter command line file,$(origin LANG)),$(LANG))
+VERIFY_ARGS = --bin $(BIN) $(NAME) $(if $(VERIFY_LANG),--lang $(VERIFY_LANG))
+VERIFY := $(CORPUS) verify
+
+.PHONY: verify
+verify: verify-bin ## Score every corpus entry with a cached index and the Rust self-check against baseline.toml and the floors: one table, one verdict, non-zero on a drop beyond 0.0005 or a floor miss (NAME= or LANG= narrow)
+	@$(VERIFY) run $(VERIFY_ARGS)
+
+.PHONY: verify-ratchet
+verify-ratchet: verify-bin ## Record measured numbers in baseline.toml and raise corpus.toml floors to measured minus 0.002; refuses, writing nothing, when a number dropped or an entry failed
+	@$(VERIFY) ratchet $(VERIFY_ARGS)
+
+.PHONY: verify-changed
+verify-changed: verify-bin ## Verify only the entries whose languages the working tree's changes touch (git diff HEAD plus untracked; LANG= or NAME= narrow)
+	@$(VERIFY) changed $(VERIFY_ARGS)
+
+.PHONY: verify-diff
+verify-diff: verify-bin ## Verify, then list the sites that flipped right->wrong against OLD=path/to/old/ripwire-rs (default: the binary verify-keep-bin kept)
+	@$(VERIFY) run $(VERIFY_ARGS) --diff$(if $(OLD),=$(OLD))
+
+.PHONY: verify-keep-bin
+verify-keep-bin: verify-bin ## Keep the verification binary as the baseline for verify-diff (~/.cache/ripwire-corpus/bin/baseline)
+	@mkdir -p "$(HOME)/.cache/ripwire-corpus/bin" && cp "$(BIN)" "$(HOME)/.cache/ripwire-corpus/bin/baseline"
+	@echo "kept $(BIN) as the verify-diff baseline"
+
+.PHONY: verify-watch
+verify-watch: ## Rebuild the fast binary on each src/ change and print only the entries whose numbers moved (LANG=dart or NAME=...; Ctrl-C stops)
+	@test -n "$(VERIFY_LANG)$(NAME)" || { echo "usage: make verify-watch LANG=dart"; exit 1; }
+	@$(VERIFY) watch $(VERIFY_ARGS)
+
+.PHONY: verify-status
+verify-status: ## Show stale or missing indexes, Docker and image state, and cache size (NAME= or LANG= narrow)
+	@$(VERIFY) status $(NAME) $(if $(VERIFY_LANG),--lang $(VERIFY_LANG))
+
+.PHONY: verify-warm
+verify-warm: ## Build the missing corpus indexes, sequentially (needs Docker and the corpus images; NAME= or LANG= narrow)
+	@$(VERIFY) warm $(NAME) $(if $(VERIFY_LANG),--lang $(VERIFY_LANG))
 
 UPSTREAM_DIR ?= ../ripwire
 

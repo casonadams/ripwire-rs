@@ -247,26 +247,34 @@ Upstream timeout: the upstream run of each command gets 4 seconds. A command tha
 
 Call resolution scored against an oracle over real public repositories. Two oracle kinds exist. A **SCIP indexer** is a compiler's own index (rust-analyzer, scip-typescript, scip-python, scip-ruby, scip-dart, scip-java for Java, Kotlin and Scala, scip-clang, scip-dotnet, and scip-php). An **LSP bridge** (`scripts/corpus/lsp2scip.py`) asks a language server's go-to-definition for each conservative `name(` call site and writes a SCIP index from the answers. Precision is the headline metric for bridge entries: recall is measured only over the call sites the bridge enumerates, so a bridge recall is lower-confidence than a compiler index recall. Not in `make ci` or `make all`; it needs Docker and network.
 
-Run it: `make corpus-image` (SCIP indexers, `scripts/corpus/Dockerfile`) and `make corpus-image-lsp` (language servers and the bridge, `scripts/corpus/Dockerfile.lsp`), both linux/amd64 and capped at 3 GiB per indexer container. Then `make corpus-index` (clones and indexes into `~/.cache/ripwire-corpus`), `make corpus-eval` (fails when a precision or recall floor in `scripts/corpus/corpus.toml` is missed), `make corpus-measure` (prints measured values and suggested floors), and `make corpus-diff OLD=path/to/old/ripwire-rs` (per-site verdict changes between two binaries). `NAME=<entry>` limits any target to one entry.
+**Daily use.** Setup once: `make corpus-image` and `make corpus-image-lsp` (Docker, linux/amd64, 3 GiB per indexer), then `make verify-warm` builds the missing indexes into `~/.cache/ripwire-corpus`. Then:
+
+- `make verify` scores every entry with a cached index, plus the Rust self-check (`scripts/check-resolution.py`), against `scripts/corpus/baseline.toml` and the floors in `corpus.toml`. It prints one table and one verdict, and exits 1 on a drop beyond 0.0005 or a floor miss. An entry with no cached index is skipped loudly.
+- `make verify-changed` runs only the entries whose languages `git diff HEAD` and untracked files touch (`src/languages/<lang>/`, `tests/languages/<lang>*.rs`; a change to other `src/` code touches every entry). `LANG=ruby` or `NAME=rack` narrow any target.
+- `make verify-diff [OLD=path]` adds the sites that flipped right->wrong against an older binary, with ours and scip for each. The default baseline is the binary that `make verify-keep-bin` kept.
+- `make verify-watch LANG=dart` rebuilds the fast binary on each `src/` change and prints only the entries whose numbers moved. `make verify-status` shows stale or missing indexes, Docker and image state, and cache size.
+- `make verify-ratchet` records the measured numbers in `baseline.toml` and raises the floors to the measured value minus 0.002. It only raises: it writes nothing, and refuses, when any number dropped or any entry failed.
+
+Reference: `make corpus-index`, `corpus-eval`, `corpus-measure` and `corpus-diff OLD=path/to/old/ripwire-rs` (per-site verdict changes between two binaries) remain for single-purpose runs; `NAME=<entry>` limits any target to one entry.
 
 Measured on a release build of this tree. Ranges span the entries of a language; a single value is one entry. Floors are set for the LSP-bridge entries (just under measurement); SCIP entries keep their floors until ratcheted.
 
 | Language | Oracle | Status | Precision | Recall |
 |---|---|---|---|---|
 | bash | LSP bridge (bash-language-server) | measured | 0.9983 | 0.9960 |
-| brightscript | none | blocked: no standalone language server package found | - | - |
+| brightscript | LSP bridge (brighterscript 0.73.8 `bsc --lsp`, rodash) | unverified: image and pins prepared, not built or measured | - | - |
 | c | SCIP indexer (scip-clang) | measured | 1.0000 | 1.0000 |
-| cobol | LSP bridge (COBOL language server) | blocked: the native binary is a CLI with no LSP mode; the LSP jar needs a JRE the image lacks | - | - |
+| cobol | LSP bridge (COBOL server.jar on a JRE, CobolCraft) | unverified: image and pins prepared, not built or measured | - | - |
 | cpp | SCIP indexer (scip-clang) | measured | 0.9376 | 0.8100 |
 | csharp | SCIP indexer (scip-dotnet) | measured | 0.9882 | 0.9796 |
-| cuda | clangd (not wired) | not attempted | - | - |
+| cuda | LSP bridge (clangd, DeepGEMM) | unverified: image and pins prepared, not built or measured | - | - |
 | dart | SCIP indexer (scip_dart) | measured | 0.9726 | 0.7593 |
 | elixir | LSP bridge (elixir-ls) | blocked: elixir-ls mix install fails on Elixir 1.18.3 (vendored dependency does not compile) | - | - |
-| erlang | not wired (xref is the candidate oracle) | not attempted | - | - |
+| erlang | LSP bridge (ELP 2026-10-14, erlydtl) | blocked: the ELP tarball has no pinned sha256 and its download was blocked; the repo has 34 source files | - | - |
 | fortran | LSP bridge (fortls) | measured | 0.9980 | 0.9845 |
-| gdscript | LSP bridge (Godot 4.7.2 language server) | blocked: the Godot binary needs libfontconfig1, not yet in the image | - | - |
+| gdscript | LSP bridge (Godot 4.7.2 language server, GDQuest steering framework) | unverified: image and pins prepared, not built or measured | - | - |
 | go | LSP bridge (gopls) | measured | 0.8053 | 0.8228 |
-| graphql | none wired | not attempted | - | - |
+| graphql | none wired | not attempted: no MIT repo with fragment-spread references found yet | - | - |
 | hcl | not applicable: reference edges are builtin function calls only | not applicable | - | - |
 | java | SCIP indexer (scip-java) | measured | 0.9623 | 0.8963 |
 | javascript | SCIP indexer (scip-typescript) | measured | 1.0000 | 0.7353 |
@@ -274,8 +282,8 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | kotlin | SCIP indexer (scip-java, Kotlin) | measured | 0.8313 | 0.5050 |
 | lua | LSP bridge (lua-language-server) | measured | 0.8216 | 0.8422 |
 | markdown | not applicable: no call resolution | not applicable | - | - |
-| metal | clangd (not wired) | not attempted | - | - |
-| objc | clangd (not wired) | not attempted | - | - |
+| metal | LSP bridge (clangd, Satin) | unverified: image and pins prepared, not built or measured | - | - |
+| objc | LSP bridge (clangd, Masonry) | unverified: image and pins prepared, not built or measured | - | - |
 | php | SCIP indexer (scip-php) | measured | 0.9367 | 0.8870 |
 | proto | not applicable to --eval=scip: type references are not scored | not applicable | - | - |
 | python | SCIP indexer (scip-python) | measured | 0.9860 | 0.9160 |
@@ -284,7 +292,7 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | scala | SCIP indexer (scip-java, Scala) | measured | 0.9017 | 0.8439 |
 | solidity | LSP bridge (solidity language server) | measured | 0.7103 | 0.6651 |
 | sql | not applicable to --eval=scip: table and column references are not scored | not applicable | - | - |
-| swift | sourcekit-lsp (not wired) | not attempted | - | - |
+| swift | LSP bridge (sourcekit-lsp 6.1, eul; scripts/corpus/Dockerfile.swift) | unverified: image and pins prepared, not built or measured | - | - |
 | toml | not applicable: no reference captures | not applicable | - | - |
 | typescript | SCIP indexer (scip-typescript) | measured | 0.9882 | 0.9882 |
 | yaml | not applicable: no reference captures | not applicable | - | - |
