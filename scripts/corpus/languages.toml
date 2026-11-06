@@ -278,19 +278,9 @@ oracle = "scip"
 status = "template"
 indexer = "scip-java"
 indexer_version = "0.12.3"
-setup = '''mkdir -p /tmp/work /tmp/codegen/classes && cp -r /src/core /tmp/work/ && cat > /tmp/codegen/Generate.scala <<'EOF'
-object Generate {
-  def main(args: Array[String]): Unit = {
-    val dir = java.nio.file.Paths.get(args(0))
-    java.nio.file.Files.createDirectories(dir)
-    codegen.genAll.foreach(f => java.nio.file.Files.writeString(dir.resolve(f.name), f.code))
-  }
-}
-EOF
-java -cp "$(cat /opt/scala-compiler-classpath.txt)" dotty.tools.dotc.Main -classpath "$(cat /opt/scala-library-classpath.txt)" -d /tmp/codegen/classes /src/project/codegen.scala /tmp/codegen/Generate.scala && java -cp "/tmp/codegen/classes:$(cat /opt/scala-library-classpath.txt)" Generate /tmp/work/core/shared/src/main/scala-generated/org/scalacheck'''
 index = "cd /src && scip-java index --output={out}"
 extensions = ["scala", "sc"]
-notes = "Start with scip-java index; a build that needs a hand-built SemanticDB pipeline belongs in setup."
+notes = "scip-java index builds with Maven or Gradle; the image has Maven but no sbt, so an sbt-only build needs a setup that installs sbt."
 
 [solidity]
 oracle = "lsp"

@@ -241,6 +241,12 @@ class Rendering(unittest.TestCase):
                 if template["status"] in ("blocked", "none"):
                     self.assertTrue(template["reason"])
 
+    def test_scala_template_carries_no_repository_specific_setup(self):
+        template = add.load_languages()["scala"]
+        self.assertNotIn("setup", template)
+        self.assertEqual(template["index"], "cd /src && scip-java index --output={out}")
+        self.assertNotIn("scalacheck", "".join(str(value) for value in template.values()))
+
     def test_every_language_is_listed_once(self):
         self.assertEqual(len(add.load_languages()), 36)
 
