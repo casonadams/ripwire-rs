@@ -43,8 +43,8 @@ indexer = "scip-python"
 indexer_version = "0.6.8"
 setup = "python3 -m venv /tmp/venv && /tmp/venv/bin/pip install -q -e ."
 index = "PATH=/tmp/venv/bin:$PATH scip-python index --cwd /src --project-name=rich --output={out} --quiet"
-precision_floor = 0.9806
-recall_floor = 0.9131
+precision_floor = 0.984
+recall_floor = 0.914
 
 [[repo]]
 name = "superstruct"
@@ -74,8 +74,8 @@ cat > tsconfig.json <<'EOF'
 {"compilerOptions": {"allowJs": true, "checkJs": false, "module": "esnext", "moduleResolution": "node", "target": "es2020"}, "include": ["lib/**/*.js", "test/**/*.js"]}
 EOF'''
 index = "scip-typescript index --cwd /src --output {out}"
-precision_floor = 0.9980
-recall_floor = 0.7207
+precision_floor = 0.998
+recall_floor = 0.7333
 
 [[repo]]
 name = "rack"
@@ -87,7 +87,7 @@ sha = "da90464e3fa93e3cb49dc2d4ede798e6c6b70b4f"
 indexer = "scip-ruby"
 indexer_version = "0.5.1"
 index = 'cd /src && { scip-ruby . || [ "$?" -eq 100 ]; } && mv index.scip {out}'
-precision_floor = 0.8816
+precision_floor = 0.9844
 recall_floor = 0.9923
 
 [[repo]]
@@ -101,8 +101,8 @@ indexer = "scip_dart"
 indexer_version = "1.8.1"
 setup = "dart pub get"
 index = "cd /src && dart pub global run scip_dart /src && mv index.scip {out}"
-precision_floor = 0.9558
-recall_floor = 0.6505
+precision_floor = 0.9706
+recall_floor = 0.7573
 
 [[repo]]
 name = "kotlinpoet"
@@ -127,8 +127,8 @@ sha = "d90d57521d931db7bf7ee464a4c0a1a9293db088"
 indexer = "scip-java"
 indexer_version = "0.12.3"
 index = "cd /src && scip-java index --output={out}"
-precision_floor = 0.9399
-recall_floor = 0.8319
+precision_floor = 0.9603
+recall_floor = 0.8943
 
 [[repo]]
 name = "scalacheck"
@@ -164,8 +164,8 @@ indexer = "scip-clang"
 indexer_version = "0.4.1"
 setup = "cmake -S /src -B /tmp/build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSPDLOG_BUILD_EXAMPLE=OFF -DSPDLOG_BUILD_TESTS=OFF"
 index = "scip-clang --compdb-path=/tmp/build/compile_commands.json --index-output-path={out}"
-precision_floor = 0.8963
-recall_floor = 0.6982
+precision_floor = 0.9356
+recall_floor = 0.808
 
 [[repo]]
 name = "zlib"
@@ -178,8 +178,8 @@ indexer = "scip-clang"
 indexer_version = "0.4.1"
 setup = "cmake -S /src -B /tmp/build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
 index = "scip-clang --compdb-path=/tmp/build/compile_commands.json --index-output-path={out}"
-precision_floor = 0.4693
-recall_floor = 0.9980
+precision_floor = 0.998
+recall_floor = 0.998
 
 [[repo]]
 name = "guardclauses"
