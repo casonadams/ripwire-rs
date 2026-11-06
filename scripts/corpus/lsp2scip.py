@@ -107,10 +107,7 @@ def symbol_for(namespace, name, line, char):
 
 # --- LSP client ----------------------------------------------------------------------------------
 
-CONNECT_WAIT = 120.0
-
-
-def connect_tcp(address, wait):
+def connect_tcp(address, wait=120.0):
     """Streams for a language server that listens on HOST:PORT; retried until WAIT seconds pass."""
     host, _, port = address.rpartition(":")
     deadline = time.monotonic() + wait
@@ -133,7 +130,7 @@ class Client:
     def __init__(self, command, cwd, config, connect=""):
         if connect:
             self.proc = None
-            self.reader, self.writer = connect_tcp(connect, CONNECT_WAIT)
+            self.reader, self.writer = connect_tcp(connect)
         else:
             self.proc = subprocess.Popen(command, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             self.reader, self.writer = self.proc.stdout, self.proc.stdin
@@ -351,18 +348,13 @@ def scan_candidates(root, rels, pattern=CALL):
     return batch
 
 
-def start_client(args, root):
-    build = Client
-    return build(args.server, root, json.loads(args.config), args.connect)
-
-
 def index_repo(args):
     root = os.path.realpath(args.root)
     exts = {e if e.startswith(".") else "." + e for e in args.ext.split(",") if e}
     rels = source_files(root, exts)
     if not rels:
         raise SystemExit(f"lsp2scip: no {args.ext} files under {root}")
-    client = start_client(args, root)
+    client = Client(args.server, root, json.loads(args.config), args.connect)
     try:
         client.call("initialize", {
             "processId": os.getpid(),
