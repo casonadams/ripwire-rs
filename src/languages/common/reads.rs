@@ -16,6 +16,8 @@ pub struct ReadBindings<'a> {
     scopes: HashMap<&'a str, Vec<BindingSpan>>,
     returns: HashMap<&'a str, String>,
     members: HashMap<(String, String), String>,
+    /// Element type of a collection-typed member, keyed `(owner, member)`: `Iterable<Kid> kids()` records `Kid`.
+    elements: HashMap<(String, String), String>,
     /// Declared type of a module-level name, read where no local binding of that name is in scope.
     /// `None` marks names whose module-level bindings disagree.
     module: HashMap<&'a str, Option<String>>,
@@ -182,6 +184,20 @@ impl<'a> ReadBindings<'a> {
         self.members
             .iter()
             .map(|((owner, member), ty)| (owner.as_str(), member.as_str(), ty.as_str()))
+    }
+
+    /// Records the element type of a collection-typed member `member` of `owner` (`Iterable<Kid> kids()` records
+    /// `Kid`), so a call's result can type the element a lambda receives.
+    pub fn insert_member_element(&mut self, owner: &str, member: &str, element: String) {
+        self.elements
+            .insert((owner.to_string(), member.to_string()), element);
+    }
+
+    /// Element type of member `member` of `owner`, as recorded by [`Self::insert_member_element`].
+    pub fn member_element(&self, owner: &str, member: &str) -> Option<&str> {
+        self.elements
+            .get(&(owner.to_string(), member.to_string()))
+            .map(String::as_str)
     }
 
     /// Records the declared type of a module-level binding of `name`. Bindings that disagree, or one

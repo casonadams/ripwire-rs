@@ -57,6 +57,28 @@ fn dart_bodyless_abstract_member_is_a_declaration_the_typed_receiver_reaches() {
     assert_eq!(shape_callees("paint"), ["Circle.draw"]);
 }
 
+const COLLECTIONS: &str = "class Kid {\n  void play() {}\n}\n\
+class Toy {\n  void play() {}\n}\n\
+class Nursery {\n  final List<Kid> kids = [];\n  Iterable<Kid> children() => kids;\n\
+  void playAll() {\n    children().map((k) => k.play());\n  }\n}\n\
+class Shelf {\n  Iterable<Toy> toys() => [];\n}\n\
+void playWithToys(Shelf shelf) {\n  shelf.toys().map((t) => t.play());\n}\n\
+void mapBuiltin(List<int> xs) {\n  xs.map((n) => n);\n}\n";
+
+fn collection_callees(caller: &str) -> Vec<String> {
+    owner_qualified_callees(
+        &[("lib/collections.dart", Lang::Dart, COLLECTIONS.as_bytes())],
+        caller,
+    )
+}
+
+#[test]
+fn dart_lambda_over_a_call_result_types_its_parameter_from_the_element() {
+    assert_eq!(collection_callees("playAll"), ["Kid.play", "Nursery.children"]);
+    assert_eq!(collection_callees("playWithToys"), ["Shelf.toys", "Toy.play"]);
+    assert!(collection_callees("mapBuiltin").is_empty());
+}
+
 #[test]
 fn dart_builtin_map_is_not_an_in_tree_abstract_member() {
     assert!(shape_callees("builtinMap").is_empty());
