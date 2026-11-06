@@ -281,7 +281,7 @@ indexer = "scip-java"
 indexer_version = "0.12.3"
 index = "cd /src && scip-java index --output={out}"
 extensions = ["scala", "sc"]
-notes = "scip-java index builds with Maven or Gradle; the image has Maven but no sbt, so an sbt-only build needs a setup that installs sbt."
+notes = "scip-java needs SemanticDB, which no Scala 2.10 build produces (a 2.10.6 Maven project writes no index on JDK 8 or 21), so a 2.10 repo cannot be indexed; use a Scala 2.11.12+ build. The image has Maven and no sbt."
 
 [solidity]
 oracle = "lsp"
