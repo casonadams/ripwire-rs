@@ -79,6 +79,27 @@ fn dart_lambda_over_a_call_result_types_its_parameter_from_the_element() {
     assert!(collection_callees("mapBuiltin").is_empty());
 }
 
+const ABSTRACT_BASE: &str = "mixin Mix {\n  void mixed() {}\n}\n\
+class Core {\n  void core() {}\n}\n\
+abstract class Base extends Core with Mix {\n  void baseOnly() {}\n}\n\
+class Leaf extends Base {\n  void leafOnly() {}\n}\n\
+class Other {\n  void mixed() {}\n}\n\
+void viaMixin(Leaf leaf) {\n  leaf.mixed();\n}\n\
+void viaSuperclass(Leaf leaf) {\n  leaf.core();\n}\n";
+
+fn abstract_base_callees(caller: &str) -> Vec<String> {
+    owner_qualified_callees(
+        &[("lib/bases.dart", Lang::Dart, ABSTRACT_BASE.as_bytes())],
+        caller,
+    )
+}
+
+#[test]
+fn dart_mixin_behind_an_abstract_superclass_is_reachable_from_its_subclass() {
+    assert_eq!(abstract_base_callees("viaMixin"), ["Mix.mixed"]);
+    assert_eq!(abstract_base_callees("viaSuperclass"), ["Core.core"]);
+}
+
 #[test]
 fn dart_builtin_map_is_not_an_in_tree_abstract_member() {
     assert!(shape_callees("builtinMap").is_empty());

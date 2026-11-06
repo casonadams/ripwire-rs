@@ -351,6 +351,7 @@ fn intern_implementations(
                     .as_deref()
                     .map(|value| interner.intern(value)),
                 generic_subject: implementation.generic_subject,
+                extends: implementation.extends,
                 start_byte: implementation.start_byte as u32,
                 end_byte: implementation.end_byte as u32,
             }

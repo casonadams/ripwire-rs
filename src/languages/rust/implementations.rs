@@ -19,6 +19,7 @@ fn implementation_fact(
             None
         },
         generic_subject,
+        extends: false,
         start_byte: node.start_byte(),
         end_byte: node.end_byte(),
     })

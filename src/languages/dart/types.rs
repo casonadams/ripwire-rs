@@ -4,13 +4,31 @@ use crate::languages::{Implementation, is_plain_type_name};
 use tree_sitter::Node;
 
 pub(super) fn class_implementations(root: Node<'_>, source: &[u8]) -> Vec<Implementation> {
-    crate::languages::typed::class_implementations(
+    let mut implementations = crate::languages::typed::class_implementations(
         root,
         source,
         &["class_definition", "mixin_declaration"],
         dart_class_name,
         dart_bases,
-    )
+    );
+    let superclasses: Vec<(String, String)> = nodes(root)
+        .filter(|n| n.kind() == "class_definition")
+        .filter_map(|class| {
+            let subject = dart_class_name(class, source)?;
+            let superclass = class
+                .child_by_field_name("superclass")
+                .and_then(|clause| declared_type(clause, source))?;
+            Some((subject.to_string(), superclass))
+        })
+        .collect();
+    for imp in &mut implementations {
+        imp.extends = imp.trait_path.as_ref().is_some_and(|path| {
+            superclasses
+                .iter()
+                .any(|(subject, superclass)| *subject == imp.subject && superclass == path)
+        });
+    }
+    implementations
 }
 
 /// A class's name is its `name` field; a mixin names itself with a bare identifier.
