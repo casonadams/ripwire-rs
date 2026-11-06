@@ -452,7 +452,12 @@ impl LanguageSemantics for DartLanguage {
         !sym_name.starts_with('_') && !sym_name.starts_with('#')
     }
 
-    fn should_ignore_call(&self, _name_node: Option<tree_sitter::Node<'_>>, name: &str) -> bool {
+    fn should_ignore_call(
+        &self,
+        _name_node: Option<tree_sitter::Node<'_>>,
+        _ancestors: &[tree_sitter::Node<'_>],
+        name: &str,
+    ) -> bool {
         matches!(name, "print" | "identical" | "jsonEncode" | "jsonDecode")
     }
 

@@ -143,8 +143,13 @@ impl LanguageSemantics for PythonLanguage {
     }
     super::impl_grammar_method!(crate tree_sitter_python::LANGUAGE, "tags.scm");
 
-    fn is_read_capture_allowed(&self, node: tree_sitter::Node<'_>, _source: &[u8]) -> bool {
-        python_read_position(node)
+    fn is_read_capture_allowed(
+        &self,
+        node: tree_sitter::Node<'_>,
+        ancestors: &[tree_sitter::Node<'_>],
+        _source: &[u8],
+    ) -> bool {
+        python_read_position(node, ancestors)
     }
 
     fn read_bindings<'a>(

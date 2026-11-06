@@ -42,7 +42,7 @@ fn is_pascal_type_ident(text: &str) -> bool {
 }
 
 fn extract_member_receiver_qualifier(
-    root: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
     parent: tree_sitter::Node<'_>,
     name_node: tree_sitter::Node<'_>,
     source_bytes: &[u8],
@@ -52,7 +52,7 @@ fn extract_member_receiver_qualifier(
     let raw = recv.utf8_text(source_bytes).ok()?.trim();
     let text = &*lang.semantics().receiver_text(raw);
     if lang.semantics().self_receivers().contains(&text) {
-        return find_enclosing_scope(root, name_node, source_bytes, lang);
+        return find_enclosing_scope(ancestors, name_node, source_bytes, lang);
     }
     let keep = is_pascal_type_ident(text) || lang.semantics().is_std_or_builtin_qualifier(text);
     keep.then(|| text.to_string())
@@ -166,7 +166,7 @@ pub(super) fn pending_chain_at(
 }
 
 pub(super) fn find_call_qualifier(
-    root: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
     name_node: tree_sitter::Node<'_>,
     source_bytes: &[u8],
     lang: Lang,
@@ -186,7 +186,7 @@ pub(super) fn find_call_qualifier(
         && let Ok(text) = path_node.utf8_text(source_bytes)
     {
         if lang.semantics().self_receivers().contains(&text.trim())
-            && let Some(scope) = find_enclosing_scope(root, name_node, source_bytes, lang)
+            && let Some(scope) = find_enclosing_scope(ancestors, name_node, source_bytes, lang)
         {
             return Some(scope);
         }
@@ -200,7 +200,7 @@ pub(super) fn find_call_qualifier(
             return Some(clean.to_string());
         }
     }
-    extract_member_receiver_qualifier(root, parent, name_node, source_bytes, lang)
+    extract_member_receiver_qualifier(ancestors, parent, name_node, source_bytes, lang)
 }
 
 pub(super) fn split_top_level_qualified(raw: &str) -> (&str, Option<String>) {

@@ -1,5 +1,4 @@
 use crate::domain::Lang;
-use crate::languages::common::util::ancestors;
 
 pub fn distinct_scope_tail(
     cand: tree_sitter::Node<'_>,
@@ -75,12 +74,12 @@ fn extract_node_scope(
 }
 
 pub(super) fn find_enclosing_scope(
-    root: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
     name_node: tree_sitter::Node<'_>,
     source_bytes: &[u8],
     lang: Lang,
 ) -> Option<String> {
-    ancestors(root, name_node)
-        .into_iter()
-        .find_map(|parent| extract_node_scope(parent, name_node, source_bytes, lang))
+    ancestors
+        .iter()
+        .find_map(|&parent| extract_node_scope(parent, name_node, source_bytes, lang))
 }

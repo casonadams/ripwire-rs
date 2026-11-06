@@ -15,7 +15,7 @@ use tree_sitter::Node;
 
 /// Read bindings with declared types.
 pub(super) fn typed_read_bindings<'a>(root: Node<'_>, source: &'a [u8]) -> ReadBindings<'a> {
-    let mut bindings = ReadBindings::collect(root, source, python_binding_range);
+    let mut bindings = ReadBindings::collect(root, source, |node| python_binding_range(root, node));
     record_return_types(&mut bindings, root, source);
     record_class_fields(&mut bindings, root, source);
     record_module_bindings(&mut bindings, root, source);
@@ -378,7 +378,7 @@ fn site_type(node: Node<'_>, bindings: &ReadBindings<'_>, source: &[u8]) -> Opti
 fn record_local_bindings<'a>(bindings: &mut ReadBindings<'a>, root: Node<'_>, source: &'a [u8]) {
     let mut sites: HashMap<(&'a str, Range<usize>), Option<Option<String>>> = HashMap::new();
     for node in nodes(root).filter(|n| n.kind() == "identifier") {
-        let (Some(range), Ok(name)) = (python_binding_range(node), node.utf8_text(source)) else {
+        let (Some(range), Ok(name)) = (python_binding_range(root, node), node.utf8_text(source)) else {
             continue;
         };
         let ty = site_type(node, bindings, source);

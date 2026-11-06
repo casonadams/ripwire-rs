@@ -4,6 +4,7 @@ use super::scope::find_enclosing_scope;
 use super::types::RawDef;
 use crate::domain::{Lang, SymKind};
 use crate::languages::SyntaxKinds;
+use crate::languages::common::util::ancestors;
 
 fn find_def_body_start(node: tree_sitter::Node<'_>, kinds: &SyntaxKinds) -> usize {
     if kinds.body_blocks.contains(&node.kind()) {
@@ -56,7 +57,7 @@ pub(super) fn record_def_item(
     }
     let scope = inline_scope.or_else(|| {
         ext.name_node
-            .and_then(|n| find_enclosing_scope(root, n, source_bytes, lang))
+            .and_then(|n| find_enclosing_scope(&ancestors(root, n), n, source_bytes, lang))
     });
     let (body_node, end) = lang.semantics().resolve_def_body_and_end(ext.def_node, end);
     let kinds = lang.semantics().syntax_kinds();

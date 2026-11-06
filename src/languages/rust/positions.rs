@@ -12,7 +12,10 @@ pub(super) fn is_function_name(name: &str) -> bool {
 /// token tree, as in `assert_eq!(alpha(2), 4)` or `assert_eq!(opts::fetch(x), y)`. Attribute arguments
 /// (`derive(Debug)`), `macro_rules!` bodies (no call until expansion), declarations (`fn name(`, `struct Name(`),
 /// and method calls (`x.name(`, whose receiver the token tree does not type) are not calls.
-pub(super) fn is_macro_argument_call(node: tree_sitter::Node<'_>) -> bool {
+pub(super) fn is_macro_argument_call(
+    node: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
+) -> bool {
     let parenthesized = node.next_sibling().is_some_and(|next| {
         next.kind() == "token_tree" && next.child(0).is_some_and(|open| open.kind() == "(")
     });
@@ -21,13 +24,12 @@ pub(super) fn is_macro_argument_call(node: tree_sitter::Node<'_>) -> bool {
         "::" => macro_path_segments(node).is_empty(),
         _ => false,
     });
-    let mut ancestor = node.parent();
-    let in_metadata_or_rules = std::iter::from_fn(|| {
-        let current = ancestor?;
-        ancestor = current.parent();
-        Some(current.kind())
-    })
-    .any(|kind| matches!(kind, "attribute_item" | "inner_attribute_item" | "macro_definition"));
+    let in_metadata_or_rules = ancestors.iter().any(|n| {
+        matches!(
+            n.kind(),
+            "attribute_item" | "inner_attribute_item" | "macro_definition"
+        )
+    });
     parenthesized && !declared && !in_metadata_or_rules
 }
 
@@ -159,15 +161,24 @@ const EXPRESSION_PARENTS: &[&str] = &[
     "scoped_identifier",
 ];
 
-pub(super) fn rust_read_position(node: tree_sitter::Node<'_>) -> bool {
-    if node.parent().is_some_and(|parent| {
+pub(super) fn rust_read_position(
+    node: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
+) -> bool {
+    if ancestors.first().copied().is_some_and(|parent| {
         parent.kind() == "scoped_identifier"
-            && parent.parent().is_some_and(|call| {
+            && ancestors.get(1).is_some_and(|call| {
                 call.kind() == "call_expression"
                     && call.child_by_field_name("function") == Some(parent)
             })
     }) {
         return false;
     }
-    crate::languages::reads::value_read(node, EXPRESSION_PARENTS, rust_non_value, rust_scope)
+    crate::languages::reads::value_read(
+        node,
+        ancestors,
+        EXPRESSION_PARENTS,
+        rust_non_value,
+        rust_scope,
+    )
 }

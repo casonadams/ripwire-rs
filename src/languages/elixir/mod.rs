@@ -356,7 +356,12 @@ impl LanguageSemantics for ElixirLanguage {
         }
     }
 
-    fn should_ignore_call(&self, _name_node: Option<tree_sitter::Node<'_>>, name: &str) -> bool {
+    fn should_ignore_call(
+        &self,
+        _name_node: Option<tree_sitter::Node<'_>>,
+        _ancestors: &[tree_sitter::Node<'_>],
+        name: &str,
+    ) -> bool {
         ELIXIR_FN_KEYWORDS.contains(&name) || ELIXIR_SPECIAL_CALLS.contains(&name)
     }
 

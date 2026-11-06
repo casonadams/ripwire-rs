@@ -62,16 +62,26 @@ const EXPRESSION_PARENTS: &[&str] = &[
     "throw_statement",
 ];
 
-pub(crate) fn javascript_read_position(node: tree_sitter::Node<'_>, source: &[u8]) -> bool {
-    if is_write_target_root(node, source) {
+pub(crate) fn javascript_read_position(
+    node: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
+    source: &[u8],
+) -> bool {
+    if is_write_target_root(node, ancestors, source) {
         return false;
     }
-    let Some(parent) = node.parent() else {
+    let Some(&parent) = ancestors.first() else {
         return false;
     };
     let expression =
         EXPRESSION_PARENTS.contains(&parent.kind()) || is_arrow_expression_body(parent, node);
-    expression && crate::languages::reads::value_position(node, javascript_non_value, javascript_scope)
+    expression
+        && crate::languages::reads::value_position(
+            node,
+            ancestors,
+            javascript_non_value,
+            javascript_scope,
+        )
 }
 
 /// Methods that change their receiver in place: a call on a binding is a mutation of the object it holds.
@@ -83,17 +93,23 @@ const MUTATING_METHODS: &[&str] = &[
 /// True when `node` is the root of a write target: `x` in `x = v`, `x += v`, `x++`, the object of `x.p = v`,
 /// `x[i] = v`, or `delete x.p`, or the receiver of an in-place method call `x.push(v)`. Such an identifier is a
 /// write, not a read of its value.
-pub(crate) fn is_write_target_root(node: tree_sitter::Node<'_>, source: &[u8]) -> bool {
+pub(crate) fn is_write_target_root(
+    node: tree_sitter::Node<'_>,
+    ancestors: &[tree_sitter::Node<'_>],
+    source: &[u8],
+) -> bool {
     let mut top = node;
-    while let Some(parent) = top.parent() {
+    let mut depth = 0;
+    while let Some(&parent) = ancestors.get(depth) {
         if !matches!(parent.kind(), "member_expression" | "subscript_expression")
             || parent.child_by_field_name("object") != Some(top)
         {
             break;
         }
         top = parent;
+        depth += 1;
     }
-    let Some(parent) = top.parent() else {
+    let Some(&parent) = ancestors.get(depth) else {
         return false;
     };
     match parent.kind() {

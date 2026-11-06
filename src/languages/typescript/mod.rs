@@ -155,12 +155,22 @@ impl LanguageSemantics for TypeScriptLanguage {
     }
     super::impl_grammar_method!(crate tree_sitter_typescript::LANGUAGE_TYPESCRIPT, "tags.scm");
 
-    fn is_read_capture_allowed(&self, node: tree_sitter::Node<'_>, source: &[u8]) -> bool {
-        javascript_read_position(node, source)
+    fn is_read_capture_allowed(
+        &self,
+        node: tree_sitter::Node<'_>,
+        ancestors: &[tree_sitter::Node<'_>],
+        source: &[u8],
+    ) -> bool {
+        javascript_read_position(node, ancestors, source)
     }
 
-    fn is_write_capture_allowed(&self, node: tree_sitter::Node<'_>, source: &[u8]) -> bool {
-        is_write_target_root(node, source)
+    fn is_write_capture_allowed(
+        &self,
+        node: tree_sitter::Node<'_>,
+        ancestors: &[tree_sitter::Node<'_>],
+        source: &[u8],
+    ) -> bool {
+        is_write_target_root(node, ancestors, source)
     }
 
     fn read_bindings<'a>(
@@ -327,7 +337,12 @@ impl LanguageSemantics for TypeScriptLanguage {
         }
     }
 
-    fn should_ignore_call(&self, name_node: Option<tree_sitter::Node<'_>>, name: &str) -> bool {
+    fn should_ignore_call(
+        &self,
+        name_node: Option<tree_sitter::Node<'_>>,
+        _ancestors: &[tree_sitter::Node<'_>],
+        name: &str,
+    ) -> bool {
         is_jsx_intrinsic_tag_call(name_node, name)
     }
 
