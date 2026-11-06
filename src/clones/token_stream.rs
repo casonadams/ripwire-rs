@@ -46,11 +46,7 @@ pub fn compute_sketch(kgrams: &[u64]) -> [u8; SKETCH_HASHES] {
 /// Count matching MinHash components between two 128-byte sketches.
 #[must_use]
 pub fn sketch_matches(a: &[u8; SKETCH_HASHES], b: &[u8; SKETCH_HASHES]) -> u32 {
-    let mut matches = 0u32;
-    for i in 0..SKETCH_HASHES {
-        matches += u32::from(a[i] == b[i]);
-    }
-    matches
+    a.iter().zip(b).map(|(x, y)| u32::from(x == y)).sum()
 }
 
 pub(crate) fn skip_whitespace(bytes: &[u8], i: &mut usize) {

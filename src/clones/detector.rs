@@ -289,7 +289,12 @@ fn evaluate_candidate_pair(ca: &BodyTokens, cb: &BodyTokens) -> Option<CloneGrou
     })
 }
 
-fn build_dedup_kgram_index(candidates: &[BodyTokens]) -> HashMap<u64, Vec<u32>> {
+/// Units of survivor staging per parallel chunk; the chunk bounds the staged keys held at once.
+const STAGE_CHUNK: usize = 256;
+
+/// Sorted `(kgram, candidate indices)` postings over the candidates with distinct token streams. Each list
+/// is ascending, so a walk over the index visits pairs in one fixed order.
+fn build_dedup_kgram_index(candidates: &[BodyTokens]) -> Vec<(u64, Vec<u32>)> {
     let mut index: HashMap<u64, Vec<u32>> = HashMap::new();
     let mut seen_streams: HashSet<u64> = HashSet::with_capacity(candidates.len());
     for (idx, c) in candidates.iter().enumerate() {
@@ -300,24 +305,9 @@ fn build_dedup_kgram_index(candidates: &[BodyTokens]) -> HashMap<u64, Vec<u32>> 
             index.entry(kg).or_default().push(idx as u32);
         }
     }
-    index
-}
-
-fn try_stage_pair(
-    candidates: &[BodyTokens],
-    ia: u32,
-    ib: u32,
-    seen: &mut HashSet<u64>,
-    survivors: &mut Vec<u64>,
-) {
-    let (lo, hi) = if ia < ib { (ia, ib) } else { (ib, ia) };
-    let key = ((lo as u64) << 32) | (hi as u64);
-    if !seen.insert(key) {
-        return;
-    }
-    if sketch_stage_passes(&candidates[lo as usize], &candidates[hi as usize]) {
-        survivors.push(key);
-    }
+    let mut sorted: Vec<(u64, Vec<u32>)> = index.into_iter().collect();
+    sorted.sort_unstable_by_key(|(kgram, _)| *kgram);
+    sorted
 }
 
 /// The clone detector's cheap gate before the exact Type-3 score: bodies within 70% of each other's length
@@ -331,53 +321,85 @@ pub(crate) fn sketch_stage_passes(ca: &BodyTokens, cb: &BodyTokens) -> bool {
     sketch_matches(&ca.sketch, &cb.sketch) >= SKETCH_MIN_MATCHES
 }
 
-fn collect_type3_survivor_pairs(
+/// Appends the key of the pair `(ia, ib)` to `keys` when it passes the sketch stage. `ia != ib`.
+fn push_if_survives(candidates: &[BodyTokens], ia: u32, ib: u32, keys: &mut Vec<u64>) {
+    let (lo, hi) = if ia < ib { (ia, ib) } else { (ib, ia) };
+    if sketch_stage_passes(&candidates[lo as usize], &candidates[hi as usize]) {
+        keys.push((u64::from(lo) << 32) | u64::from(hi));
+    }
+}
+
+/// Keys of the pairs within one posting list that pass the sketch stage, in list order.
+fn bucket_survivor_keys(candidates: &[BodyTokens], bucket: &[u32]) -> Vec<u64> {
+    let mut keys = Vec::new();
+    for (i, &ia) in bucket.iter().enumerate() {
+        for &ib in &bucket[i + 1..] {
+            push_if_survives(candidates, ia, ib, &mut keys);
+        }
+    }
+    keys
+}
+
+/// Keys of the pairs that body `ia` forms with the other bodies of its k-gram postings, in walk order.
+fn focus_survivor_keys(
     candidates: &[BodyTokens],
-    index: HashMap<u64, Vec<u32>>,
+    index: &[(u64, Vec<u32>)],
+    ia: usize,
 ) -> Vec<u64> {
-    let mut seen: HashSet<u64> = HashSet::new();
-    let mut survivors = Vec::new();
-    let mut buckets: Vec<(u64, Vec<u32>)> = index.into_iter().collect();
-    buckets.sort_unstable_by_key(|(kgram, _)| *kgram);
-    for (_, bucket) in buckets {
-        if bucket.len() < 2 || bucket.len() > TYPE3_MAX_BUCKET {
+    let mut keys = Vec::new();
+    for kg in &candidates[ia].kgrams {
+        let Ok(pos) = index.binary_search_by_key(kg, |(k, _)| *k) else {
+            continue;
+        };
+        let bucket = &index[pos].1;
+        if bucket.len() > TYPE3_MAX_BUCKET {
             continue;
         }
-        for (i, &ia) in bucket.iter().enumerate() {
-            for &ib in &bucket[i + 1..] {
-                if survivors.len() >= TYPE3_MAX_PAIRS {
-                    return survivors;
-                }
-                try_stage_pair(candidates, ia, ib, &mut seen, &mut survivors);
+        for &ib in bucket.iter().filter(|&&ib| ib as usize != ia) {
+            push_if_survives(candidates, ia as u32, ib, &mut keys);
+        }
+    }
+    keys
+}
+
+/// Folds the keys each unit stages, in unit order, into the first `TYPE3_MAX_PAIRS` distinct pairs. Units
+/// are staged in parallel a chunk at a time, and the fold is sequential, so the result equals a single-thread
+/// walk over the same units: first occurrence wins and the walk stops at the cap.
+fn stage_survivor_keys<T: Sync>(units: &[T], stage: impl Fn(&T) -> Vec<u64> + Sync) -> Vec<u64> {
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut survivors = Vec::new();
+    for chunk in units.chunks(STAGE_CHUNK) {
+        let staged: Vec<Vec<u64>> = chunk.par_iter().map(&stage).collect();
+        for key in staged.into_iter().flatten() {
+            if survivors.len() >= TYPE3_MAX_PAIRS {
+                return survivors;
+            }
+            if seen.insert(key) {
+                survivors.push(key);
             }
         }
     }
     survivors
 }
 
+fn collect_type3_survivor_pairs(candidates: &[BodyTokens], index: &[(u64, Vec<u32>)]) -> Vec<u64> {
+    stage_survivor_keys(index, |(_, bucket)| {
+        if bucket.len() < 2 || bucket.len() > TYPE3_MAX_BUCKET {
+            Vec::new()
+        } else {
+            bucket_survivor_keys(candidates, bucket)
+        }
+    })
+}
+
 /// Survivor pairs with at least one side in `focus`, walking each focus body's k-grams in order.
 fn collect_focused_survivor_pairs(
     candidates: &[BodyTokens],
-    index: &HashMap<u64, Vec<u32>>,
+    index: &[(u64, Vec<u32>)],
     focus: &[bool],
 ) -> Vec<u64> {
-    let mut seen: HashSet<u64> = HashSet::new();
-    let mut survivors = Vec::new();
-    for (ia, c) in candidates.iter().enumerate().filter(|(i, _)| focus[*i]) {
-        for kg in &c.kgrams {
-            let Some(bucket) = index.get(kg).filter(|b| b.len() <= TYPE3_MAX_BUCKET) else {
-                continue;
-            };
-            for &ib in bucket.iter().filter(|&&ib| ib as usize != ia) {
-                if survivors.len() >= TYPE3_MAX_PAIRS {
-                    return survivors;
-                }
-                let (lo, hi) = (ia.min(ib as usize) as u32, ia.max(ib as usize) as u32);
-                try_stage_pair(candidates, lo, hi, &mut seen, &mut survivors);
-            }
-        }
-    }
-    survivors
+    let focused: Vec<usize> = (0..candidates.len()).filter(|&i| focus[i]).collect();
+    stage_survivor_keys(&focused, |&ia| focus_survivor_keys(candidates, index, ia))
 }
 
 fn evaluate_pairs(candidates: &[BodyTokens], pairs: Vec<u64>) -> Vec<CloneGroup> {
@@ -428,7 +450,7 @@ pub fn find_clones_touching(
 
 fn find_type3_pairs(candidates: &[BodyTokens]) -> Vec<CloneGroup> {
     let index = build_dedup_kgram_index(candidates);
-    let pairs = collect_type3_survivor_pairs(candidates, index);
+    let pairs = collect_type3_survivor_pairs(candidates, &index);
     evaluate_pairs(candidates, pairs)
 }
 
