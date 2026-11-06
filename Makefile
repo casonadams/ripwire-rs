@@ -112,16 +112,8 @@ script-tests: ## Run the unittest checks for scripts/ (parity rule logic, corpus
 	@python3 -m unittest scripts/test_validate_parity.py scripts/corpus/test_corpus.py
 
 .PHONY: quality
-quality: ## Measure quality regressions against git HEAD with ripwire-rs
-	@if [ -x target/release/ripwire-rs ]; then \
-		target/release/ripwire-rs . --quality-delta >/dev/null; \
-	elif command -v ripwire-rs >/dev/null 2>&1; then \
-		ripwire-rs . --quality-delta >/dev/null; \
-	elif command -v ripwire >/dev/null 2>&1; then \
-		ripwire . --quality-delta >/dev/null; \
-	else \
-		echo "Error: ripwire-rs not found"; exit 1; \
-	fi
+quality: verify-bin ## Measure quality regressions against git HEAD with the verification binary (BIN, built fresh by verify-bin; never a stale release or PATH copy)
+	@$(BIN) . --quality-delta >/dev/null
 
 .PHONY: size
 size: verify-bin ## Fail when a default answer outgrows its byte budget, or discloses a wrong est_tokens (needs uv for tiktoken)

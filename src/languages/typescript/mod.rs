@@ -295,13 +295,13 @@ impl LanguageSemantics for TypeScriptLanguage {
         _source_bytes: &[u8],
         _kind: crate::domain::SymKind,
         orig_name: &str,
-    ) -> (u16, String) {
-        let params = def_node
+    ) -> (crate::gate::contract::ParamArity, String) {
+        let arity = def_node
             .and_then(fluent_handler)
             .or(def_node)
-            .map(|node| crate::gate::contract::extract_param_count(node, &SYNTAX))
-            .unwrap_or(0);
-        (params, orig_name.to_string())
+            .map(|node| crate::gate::contract::extract_param_arity(node, &SYNTAX))
+            .unwrap_or_default();
+        (arity, orig_name.to_string())
     }
 
     fn member_call_targets_callables_only(&self) -> bool {

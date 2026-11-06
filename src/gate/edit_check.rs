@@ -1,5 +1,5 @@
 use crate::domain::{IngestResult, Interner, NodeId, RefRole, Reference, Symbol};
-use crate::gate::contract::{ContractStatus, SignatureContract, compare_contracts};
+use crate::gate::contract::{ContractStatus, ParamArity, SignatureContract, compare_contracts};
 use crate::graph::Graph;
 use crate::resolve::{RefOutcome, ResolutionIndex, ResolutionLookup};
 use crate::serialize::XmlEscapeExt;
@@ -150,39 +150,39 @@ fn write_caller_row<W: Write>(c: &CallerCheckResult, out: &mut W) -> io::Result<
     writeln!(out, "  </c>")
 }
 
-/// Arguments a call site must pass to a definition with `params` parameters: `recv.method(args)` does
-/// not write the receiver the parameter list counts, while a path call (`Type::method(recv, args)`) does.
-fn expected_arg_count(takes_self: bool, params: u16, r: &Reference) -> u16 {
+/// Arity a `recv.method(args)` call is checked against: the receiver is not written as an argument,
+/// while a path call (`Type::method(recv, args)`) does write it.
+fn expected_arity(takes_self: bool, arity: ParamArity, r: &Reference) -> ParamArity {
     if takes_self && r.member_call && !r.path_call {
-        params.saturating_sub(1)
+        arity.without_receiver()
     } else {
-        params
+        arity
     }
 }
 
 struct CallJudge<'a, L> {
     target: &'a Symbol,
     focus: NodeId,
-    /// Parameter count at HEAD when it differs from now.
-    old_params: Option<u16>,
+    /// Arity at HEAD when it differs from now.
+    old_arity: Option<ParamArity>,
     lookup: &'a L,
 }
 
 impl<L: ResolutionLookup> CallJudge<'_, L> {
-    /// A call the resolver bound to the focus that passes the wrong argument count, or one it could
-    /// not bind (the count no longer fits any definition) that passes exactly the count HEAD required.
+    /// A call the resolver bound to the focus that passes an argument count outside its arity, or one it
+    /// could not bind that passes a count only HEAD's arity accepted.
     fn judge(&self, r: &Reference) -> Option<IncompatibleCallSite> {
         let takes_self = self.target.takes_self;
-        let required = expected_arg_count(takes_self, self.target.params, r);
-        if r.arg_count == required {
+        let now = expected_arity(takes_self, target_arity(self.target), r);
+        if now.accepts(r.arg_count) {
             return None;
         }
         let by_name = match self.lookup.classify_ref(r) {
             RefOutcome::Resolved(resolved) if resolved.targets == [self.focus] => false,
             RefOutcome::Unresolved
                 if self
-                    .old_params
-                    .is_some_and(|old| r.arg_count == expected_arg_count(takes_self, old, r)) =>
+                    .old_arity
+                    .is_some_and(|old| expected_arity(takes_self, old, r).accepts(r.arg_count)) =>
             {
                 true
             }
@@ -191,9 +191,16 @@ impl<L: ResolutionLookup> CallJudge<'_, L> {
         Some(IncompatibleCallSite {
             line: r.line,
             arg_count: r.arg_count,
-            required_params: required,
+            required_params: now.required,
             by_name,
         })
+    }
+}
+
+fn target_arity(sym: &Symbol) -> ParamArity {
+    ParamArity {
+        max: sym.params,
+        required: sym.required_params,
     }
 }
 
@@ -232,6 +239,7 @@ fn contract_status(
     let now_contract = SignatureContract {
         name: sym_name.to_string(),
         params: sym.params,
+        required_params: sym.required_params,
         is_public,
     };
     compare_contracts(&now_contract, head_baseline)
@@ -252,9 +260,12 @@ fn caller_rows(
     let judge = CallJudge {
         target,
         focus,
-        old_params: head_baseline
-            .map(|base| base.params)
-            .filter(|&old| old != target.params),
+        old_arity: head_baseline
+            .map(|base| ParamArity {
+                max: base.params,
+                required: base.required_params,
+            })
+            .filter(|&old| old != target_arity(target)),
         lookup: &lookup,
     };
     let mut sites: BTreeMap<NodeId, Vec<IncompatibleCallSite>> = BTreeMap::new();

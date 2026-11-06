@@ -70,7 +70,7 @@ pub(super) fn record_def_item(
     } else {
         crate::metrics::ComplexityMetrics::default()
     };
-    let (params, name) =
+    let (arity, name) =
         lang.semantics()
             .resolve_def_params_and_name(ext.def_node, source_bytes, kind, orig_name);
     let binding = if kind == SymKind::Var {
@@ -92,7 +92,8 @@ pub(super) fn record_def_item(
         body_byte,
         end_byte: end,
         loc,
-        params,
+        params: arity.max,
+        required_params: arity.required,
         metrics,
         binding,
         contract_member,

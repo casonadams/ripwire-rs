@@ -27,6 +27,7 @@ pub fn target_edit_check_xml(
     let baseline = SignatureContract {
         name: "target".into(),
         params: 1,
+        required_params: 1,
         is_public: true,
     };
     let mut out = Vec::new();

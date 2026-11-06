@@ -187,12 +187,14 @@ impl LanguageSemantics for GoLanguage {
         _source_bytes: &[u8],
         _kind: SymKind,
         orig_name: &str,
-    ) -> (u16, String) {
-        let params = def_node.map_or(0, |n| match n.child_by_field_name("parameters") {
-            Some(list) => go_param_count(list),
-            None => crate::gate::contract::extract_param_count(n, self.syntax_kinds()),
+    ) -> (crate::gate::contract::ParamArity, String) {
+        let arity = def_node.map_or(crate::gate::contract::ParamArity::default(), |n| {
+            match n.child_by_field_name("parameters") {
+                Some(list) => crate::gate::contract::ParamArity::fixed(go_param_count(list)),
+                None => crate::gate::contract::extract_param_arity(n, self.syntax_kinds()),
+            }
         });
-        (params, orig_name.to_string())
+        (arity, orig_name.to_string())
     }
 
     fn std_member_names(&self) -> &'static [&'static str] {

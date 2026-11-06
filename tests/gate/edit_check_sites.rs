@@ -241,3 +241,119 @@ fn calls_that_fit_the_definition_they_bind_are_never_flagged() {
         assert_eq!((got.callers, got.incompatible), (callers, 0), "{label}");
     }
 }
+
+struct ArityCase {
+    label: &'static str,
+    path: &'static str,
+    lang: Lang,
+    name: &'static str,
+    head: &'static str,
+    now: &'static str,
+    callers: usize,
+    incompatible: usize,
+}
+
+#[test]
+fn defaulted_variadic_and_keyword_params_bind_the_counts_they_accept() {
+    let cases = [
+        ArityCase {
+            label: "python defaulted param, call omits it",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "connect_tcp",
+            head: "def connect_tcp(address):\n    return address\n\ndef dial(connect):\n    return connect_tcp(connect)\n",
+            now: "def connect_tcp(address, wait=120.0):\n    return address\n\ndef dial(connect):\n    return connect_tcp(connect)\n",
+            callers: 1,
+            incompatible: 0,
+        },
+        ArityCase {
+            label: "python too few args for a required param",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "f",
+            head: "def f(a):\n    return a\n\ndef g(x):\n    return f(x)\n",
+            now: "def f(a, b, c=1):\n    return a\n\ndef g(x):\n    return f(x)\n",
+            callers: 1,
+            incompatible: 1,
+        },
+        ArityCase {
+            label: "python *args accepts any count",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "f",
+            head: "def f(a):\n    return a\n\ndef g(x):\n    return f(x, 2, 3)\n",
+            now: "def f(a, *args):\n    return a\n\ndef g(x):\n    return f(x, 2, 3)\n",
+            callers: 1,
+            incompatible: 0,
+        },
+        ArityCase {
+            label: "python **kwargs accepts keywords",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "f",
+            head: "def f(a):\n    return a\n\ndef g(x):\n    return f(x)\n",
+            now: "def f(a, **kw):\n    return a\n\ndef g(x):\n    return f(x, k=1)\n",
+            callers: 1,
+            incompatible: 0,
+        },
+        ArityCase {
+            label: "python keyword-only param: separator is not a slot",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "f",
+            head: "def f(a):\n    return a\n\ndef g(x):\n    return f(x)\n\ndef h(x):\n    return f(x, b=2)\n",
+            now: "def f(a, *, b):\n    return a\n\ndef g(x):\n    return f(x)\n\ndef h(x):\n    return f(x, b=2)\n",
+            callers: 2,
+            incompatible: 1,
+        },
+        ArityCase {
+            label: "python annotated default",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "f",
+            head: "def f(a):\n    return a\n\ndef g(x):\n    return f(x)\n",
+            now: "def f(a, b: int = 1):\n    return a\n\ndef g(x):\n    return f(x)\n",
+            callers: 1,
+            incompatible: 0,
+        },
+        ArityCase {
+            label: "python std-name collision: builtin-shaped get is not in-tree",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "get",
+            head: "class S:\n    def get(self, key):\n        return key\n\n    def b(self):\n        return self.get('x')\n",
+            now: "class S:\n    def get(self, key, default=None):\n        return key\n\n    def b(self, d):\n        return self.get('x') or d.get('k', 1, 2)\n",
+            callers: 1,
+            incompatible: 0,
+        },
+        ArityCase {
+            label: "typescript optional and defaulted params",
+            path: "s.ts",
+            lang: Lang::TypeScript,
+            name: "f",
+            head: "function f(a: number) {\n  return a;\n}\nfunction g() {\n  return f(1);\n}\n",
+            now: "function f(a: number, b?: number, c = 1) {\n  return a;\n}\nfunction g() {\n  return f(1);\n}\nfunction h() {\n  return f();\n}\n",
+            callers: 2,
+            incompatible: 1,
+        },
+        ArityCase {
+            label: "ruby defaulted, splat, block and required keyword",
+            path: "s.rb",
+            lang: Lang::Ruby,
+            name: "f",
+            head: "def f(a)\n  a\nend\n\ndef g\n  f(1)\nend\n",
+            now: "def f(a, b = 1, *rest, k:, o: 2, &blk)\n  a\nend\n\ndef g\n  f(1, k: 2)\nend\n\ndef h\n  f(1)\nend\n",
+            callers: 2,
+            incompatible: 1,
+        },
+    ];
+    for case in cases {
+        let got = check(case.path, case.lang, case.head, case.now, case.name);
+        assert_eq!(got.callers, case.callers, "{}: callers", case.label);
+        assert_eq!(
+            got.incompatible, case.incompatible,
+            "{}: incompatible",
+            case.label
+        );
+    }
+}

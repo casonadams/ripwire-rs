@@ -14,6 +14,8 @@ pub struct RawDef {
     pub end_byte: usize,
     pub loc: u32,
     pub params: u16,
+    /// Parameters a call must bind: `params` less those with a default value.
+    pub required_params: u16,
     pub metrics: crate::metrics::ComplexityMetrics,
     /// Set by the language plugin for `Var` bindings (see `var_binding`); other kinds are `Mutable`.
     pub binding: crate::domain::Binding,

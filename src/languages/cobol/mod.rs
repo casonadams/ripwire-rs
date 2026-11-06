@@ -138,9 +138,9 @@ impl LanguageSemantics for CobolLanguage {
         _source_bytes: &[u8],
         _kind: crate::domain::SymKind,
         orig_name: &str,
-    ) -> (u16, String) {
+    ) -> (crate::gate::contract::ParamArity, String) {
         let clean = orig_name.trim_end_matches('.').trim();
-        (0, clean.to_string())
+        (crate::gate::contract::ParamArity::default(), clean.to_string())
     }
 
     fn visibility_mode(&self) -> VisibilityMode {

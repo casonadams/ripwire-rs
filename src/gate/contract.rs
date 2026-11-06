@@ -9,7 +9,44 @@ use streaming_iterator::StreamingIterator;
 pub struct SignatureContract {
     pub name: String,
     pub params: u16,
+    pub required_params: u16,
     pub is_public: bool,
+}
+
+/// Parameters a call may bind. `max` counts every positional slot (a variadic counts `VARIADIC_PARAMS`);
+/// `required` counts only slots without a default value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ParamArity {
+    pub max: u16,
+    pub required: u16,
+}
+
+/// A `max` at or above this bound is open-ended: the definition takes a variadic parameter.
+pub const VARIADIC_PARAMS: u16 = 64;
+
+impl ParamArity {
+    #[must_use]
+    pub const fn fixed(n: u16) -> Self {
+        Self {
+            max: n,
+            required: n,
+        }
+    }
+
+    /// Whether a call passing `args` arguments binds every required slot and no extra one.
+    #[must_use]
+    pub fn accepts(self, args: u16) -> bool {
+        args >= self.required && (self.max >= VARIADIC_PARAMS || args <= self.max)
+    }
+
+    /// The arity a `recv.method(args)` call sees: the receiver is not written as an argument.
+    #[must_use]
+    pub fn without_receiver(self) -> Self {
+        Self {
+            max: self.max.saturating_sub(1),
+            required: self.required.saturating_sub(1),
+        }
+    }
 }
 
 /// Comparison result between current AST signature and baseline (git HEAD).
@@ -50,7 +87,8 @@ pub fn compare_contracts(
         return ContractStatus::NewSymbol;
     };
 
-    let param_changed = now.params != baseline.params;
+    let param_changed =
+        now.params != baseline.params || now.required_params != baseline.required_params;
     let public_changed = now.is_public != baseline.is_public;
 
     if !param_changed && !public_changed {
@@ -125,9 +163,9 @@ pub fn parse_head_signature_match(
     query: &tree_sitter::Query,
     bytes: &[u8],
     lang: Lang,
-) -> Option<(String, u16, bool)> {
+) -> Option<(String, ParamArity, bool)> {
     let mut name = None;
-    let mut params = 0u16;
+    let mut arity = ParamArity::default();
     let mut def_node = None;
 
     for capture in m.captures {
@@ -138,14 +176,14 @@ pub fn parse_head_signature_match(
                 name = Some(text.to_string());
             }
         } else if cap_name.starts_with("definition.") {
-            params = extract_param_count(node, lang.semantics().syntax_kinds());
+            arity = extract_param_arity(node, lang.semantics().syntax_kinds());
             def_node = Some(node);
         }
     }
     let dn = def_node?;
     let n = name?;
     let is_pub = resolve_head_visibility(Some(&n), Some(dn), bytes, lang);
-    Some((n, params, is_pub))
+    Some((n, arity, is_pub))
 }
 
 /// Parse a symbol's contract from source bytes in memory.
@@ -172,12 +210,13 @@ pub fn parse_symbol_contract_from_bytes(
     let mut matches = cursor.matches(query, tree.root_node(), bytes);
 
     while let Some(m) = matches.next() {
-        if let Some((n, params, is_public)) = parse_head_signature_match(m, query, bytes, lang)
+        if let Some((n, arity, is_public)) = parse_head_signature_match(m, query, bytes, lang)
             && n == sym_name
         {
             return Ok(Some(SignatureContract {
                 name: n,
-                params,
+                params: arity.max,
+                required_params: arity.required,
                 is_public,
             }));
         }
@@ -213,37 +252,73 @@ fn is_variadic_param(param: tree_sitter::Node<'_>) -> bool {
             .is_some_and(|child| is_variadic_param_kind(child.kind()))
 }
 
-fn count_single_param(param: tree_sitter::Node<'_>, strict: bool, kinds: &SyntaxKinds) -> u16 {
+fn is_optional_param_kind(kind: &str) -> bool {
+    kind.contains("optional_parameter") || kind.contains("default_parameter")
+}
+
+/// Separators (`*`, `/`) and Ruby's `&block` take no positional argument.
+fn is_arity_free_param_kind(kind: &str) -> bool {
+    kind.contains("separator") || kind.contains("block_parameter")
+}
+
+/// A default value (`x=1`, Ruby `k: 1`, C# `int x = 1`, PHP `$x = 1`) makes a parameter optional.
+fn has_default_value(param: tree_sitter::Node<'_>) -> bool {
+    param
+        .child_by_field_name("value")
+        .or_else(|| param.child_by_field_name("default_value"))
+        .is_some()
+}
+
+fn count_single_param(
+    param: tree_sitter::Node<'_>,
+    strict: bool,
+    kinds: &SyntaxKinds,
+) -> ParamArity {
     let kind = param.kind();
     if is_variadic_param(param) {
-        return 64;
+        return ParamArity {
+            max: VARIADIC_PARAMS,
+            required: 0,
+        };
+    }
+    if is_arity_free_param_kind(kind) {
+        return ParamArity::default();
     }
     if kinds.optional_param_groups.contains(&kind) {
         let mut cursor = param.walk();
-        return param
+        let max = param
             .named_children(&mut cursor)
             .filter(|p| p.kind().contains("param"))
             .count() as u16;
+        return ParamArity { max, required: 0 };
     }
     let mut cursor = param.walk();
     let names = param.children_by_field_name("name", &mut cursor).count();
     if names > 1 {
         // Go's `a, b string` is one declaration node naming several parameters.
-        return names as u16;
+        return ParamArity::fixed(names as u16);
     }
-    u16::from(if strict {
+    let count = u16::from(if strict {
         kind == "parameter"
     } else {
         !kind.contains("comment")
-    })
+    });
+    let optional = is_optional_param_kind(kind) || has_default_value(param);
+    ParamArity {
+        max: count,
+        required: if optional { 0 } else { count },
+    }
 }
 
-fn count_param_children(list: tree_sitter::Node<'_>, kinds: &SyntaxKinds) -> u16 {
+fn count_param_children(list: tree_sitter::Node<'_>, kinds: &SyntaxKinds) -> ParamArity {
     let strict = kinds.strict_param_lists.contains(&list.kind());
     let mut cursor = list.walk();
     list.named_children(&mut cursor)
         .map(|p| count_single_param(p, strict, kinds))
-        .sum()
+        .fold(ParamArity::default(), |acc, p| ParamArity {
+            max: acc.max + p.max,
+            required: acc.required + p.required,
+        })
 }
 
 fn find_callable_descendant<'a>(
@@ -288,7 +363,7 @@ fn is_value_parameter_list_kind(kind: &str) -> bool {
 }
 
 #[must_use]
-pub fn extract_param_count(def_node: tree_sitter::Node<'_>, kinds: &SyntaxKinds) -> u16 {
+pub fn extract_param_arity(def_node: tree_sitter::Node<'_>, kinds: &SyntaxKinds) -> ParamArity {
     let node = unwrap_signature_node(def_node, kinds);
     let mut cursor = node.walk();
     if let Some(list) = node
@@ -299,7 +374,7 @@ pub fn extract_param_count(def_node: tree_sitter::Node<'_>, kinds: &SyntaxKinds)
     }
     let single_param =
         kinds.callables.contains(&node.kind()) && node.child_by_field_name("parameter").is_some();
-    u16::from(single_param)
+    ParamArity::fixed(u16::from(single_param))
 }
 
 #[must_use]

@@ -1,7 +1,8 @@
 # Deliberate divergences from upstream ripwire, read by scripts/validate-parity.py with tomllib.
 #
-# Measured against upstream ripwire 0.6.9 (built_from=bedc0cdcf). Every evidence= line below was taken with
-# that release. When the installed upstream differs (`ripwire --version`), expect entries to fail for reasons
+# Measured against upstream ripwire 0.6.9 (built_from=bedc0cdcf), except entries whose evidence names
+# "upstream 0.6.8 (built_from=cd11226a6)": the installed upstream was 0.6.8 when those were re-measured. Every evidence= line
+# names the release it was taken with. When the installed upstream differs (`ripwire --version`), expect entries to fail for reasons
 # that are not regressions: re-measure the failing entries, then update this line in the same commit.
 #
 # Paged row lists follow one generic rule in the checker and need no entry: same schema, totals
@@ -206,10 +207,10 @@ evidence = "measured: ours about 9 KB, upstream about 14 KB at the default prese
 [[divergence]]
 id = "test-gate-untested-default-window"
 command = "--test-gate"
-case = "src/gate/affected.rs,src/serialize/arch_xml.rs"
+case = "src/gate/affected.rs,src/serialize/arch_xml/mod.rs"
 kind = "defect"
 why = "Default window (149 rows, 12.9 KB) against upstream's 25 rows (7.0 KB); density is richer (803 facts at 0.062 per byte vs 190 at 0.027). The paged rule still fails on untested rows upstream does not list untested: call_explore (map/tools.rs, a fn-pointer in an mcp_tool! table; macro arguments are not value reads), run and run_subcommand (mcp/mod.rs, registry dyn dispatch), render (dead_code.rs, deps.rs, quality_panel.rs, symbol_metrics.rs), execute (exemplar.rs, pack_task.rs), execute_deps_query_paged, load_head_symbol_contract, write_body and page_window (seams.rs), is_entrypoint_symbol (csharp, java), execute_stream_xml_with. Ours is wrong on these: tests reach them through tables and dyn dispatch the graph does not model."
-evidence = "measured at 575bd1e on src/gate/affected.rs,src/serialize/arch_xml.rs: rw 12923 B, 803 facts, 149 u rows; rip 7041 B, 190 facts; untested paths absent from upstream full set (15648 B full)"
+evidence = "measured at 575bd1e on src/gate/affected.rs,src/serialize/arch_xml.rs (the module is now arch_xml/mod.rs; numbers predate the move): rw 12923 B, 803 facts, 149 u rows; rip 7041 B, 190 facts; untested paths absent from upstream full set (15648 B full)"
 
 [[divergence]]
 id = "test-gate-set-2-registry-dispatch"
@@ -217,7 +218,7 @@ command = "--test-gate"
 case = "src/commands/test_gate.rs,src/commands/gate.rs"
 kind = "fixes-upstream-defect"
 why = "Every untyped command.run() and command.options() call on &dyn Command now reaches the gate plugins, so the impacted set (86 vs 51) and its untested rows grow with the real dynamic-dispatch callers upstream binds to the trait declaration."
-evidence = "tests/resolve/trait_dispatch.rs::an_untyped_receiver_of_an_interface_method_reaches_every_implementor"
+evidence = "tests/resolve/trait_dispatch.rs::dynamic_dispatch_does_not_discard_implementations_in_other_files"
 
 [[divergence]]
 id = "test-gate-smaller-set-3"
@@ -324,7 +325,7 @@ command = "--scan-skills=skills"
 case = ""
 kind = "fixes-upstream-defect"
 why = "The credential-path rule quoted ~/.ssh and ~/.aws inside prose backticks; AGENTS.md requires prose backtick spans filtered before reporting. Ours now strips them and flags only unquoted credential paths; upstream still flags the quoted line 42."
-evidence = "tests/skills/install.rs::test_scan_content_ignores_credential_paths_quoted_in_prose_backticks"
+evidence = "tests/skills/install.rs::test_scan_content_flags_credential_paths_and_ignores_prose_backticks"
 
 [[divergence]]
 id = "nonlocal-state-atomic-statics"
@@ -340,16 +341,16 @@ command = "--exemplar=fn"
 case = ""
 kind = "fixes-upstream-defect"
 why = "An untyped receiver calling an interface method now reaches its implementors, so the exemplar's callee list names the refine_dialect implementations the call can run instead of the declaration alone."
-evidence = "tests/resolve/trait_dispatch.rs::an_untyped_receiver_of_an_interface_method_reaches_every_implementor"
+evidence = "tests/resolve/trait_dispatch.rs::dynamic_dispatch_does_not_discard_implementations_in_other_files"
 
 [[divergence]]
 id = "callees-typed-receiver-binds-exactly"
 command = "--callees=row_bytes"
 case = ""
 kind = "smaller"
-omits = ["dc", "stdm"]
-why = "row_bytes calls .len() on a byte slice, which is a standard-library method to ours, not a declined call, so there is no <dc gate=\"std\"> row and no <stdm> tally. Upstream 0.6.9 binds flush and new to the typed receiver's definitions exactly, as ours does, so the rows themselves agree. Pinned by tests/resolve/ladder.rs::test_a_receiver_typed_by_its_constructor_binds_only_that_types_method."
-evidence = "measured: ours 2 callee rows (new, flush); upstream the same 2 plus <dc n=\"len\" gate=\"std\"> and <stdm n=\"len\" calls=\"1\">."
+omits = ["dc", "stdm", "flush:via"]
+why = "row_bytes calls .len() on a byte slice, which is a standard-library method to ours, not a declined call, so there is no <dc gate=\"std\"> row and no <stdm> tally. Upstream binds new and flush to the typed receiver's definitions; on 0.6.8 it also lists the second flush definition by name (via=name), which ours declines because the receiver is typed and a name-only edge is unproven. So ours carries no via on its flush row and lists only the exact flush. Pinned by tests/resolve/ladder.rs::test_a_receiver_typed_by_its_constructor_binds_only_that_types_method."
+evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 2 callee rows (new, flush at writer.rs:172, no via); upstream 4 rows (new, flush at writer.rs:172 and writer.rs:380 both via=\"name\") plus <dc n=\"len\" gate=\"std\"> and <stdm n=\"len\" calls=\"1\">."
 
 [[divergence]]
 id = "grep-merges-hits-in-one-symbol"
@@ -358,3 +359,11 @@ case = ""
 kind = "smaller"
 why = "Hits in the same enclosing symbol collapse into one <hit n=K> row, so the first page carries fewer rows than upstream's one-row-per-line list; the merged row's key is not a row of the unmerged full set, which the paged-row rule cannot express."
 evidence = "measured: default page 85 hit rows; --limit=100000 lists 90 (the n=\"2\" rows split back into single-line hits)."
+
+[[divergence]]
+id = "edit-check-resolve-changed-static-closure-caller"
+command = "--edit-check=resolve_changed_or_spec_files"
+case = ""
+kind = "richer"
+why = "The SITU static (src/commands/situ.rs) calls resolve_changed_or_spec_files inside its MCP tool handler, a closure in the static's initializer. Ours lists SITU as a caller at that call; upstream's answer omits it (the cause on upstream is not traced). The row is a real call site, so the contract check names one more caller that an edit to the function must keep compiling."
+evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 4 <c> rows (SITU at src/commands/situ.rs:30 plus three shared); upstream 3 rows (the three shared)."

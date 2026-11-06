@@ -1,7 +1,7 @@
 use crate::support::syntax::parse_rust;
 use ripwire_rs::gate::contract::{
     ContractStatus, SignatureContract, check_node_visibility, compare_contracts,
-    extract_param_count, parse_head_signature_match, parse_symbol_contract_from_bytes,
+    extract_param_arity, parse_head_signature_match, parse_symbol_contract_from_bytes,
 };
 use ripwire_rs::{Lang, LanguageRegistry};
 use streaming_iterator::StreamingIterator;
@@ -11,12 +11,14 @@ fn test_compare_contracts_scenarios() {
     let baseline = SignatureContract {
         name: "fetch".to_string(),
         params: 2,
+        required_params: 2,
         is_public: false,
     };
 
     let same = SignatureContract {
         name: "fetch".to_string(),
         params: 2,
+        required_params: 2,
         is_public: false,
     };
     assert_eq!(
@@ -27,6 +29,7 @@ fn test_compare_contracts_scenarios() {
     let arity_broken = SignatureContract {
         name: "fetch".to_string(),
         params: 3,
+        required_params: 3,
         is_public: false,
     };
     assert_eq!(
@@ -44,6 +47,7 @@ fn test_compare_contracts_scenarios() {
     let pub_changed = SignatureContract {
         name: "fetch".to_string(),
         params: 2,
+        required_params: 2,
         is_public: true,
     };
     assert_eq!(
@@ -65,7 +69,7 @@ fn parse_rust_fn_stats(code: &[u8]) -> (u16, bool) {
     let tree = parse_rust(code);
     let fn_node = tree.root_node().child(0).unwrap();
     (
-        extract_param_count(fn_node, Lang::Rust.semantics().syntax_kinds()),
+        extract_param_arity(fn_node, Lang::Rust.semantics().syntax_kinds()).max,
         check_node_visibility(fn_node, code, Lang::Rust),
     )
 }
@@ -144,11 +148,15 @@ void makeSwap() {
         if name == "_prepare" {
             found_prepare = true;
             assert!(!is_pub, "private Dart method _prepare must not be public");
-            assert_eq!(params, 3, "1 positional + 2 named parameters");
-        } else if name == "SwapRecord" && params > 0 {
+            assert_eq!(params.max, 3, "1 positional + 2 named parameters");
+            assert_eq!(
+                params.required, 1,
+                "the positional parameter alone is required"
+            );
+        } else if name == "SwapRecord" && params.max > 0 {
             found_ctor = true;
             assert!(is_pub);
-            assert_eq!(params, 5, "2 positional + 3 named parameters");
+            assert_eq!(params.max, 5, "2 positional + 3 named parameters");
         }
     }
     assert!(found_prepare);
@@ -165,6 +173,7 @@ fn test_parse_symbol_contract_from_bytes_multi_language() {
         Some(SignatureContract {
             name: "greet".to_string(),
             params: 2,
+            required_params: 2,
             is_public: true,
         })
     );
@@ -175,6 +184,7 @@ fn test_parse_symbol_contract_from_bytes_multi_language() {
         Some(SignatureContract {
             name: "secret".to_string(),
             params: 1,
+            required_params: 1,
             is_public: false,
         })
     );
@@ -191,6 +201,7 @@ fn test_parse_symbol_contract_from_bytes_multi_language() {
         Some(SignatureContract {
             name: "calculate_total".to_string(),
             params: 3,
+            required_params: 2,
             is_public: true,
         })
     );
@@ -202,6 +213,7 @@ fn test_parse_symbol_contract_from_bytes_multi_language() {
         Some(SignatureContract {
             name: "_internal_helper".to_string(),
             params: 1,
+            required_params: 1,
             is_public: false,
         })
     );
@@ -214,6 +226,7 @@ fn test_parse_symbol_contract_from_bytes_multi_language() {
         Some(SignatureContract {
             name: "ExportedAdd".to_string(),
             params: 3,
+            required_params: 3,
             is_public: true,
         })
     );
@@ -224,6 +237,7 @@ fn test_parse_symbol_contract_from_bytes_multi_language() {
         Some(SignatureContract {
             name: "unexportedHelper".to_string(),
             params: 1,
+            required_params: 1,
             is_public: false,
         })
     );

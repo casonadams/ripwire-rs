@@ -314,6 +314,7 @@ class WorkerService {
     let head_contract = SignatureContract {
         name: "dispatchBatch".to_string(),
         params: sub_sym.params,
+        required_params: sub_sym.required_params,
         is_public: is_symbol_name_public("dispatchBatch", Lang::Dart),
     };
     let ec_rep =

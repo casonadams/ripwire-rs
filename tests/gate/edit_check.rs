@@ -57,6 +57,7 @@ fn setup_test_repository(interner: &Interner) -> IngestResult {
         10,
     );
     sym_compute.params = 3;
+    sym_compute.required_params = 3;
 
     let s_legacy = interner.intern("legacy_worker");
     let sym_legacy = Symbol::new(1, s_legacy, s_legacy, SymKind::Function, Lang::Rust, 1, 15);
@@ -116,6 +117,7 @@ fn test_caller_compatibility_verification() {
         10,
     );
     target_sym.params = 3;
+    target_sym.required_params = 3;
 
     let caller_name = interner.intern("runner");
     let caller_sym = Symbol::new(
@@ -141,6 +143,7 @@ fn test_caller_compatibility_verification() {
     let baseline = SignatureContract {
         name: "compute".to_string(),
         params: 2,
+        required_params: 2,
         is_public: true,
     };
 
@@ -168,6 +171,7 @@ fn test_edit_check_arity_break() {
     let baseline = SignatureContract {
         name: "compute".to_string(),
         params: 2,
+        required_params: 2,
         is_public: true,
     };
 
@@ -275,6 +279,7 @@ fn test_edit_check_and_affected_from_in_memory_facts() {
     let baseline = SignatureContract {
         name: "compute".to_string(),
         params: 2,
+        required_params: 2,
         is_public: true,
     };
     let mut out = Cursor::new(Vec::new());

@@ -243,7 +243,7 @@ def discover_repo_targets(rw_bin, repo_dir):
 
 # Synthetic changed sets: existing files passed as CLI args, so the tree is never written.
 CHANGED_SETS = (
-    "src/gate/affected.rs,src/serialize/arch_xml.rs",
+    "src/gate/affected.rs,src/serialize/arch_xml/mod.rs",
     "src/commands/test_gate.rs,src/commands/gate.rs",
     "src/commands/situ.rs,src/commands/edit_check.rs,src/commands/safe_delete.rs",
 )

@@ -305,7 +305,7 @@ impl LanguageSemantics for ElixirLanguage {
         source_bytes: &[u8],
         kind: SymKind,
         orig_name: &str,
-    ) -> (u16, String) {
+    ) -> (crate::gate::contract::ParamArity, String) {
         let params = def_node
             .map(|n| elixir_param_count(n, source_bytes))
             .unwrap_or(0);
@@ -314,7 +314,7 @@ impl LanguageSemantics for ElixirLanguage {
         } else {
             orig_name.to_string()
         };
-        (params, name)
+        (crate::gate::contract::ParamArity::fixed(params), name)
     }
 
     fn format_callee_name(&self, name: &str, arg_count: u16, arg_count_known: bool) -> String {

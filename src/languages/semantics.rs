@@ -384,10 +384,10 @@ pub trait LanguageSemantics: Sync {
         _source_bytes: &[u8],
         _kind: SymKind,
         orig_name: &str,
-    ) -> (u16, String) {
+    ) -> (crate::gate::contract::ParamArity, String) {
         let params = def_node
-            .map(|n| crate::gate::contract::extract_param_count(n, self.syntax_kinds()))
-            .unwrap_or(0);
+            .map(|n| crate::gate::contract::extract_param_arity(n, self.syntax_kinds()))
+            .unwrap_or_default();
         (params, orig_name.to_string())
     }
 

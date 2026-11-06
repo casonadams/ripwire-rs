@@ -150,10 +150,10 @@ impl LanguageSemantics for FortranLanguage {
         _source_bytes: &[u8],
         _kind: crate::domain::SymKind,
         orig_name: &str,
-    ) -> (u16, String) {
+    ) -> (crate::gate::contract::ParamArity, String) {
         let kinds = self.syntax_kinds();
-        let count = |n| crate::gate::contract::extract_param_count(n, kinds);
-        let params = def_node
+        let count = |n| crate::gate::contract::extract_param_arity(n, kinds);
+        let arity = def_node
             .and_then(|dn| {
                 if dn.kind() == "subroutine" || dn.kind() == "function" {
                     dn.child(0).map(count)
@@ -161,8 +161,8 @@ impl LanguageSemantics for FortranLanguage {
                     Some(count(dn))
                 }
             })
-            .unwrap_or(0);
-        (params, orig_name.to_string())
+            .unwrap_or_default();
+        (arity, orig_name.to_string())
     }
 
     fn visibility_mode(&self) -> VisibilityMode {

@@ -428,6 +428,7 @@ pub fn build_file_symbols(
         sym.ccx = def.metrics.ccx;
         sym.max_nest = def.metrics.max_nest;
         sym.params = def.params;
+        sym.required_params = def.required_params;
         sym.humps = def.metrics.humps;
         sym.deep = def.metrics.deep;
         sym.ev = def.metrics.ev;
