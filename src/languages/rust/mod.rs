@@ -318,6 +318,10 @@ impl LanguageSemantics for RustLanguage {
             || RUST_TREE_SITTER_MEMBERS.contains(&name)
     }
 
+    fn is_language_builtin_member(&self, name: &str) -> bool {
+        RUST_STD_MEMBERS.contains(&name) || RUST_ITER_STR_MEMBERS.contains(&name)
+    }
+
     fn std_qualifier_names(&self) -> &'static [&'static str] {
         RUST_STD_QUALIFIERS
     }

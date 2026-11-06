@@ -592,6 +592,12 @@ pub trait LanguageSemantics: Sync {
         self.std_member_names().contains(&name)
     }
 
+    /// True if a method name is the language's own standard or builtin member, which `--external-surface` leaves out.
+    /// Dependency members, such as a parser crate's methods, are not language builtins and stay external.
+    fn is_language_builtin_member(&self, name: &str) -> bool {
+        self.is_std_or_builtin_member(name)
+    }
+
     /// True if an explicit call qualifier names a standard library or builtin runtime namespace/type.
     fn is_std_or_builtin_qualifier(&self, qualifier: &str) -> bool {
         self.std_qualifier_names().contains(&qualifier)

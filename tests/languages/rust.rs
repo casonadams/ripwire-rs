@@ -502,6 +502,22 @@ fn test_rust_macro_closure_and_dsl_names_are_not_external() {
 }
 
 #[test]
+fn test_rust_dependency_members_are_external_but_std_members_are_not() {
+    let xml = external_surface_xml(
+        b"fn walk_tree(node: Node) -> usize {\n    let first = node.child_by_field_name(\"name\");\n    node.named_child(0).map(|c| c.start_byte()).unwrap_or(0)\n}\nfn collect(v: Vec<u8>) -> usize { v.iter().count() }\n",
+    );
+    let listed = |name: &str| xml.contains(&format!("n=\"{name}\""));
+    assert!(
+        listed("child_by_field_name") && listed("start_byte"),
+        "{xml}"
+    );
+    assert!(
+        !listed("unwrap_or") && !listed("iter"),
+        "std members stay builtin: {xml}"
+    );
+}
+
+#[test]
 fn test_rust_macro_argument_call_resolves_across_files() {
     use ripwire_rs::{
         Graph, Interner, LanguageRegistry, find_symbols_by_name, ingest_in_memory_files,
