@@ -12,7 +12,6 @@ Recall is therefore measured over the candidates this scan enumerates, not over 
 compiler sees: a lower-confidence number than a compiler index. Precision is the headline metric.
 
 Usage:
-  lsp2scip.py --root DIR --ext .go[,.mod] --language-id go --out FILE.scip -- SERVER [ARG...]
 """
 
 import argparse
@@ -123,6 +122,21 @@ def connect_tcp(address, wait=120.0):
         return sock.makefile("rb"), sock.makefile("wb")
 
 
+def section_value(config, section, default):
+    """The workspace/configuration value of dotted SECTION: CONFIG[SECTION], else the value at that path
+    through nested objects (`cobol-lsp.dialects` reads config["cobol-lsp"]["dialects"]); DEFAULT if absent."""
+    if not section:
+        return default
+    if section in config:
+        return config[section]
+    node = config
+    for part in section.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return default
+        node = node[part]
+    return node
+
+
 class Client:
     """One language server process. A reader thread answers server-initiated requests with null
     (or the configuration object for workspace/configuration) and files responses by id."""
@@ -176,7 +190,8 @@ class Client:
     def answer_server_request(self, message):
         result = None
         if message["method"] == "workspace/configuration":
-            result = [self.config for _ in message.get("params", {}).get("items", [])]
+            result = [section_value(self.config, item.get("section"), self.config)
+                      for item in message.get("params", {}).get("items", [])]
         self.write({"jsonrpc": "2.0", "id": message["id"], "result": result})
 
     def write(self, message):
@@ -255,13 +270,14 @@ def utf16_col(text, col):
 
 
 def candidates(rel, text, pattern=CALL):
-    """(file, line, column in code points, callee name, column in UTF-16 units) per PATTERN match:
-    group 1 is the callee name."""
+    """(file, line, column in code points, callee name, column in UTF-16 units) per PATTERN match: the
+    callee is the first group that matched (group 1 for a single-group pattern)."""
     found = []
     for line_no, line in enumerate(text.split("\n")):
         for match in pattern.finditer(line):
-            col = match.start(1)
-            found.append((rel, line_no, col, match.group(1), utf16_col(line, col)))
+            group = next(n for n in range(1, pattern.groups + 1) if match.group(n))
+            col = match.start(group)
+            found.append((rel, line_no, col, match.group(group), utf16_col(line, col)))
     return found
 
 
@@ -365,6 +381,8 @@ def index_repo(args):
             "initializationOptions": json.loads(args.init_options),
         }, args.timeout)
         client.notify("initialized", {})
+        if client.config:
+            client.notify("workspace/didChangeConfiguration", {"settings": client.config})
         open_documents(client, root, rels, args.language_id)
         time.sleep(args.settle)
         batch = scan_candidates(root, rels, re.compile(args.pattern))
@@ -386,7 +404,10 @@ def build_parser():
     parser.add_argument("--language-id", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--init-options", default="{}", help="JSON initializationOptions")
-    parser.add_argument("--config", default="{}", help="JSON object returned for workspace/configuration")
+    parser.add_argument("--config", default="{}",
+                        help="JSON settings object: sent as workspace/didChangeConfiguration after initialized, and "
+                             "each workspace/configuration item gets its dotted section's value (the whole object "
+                             "when a section is absent)")
     parser.add_argument("--timeout", type=float, default=600.0, help="seconds without any server answer")
     parser.add_argument("--settle", type=float, default=0.0,
                         help="seconds to let the server analyse the opened documents before asking")

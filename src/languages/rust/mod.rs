@@ -17,7 +17,10 @@ use super::{
 };
 use crate::domain::{Lang, SymKind};
 use implementations::collect_rust_implementations;
-use names::{RUST_BUILTIN_MACROS, RUST_STD_MEMBERS, RUST_STD_QUALIFIERS, RUST_TREE_SITTER_MEMBERS};
+use names::{
+    RUST_BUILTIN_MACROS, RUST_ITER_STR_MEMBERS, RUST_STD_MEMBERS, RUST_STD_QUALIFIERS,
+    RUST_TREE_SITTER_MEMBERS,
+};
 use positions::{
     is_function_name, is_macro_argument_call, macro_path_qualifier, rust_read_position,
 };
@@ -294,7 +297,9 @@ impl LanguageSemantics for RustLanguage {
     }
 
     fn is_std_or_builtin_member(&self, name: &str) -> bool {
-        RUST_STD_MEMBERS.contains(&name) || RUST_TREE_SITTER_MEMBERS.contains(&name)
+        RUST_STD_MEMBERS.contains(&name)
+            || RUST_ITER_STR_MEMBERS.contains(&name)
+            || RUST_TREE_SITTER_MEMBERS.contains(&name)
     }
 
     fn std_qualifier_names(&self) -> &'static [&'static str] {

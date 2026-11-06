@@ -159,10 +159,24 @@ class Answers(unittest.TestCase):
         names = [c[3] for c in bridge.candidates("a.py", "x = foo(1)\ny.bar (2)\nz.qux\n")]
         self.assertEqual(names, ["foo", "bar"])
 
-    def test_custom_pattern_names_the_first_word_of_a_command(self):
+    def test_custom_pattern_names_the_first_matched_group(self):
         shell = re.compile(r"(?:^|[;&|]\s*)([A-Za-z_][\w-]*)(?=\s|$)")
         names = [c[3] for c in bridge.candidates("a.sh", "setup x; teardown\nrun_it | grep y\n", shell)]
         self.assertEqual(names, ["setup", "teardown", "run_it", "grep"])
+        message = re.compile(r"\[\s*[^\[\]\s]+\s+([A-Za-z_]\w*)|\]\s+([A-Za-z_]\w*)")
+        names = [c[3] for c in bridge.candidates("a.m", "[self.view addSubview:x];\n[[A alloc] init];\n", message)]
+        self.assertEqual(names, ["addSubview", "alloc", "init"])
+
+    def test_configuration_section_reads_nested_value(self):
+        config = {"cobol-lsp": {"dialects": [], "cpy-manager": {"paths-local": ["cp"]}}}
+        self.assertEqual(bridge.section_value(config, "cobol-lsp.dialects", config), [])
+        self.assertEqual(bridge.section_value(config, "cobol-lsp.cpy-manager.paths-local", config), ["cp"])
+        self.assertEqual(bridge.section_value(config, "cobol-lsp", config), config["cobol-lsp"])
+
+    def test_absent_section_gets_the_default(self):
+        config = {"gopls": {"a": 1}}
+        self.assertEqual(bridge.section_value(config, "other.key", config), config)
+        self.assertEqual(bridge.section_value({}, None, {}), {})
 
 
 class EndToEnd(unittest.TestCase):

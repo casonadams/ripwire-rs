@@ -262,17 +262,17 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | Language | Oracle | Status | Precision | Recall |
 |---|---|---|---|---|
 | bash | LSP bridge (bash-language-server) | measured | 0.9983 | 0.9960 |
-| brightscript | LSP bridge (brighterscript 0.73.8 `bsc --lsp`, rodash) | unverified: image and pins prepared, not built or measured | - | - |
+| brightscript | LSP bridge (brighterscript 0.73.8 `bsc --lsp --stdio`, rodash) | measured | 1.0000 | 1.0000 |
 | c | SCIP indexer (scip-clang) | measured | 1.0000 | 1.0000 |
-| cobol | LSP bridge (COBOL server.jar on a JRE, CobolCraft) | unverified: image and pins prepared, not built or measured | - | - |
+| cobol | LSP bridge (COBOL language server on a JRE) | blocked: analysis fails with NPE `dialects is null` even when the settings answer `[]`; expected settings shape undetermined | - | - |
 | cpp | SCIP indexer (scip-clang) | measured | 0.9376 | 0.8100 |
 | csharp | SCIP indexer (scip-dotnet) | measured | 0.9882 | 0.9796 |
-| cuda | LSP bridge (clangd, DeepGEMM) | unverified: image and pins prepared, not built or measured | - | - |
+| cuda | LSP bridge (clangd) | measured: 307 covered call sites of 11541. Of 66 false edges, the sample shows resolver name binding (qualified `layout::Data(...)` constructor calls bound to the type, same-named members, macros); the bridge pins the constructor, so such calls count against precision | 0.5796 | 1.0000 |
 | dart | SCIP indexer (scip_dart) | measured | 0.9726 | 0.7593 |
 | elixir | LSP bridge (elixir-ls) | blocked: elixir-ls mix install fails on Elixir 1.18.3 (vendored dependency does not compile) | - | - |
-| erlang | LSP bridge (ELP 2026-10-14, erlydtl) | blocked: the ELP tarball has no pinned sha256 and its download was blocked; the repo has 34 source files | - | - |
+| erlang | LSP bridge (ELP 2026-10-14) | blocked: the ELP tarball has no pinned sha256 and its download was blocked; the repo has 34 source files | - | - |
 | fortran | LSP bridge (fortls) | measured | 0.9980 | 0.9845 |
-| gdscript | LSP bridge (Godot 4.7.2 language server, GDQuest steering framework) | unverified: image and pins prepared, not built or measured | - | - |
+| gdscript | LSP bridge (Godot 4.7.2 language server) | blocked: starts and accepts the bridge but answered none of 1067 definition requests in over two hours under amd64 emulation; needs a native arm64 build | - | - |
 | go | LSP bridge (gopls) | measured | 0.9534 | 0.9586 |
 | graphql | none wired | not attempted: no MIT repo with fragment-spread references found yet | - | - |
 | hcl | not applicable: reference edges are builtin function calls only | not applicable | - | - |
@@ -282,8 +282,8 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | kotlin | SCIP indexer (scip-java, Kotlin) | measured | 0.9132 | 0.8170 |
 | lua | LSP bridge (lua-language-server) | measured | 0.9817 | 0.9553 |
 | markdown | not applicable: no call resolution | not applicable | - | - |
-| metal | LSP bridge (clangd, Satin) | unverified: image and pins prepared, not built or measured | - | - |
-| objc | LSP bridge (clangd, Masonry) | unverified: image and pins prepared, not built or measured | - | - |
+| metal | LSP bridge (clangd, compiled as C++ with Metal keywords stubbed) | measured | 0.9590 | 0.9590 |
+| objc | LSP bridge (clangd; candidates include message sends) | measured | 0.7429 | 0.6500 |
 | php | SCIP indexer (scip-php) | measured | 0.9367 | 0.8870 |
 | proto | not applicable to --eval=scip: type references are not scored | not applicable | - | - |
 | python | SCIP indexer (scip-python) | measured | 0.9860 | 0.9160 |
@@ -292,7 +292,7 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 | scala | SCIP indexer (scip-java, Scala) | measured | 0.9017 | 0.8439 |
 | solidity | LSP bridge (solidity language server) | measured | 0.9576 | 0.8966 |
 | sql | not applicable to --eval=scip: table and column references are not scored | not applicable | - | - |
-| swift | LSP bridge (sourcekit-lsp 6.1, eul; scripts/corpus/Dockerfile.swift) | unverified: image and pins prepared, not built or measured | - | - |
+| swift | LSP bridge (sourcekit-lsp 6.1; scripts/corpus/Dockerfile.swift) | blocked: the server exits before answering under amd64 emulation on a package that builds cleanly; try a native arm64 image | - | - |
 | toml | not applicable: no reference captures | not applicable | - | - |
 | typescript | SCIP indexer (scip-typescript) | measured | 0.9882 | 0.9882 |
 | yaml | not applicable: no reference captures | not applicable | - | - |

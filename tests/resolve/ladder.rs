@@ -472,6 +472,82 @@ fn test_triage_external_declined_and_unresolved_counts() {
     assert_eq!(res.declined, 1);
 }
 
+/// A std member name shared with in-tree symbols (a `lines` variable, a `chain` fn in another file) is still the std
+/// method on an untyped receiver: it is declined or external, never unresolved. A tree-sitter `Node` receiver's
+/// `walk` is external too.
+#[test]
+fn test_std_member_names_shadowed_by_in_tree_symbols_are_not_unresolved() {
+    let interner = Interner::new();
+    let mut ingest = IngestResult::new();
+    for (id, path) in [(0, "src/reader.rs"), (1, "src/chain.rs")] {
+        ingest.files.push(FileInfo {
+            id,
+            path: interner.intern(path),
+            lang: Lang::Rust,
+            line_count: 20,
+            byte_size: 200,
+        });
+    }
+    let caller = Symbol::new(
+        0,
+        interner.intern("read_all"),
+        interner.intern("src/reader.rs::read_all"),
+        SymKind::Function,
+        Lang::Rust,
+        0,
+        1,
+    );
+    let lines_var = Symbol::new(
+        1,
+        interner.intern("lines"),
+        interner.intern("src/reader.rs::lines"),
+        SymKind::Var,
+        Lang::Rust,
+        0,
+        1,
+    );
+    let chain_fn = Symbol::new(
+        2,
+        interner.intern("chain"),
+        interner.intern("src/chain.rs::chain"),
+        SymKind::Function,
+        Lang::Rust,
+        1,
+        1,
+    );
+    let walk_fn = Symbol::new(
+        3,
+        interner.intern("walk"),
+        interner.intern("src/chain.rs::walk"),
+        SymKind::Function,
+        Lang::Rust,
+        1,
+        2,
+    );
+    ingest
+        .symbols
+        .extend_from_slice(&[caller, lines_var, chain_fn, walk_fn]);
+    let member_call = |name: &str, line: u32| {
+        let mut call = Reference::new(0, interner.intern(name), 0, line, Lang::Rust, RefRole::Call);
+        call.member_call = true;
+        call
+    };
+    let node_walk = {
+        let mut call = member_call("walk", 5);
+        call.receiver_type = Some(interner.intern("Node"));
+        call
+    };
+    ingest.references.extend_from_slice(&[
+        member_call("lines", 2),
+        member_call("chain", 3),
+        member_call("skip", 4),
+        node_walk,
+    ]);
+    let res = resolve_all_references(&ingest, &interner);
+    assert_eq!(res.unresolved, 0);
+    assert_eq!(res.external + res.declined, 4);
+}
+
 /// Each caller's name and the `scope::name` of every symbol it calls, for one in-memory file.
 fn call_edges(path: &str, lang: Lang, source: &str) -> Vec<(String, String)> {
     use ripwire_rs::domain::CorpusView;

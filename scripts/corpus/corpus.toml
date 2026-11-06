@@ -312,38 +312,42 @@ index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .ex,.exs -
 [[repo]]
 name = "godot-steering-ai-framework"
 languages = ["gdscript"]
-status = "unverified"
+status = "blocked"
+reason = "Godot 4.7.2 headless language server starts, imports and accepts the bridge, but under amd64 emulation it answered none of 1067 definition requests in over two hours; needs a native arm64 build."
 license = "MIT"
 url = "https://github.com/GDQuest/godot-steering-ai-framework"
 sha = "9d7cf0deff805d8f2a5316c33f3c85cffa3376a7"
 image = "ripwire-corpus-lsp:local"
 indexer = "lsp2scip"
 indexer_version = "godot-4.7.2"
-index = "godot --headless --editor --path /src >/tmp/godot.log 2>&1 &\npython3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .gd --language-id gdscript --out {out} --connect 127.0.0.1:6005 --settle 30"
+index = "godot --headless --editor --path /src/godot --audio-driver Dummy >/out/godot.log 2>&1 &\npython3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .gd --language-id gdscript --out {out} --connect 127.0.0.1:6005 --settle 30"
 
 [[repo]]
 name = "rodash"
 languages = ["brightscript"]
-status = "unverified"
+status = "measured"
+precision_floor = 0.9980
+recall_floor = 0.9980
 license = "MIT"
 url = "https://github.com/Tubitv/rodash"
 sha = "105b69ef98f2b5351dd3f02c9041a3a36886f717"
 image = "ripwire-corpus-lsp:local"
 indexer = "lsp2scip"
 indexer_version = "brighterscript-0.73.8"
-index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .brs,.bs --language-id brightscript --out {out} --settle 20 -- bsc --lsp"
+index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .brs,.bs --language-id brightscript --out {out} --settle 20 -- bsc --lsp --stdio"
 
 [[repo]]
 name = "cobolcraft"
 languages = ["cobol"]
-status = "unverified"
+status = "blocked"
+reason = "che-che4z-lsp-for-cobol 2.5.1 fails analysis with NullPointerException \"dialects is null\" in ConfigHelper.parseDialectRegistry even when workspace/configuration answers cobol-lsp.dialects with []; the expected settings shape is undetermined."
 license = "MIT"
 url = "https://github.com/meyfa/CobolCraft"
 sha = "e8c420df7a901b51b10c70bc08b56af7310d00f2"
 image = "ripwire-corpus-lsp:local"
 indexer = "lsp2scip"
 indexer_version = "che-cobol-2.5.1"
-index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .cob,.cpy --language-id cobol --out {out} --settle 30 --pattern '(?i)\\bPERFORM\\s+([A-Za-z0-9][A-Za-z0-9-]*)' -- cobol-language-server"
+index = '''python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .cob,.cpy --language-id cobol --out {out} --settle 30 --init-options '{"cobol-lsp": {"dialects": [], "dialect": {"libs": []}, "target-sql-backend": "NONE", "$target-sql-backend-enable-processing": "DISABLED", "sql-decimal-comma-allowed": "DISABLED", "cpy-manager": {"paths-local": [], "paths-dsn": [], "copybook-extensions": ["cpy"]}, "subroutine-manager": {"paths-local": []}, "cics": {"translator": false}, "locale": "en", "logging": {"level": {"root": "INFO"}}}}' --config '{"cobol-lsp": {"dialects": [], "dialect": {"libs": []}, "target-sql-backend": "NONE", "$target-sql-backend-enable-processing": "DISABLED", "sql-decimal-comma-allowed": "DISABLED", "cpy-manager": {"paths-local": [], "paths-dsn": [], "copybook-extensions": ["cpy"]}, "subroutine-manager": {"paths-local": []}, "cics": {"translator": false}, "locale": "en", "logging": {"level": {"root": "INFO"}}}}' --pattern '(?i)\bPERFORM\s+([A-Za-z0-9][A-Za-z0-9-]*)' -- cobol-language-server'''
 
 [[repo]]
 name = "erlydtl"
@@ -359,13 +363,15 @@ indexer_version = "elp-2026-10-14"
 index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .erl,.hrl --language-id erlang --out {out} --settle 60 -- elp server"
 
 [[repo]]
-name = "eul"
+name = "argparse-swift"
 languages = ["swift"]
-status = "unverified"
-license = "MIT"
-url = "https://github.com/gao-sun/eul"
-sha = "b5c3bd0a5be2679ca7e22da676be5ac73e300f4a"
+status = "blocked"
+reason = "sourcekit-lsp 6.1 under linux/amd64 emulation exits before answering the first definition request on a SwiftPM package that builds cleanly (swift build succeeds in 17 s); a native arm64 image is the next thing to try. The first candidate, a macOS app, cannot compile on Linux (no SwiftUI)."
+license = "Apache-2.0"
+url = "https://github.com/apple/swift-argument-parser"
+sha = "38ca4eceb349155836701b88da3e0986eb9d1e1c"
 image = "ripwire-corpus-swift:local"
+setup = "swift build 2>&1 | tail -5"
 indexer = "lsp2scip"
 indexer_version = "sourcekit-lsp-6.1"
 index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .swift --language-id swift --out {out} --settle 60 -- sourcekit-lsp"
@@ -373,7 +379,7 @@ index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .swift --l
 [[repo]]
 name = "masonry"
 languages = ["objc"]
-status = "unverified"
+status = "measured"
 license = "MIT"
 url = "https://github.com/SnapKit/Masonry"
 sha = "8bd77ea92bbe995e14c454f821200b222e5a8804"
@@ -381,12 +387,16 @@ image = "ripwire-corpus-lsp:local"
 indexer = "lsp2scip"
 indexer_version = "clangd-19.0"
 setup = "printf '%s\\n' -xobjective-c -fobjc-arc > /src/compile_flags.txt && find /src -name '*.h' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
-index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .m,.h --language-id objective-c --out {out} --settle 30 -- clangd"
+index = '''python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .m,.h --language-id objective-c --out {out} --settle 30 --pattern '(?<![\w$])([A-Za-z_$][\w$]*)\s*\(|\[\s*[^\[\]\s]+\s+([A-Za-z_]\w*)|\]\s+([A-Za-z_]\w*)' -- clangd'''
+precision_floor = 0.7409
+recall_floor = 0.648
 
 [[repo]]
 name = "deepgemm"
 languages = ["cuda"]
-status = "unverified"
+status = "measured"
+precision_floor = 0.5776
+recall_floor = 0.9980
 license = "MIT"
 url = "https://github.com/deepseek-ai/DeepGEMM"
 sha = "5081f8513af57e61696de4f4f04b0e707ffb503e"
@@ -399,12 +409,15 @@ index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .cu,.cuh -
 [[repo]]
 name = "satin"
 languages = ["metal"]
-status = "unverified"
+status = "measured"
 license = "MIT"
 url = "https://github.com/Hi-Rez/Satin"
 sha = "a91c469f517cef1946d5ed4dd9771df4843a30ef"
 image = "ripwire-corpus-lsp:local"
 indexer = "lsp2scip"
 indexer_version = "clangd-19.0"
-setup = "printf '%s\\n' -xmetal > /src/compile_flags.txt && find /src -name '*.h' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
+setup = "printf '%s\\n' -xc++ -std=c++17 -Dkernel= -Dvertex= -Dfragment= -Ddevice= -Dconstant= -Dthread= -Dthreadgroup= > /src/compile_flags.txt && find /src -name '*.h' -exec dirname {} \\; | sort -u | sed 's/^/-I/' >> /src/compile_flags.txt"
 index = "python3 /usr/local/lib/ripwire/lsp2scip.py --root /src --ext .metal --language-id metal --out {out} --settle 30 -- clangd"
+precision_floor = 0.957
+recall_floor = 0.957
+

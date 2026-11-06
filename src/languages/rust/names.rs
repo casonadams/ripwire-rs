@@ -96,6 +96,9 @@ pub(super) const RUST_STD_MEMBERS: &[&str] = &[
     "peek",
 ];
 
+/// Iterator and `str` methods that an untyped call named like one of them is std, not an in-tree method of that name.
+pub(super) const RUST_ITER_STR_MEMBERS: &[&str] = &["lines", "skip", "chain"];
+
 /// tree-sitter `Node` methods: no in-tree definition answers them, so an untyped call to one is external.
 pub(super) const RUST_TREE_SITTER_MEMBERS: &[&str] = &[
     "child_by_field_name",
@@ -110,6 +113,7 @@ pub(super) const RUST_TREE_SITTER_MEMBERS: &[&str] = &[
     "end_byte",
     "byte_range",
     "is_named",
+    "walk",
 ];
 
 pub(super) const RUST_STD_QUALIFIERS: &[&str] = &[
