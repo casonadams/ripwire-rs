@@ -212,20 +212,39 @@ fn test_classify_fsmonitor() {
 
 #[test]
 fn test_is_cache_blob_name() {
-    assert!(is_cache_blob_name("ripwire-rs-cache-1a2b.json"));
-    assert!(!is_cache_blob_name("ripwire-rs-cache-1a2b.tmp"));
-    assert!(!is_cache_blob_name("ripwire-rs-cache-.json"));
-    assert!(!is_cache_blob_name("other.json"));
+    let cases = [
+        ("ripwire-rs-cache-1a2b.bin", true),
+        ("ripwire-rs-cache-1a2b.tmp", false),
+        ("ripwire-rs-cache-.bin", false),
+        ("other.bin", false),
+        ("ripwire-rs-cache-1a2b.json", false),
+    ];
+    for (name, expected) in cases {
+        assert_eq!(is_cache_blob_name(name), expected, "{name}");
+    }
 }
 
 #[test]
 fn test_probe_cache_artifact() {
-    let current = format!(
-        "{{\"version\":{},\"validation_key\":\"k\"}}",
-        ripwire_rs::cache::CACHE_VERSION
+    let payload = ripwire_rs::cache::CachePayload {
+        validation_key: "k".into(),
+        interner_strings: Vec::new(),
+        ingest: ripwire_rs::IngestResult::default(),
+        graph: ripwire_rs::Graph::default(),
+        pr: ripwire_rs::PageRankResult {
+            iterations: 0,
+            converged: true,
+            ranks: Vec::new(),
+        },
+    };
+    let current = ripwire_rs::cache::encode_payload(&payload).unwrap();
+    assert_eq!(probe_cache_artifact(current.as_slice()), "ok");
+    let mut stale = current.clone();
+    stale[4..8].copy_from_slice(&(ripwire_rs::cache::CACHE_VERSION + 1).to_le_bytes());
+    assert_eq!(probe_cache_artifact(stale.as_slice()), "cache-version");
+    assert_eq!(probe_cache_artifact(&b"not a blob"[..]), "corrupt");
+    assert_eq!(
+        probe_cache_artifact(&br#"{"version":38,"validation_key":"k"}"#[..]),
+        "cache-version"
     );
-    assert_eq!(probe_cache_artifact(current.as_bytes()), "ok");
-    let stale = format!("{{\"version\":{}}}", ripwire_rs::cache::CACHE_VERSION + 1);
-    assert_eq!(probe_cache_artifact(stale.as_bytes()), "cache-version");
-    assert_eq!(probe_cache_artifact(&b"not json"[..]), "corrupt");
 }

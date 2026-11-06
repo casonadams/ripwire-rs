@@ -133,15 +133,14 @@ fn main() {
         "cache_payload_roundtrip",
         || {
             let payload = ripwire_rs::cache::CachePayload {
-                version: 1,
                 validation_key: "benchmark_key".into(),
                 interner_strings: interner.all_strings(),
                 ingest: ingest.clone(),
                 graph: graph.clone(),
                 pr: pr.clone(),
             };
-            let json = serde_json::to_string(&payload).unwrap();
-            let _loaded: ripwire_rs::cache::CachePayload = serde_json::from_str(&json).unwrap();
+            let blob = ripwire_rs::cache::encode_payload(&payload).unwrap();
+            let _ = ripwire_rs::cache::load_cached_payload_slice(&blob, "benchmark_key");
         },
         50,
         200,
