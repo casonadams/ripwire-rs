@@ -146,6 +146,14 @@ corpus-image-lsp: ## Build the local language-server image for the LSP bridge (l
 corpus-image-swift: ## Build the local Swift language-server image for the LSP bridge (linux/amd64, needs Docker; not part of all or ci)
 	docker build --platform linux/amd64 -f scripts/corpus/Dockerfile.swift -t ripwire-corpus-swift:local scripts/corpus
 
+.PHONY: corpus-image-swift-arm64
+corpus-image-swift-arm64: ## Build the native arm64 Swift language-server image (linux/arm64, needs Docker; the swift entry runs it; not part of all or ci)
+	docker build --platform linux/arm64 -f scripts/corpus/Dockerfile.swift -t ripwire-corpus-swift:arm64 scripts/corpus
+
+.PHONY: corpus-image-godot-arm64
+corpus-image-godot-arm64: ## Build the native arm64 Godot language-server image (linux/arm64, needs Docker; the gdscript entry runs it; not part of all or ci)
+	docker build --platform linux/arm64 -f scripts/corpus/Dockerfile.godot-arm64 -t ripwire-corpus-godot:arm64 scripts/corpus
+
 .PHONY: corpus-index
 corpus-index: ## Index the corpus repos into ~/.cache/ripwire-corpus (NAME=click for one; FORCE=1 to rebuild)
 	@$(CORPUS) index $(NAME) $(if $(FORCE),--force)

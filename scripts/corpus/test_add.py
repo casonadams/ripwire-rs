@@ -245,6 +245,22 @@ class Rendering(unittest.TestCase):
         self.assertEqual(len(add.load_languages()), 36)
 
 
+class PlatformRendering(unittest.TestCase):
+    def test_platform_is_written_only_when_it_is_not_the_default(self):
+        self.assertIn('platform = "linux/arm64"', add.render_entry(dict(Rendering.FIELDS, platform="linux/arm64")))
+        self.assertNotIn("platform", add.render_entry(Rendering.FIELDS))
+
+    def test_template_platform_reaches_the_new_entry_only_when_not_the_default(self):
+        template = {
+            "indexer": "lsp2scip", "indexer_version": "v1", "index": "lsp2scip --out {out}",
+            "image": "ripwire-corpus-swift:arm64", "platform": "linux/arm64",
+        }
+        fields = add.entry_fields("demo", URL, "swift", template, "MIT", SHA, "")
+        self.assertEqual(fields["platform"], "linux/arm64")
+        plain = add.entry_fields("demo", URL, "python", dict(template, platform="linux/amd64"), "MIT", SHA, "")
+        self.assertNotIn("platform", plain)
+
+
 class Templates(unittest.TestCase):
     def test_scala_template_carries_no_repository_specific_setup(self):
         template = add.load_languages()["scala"]

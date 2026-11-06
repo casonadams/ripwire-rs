@@ -40,7 +40,7 @@ UNVERIFIED = 'status = "unverified"'
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 ENTRY_ORDER = (
     "name", "languages", "status", "license", "url", "sha", "subdir", "indexer", "indexer_version",
-    "setup", "index", "image", "precision_floor", "recall_floor",
+    "setup", "index", "image", "platform", "precision_floor", "recall_floor",
 )
 MATRIX_HEADER = "| Language | Oracle | Status | Precision | Recall |"
 
@@ -224,6 +224,8 @@ def entry_fields(name, url, language, template, license_id, sha, subdir):
     }
     if template.get("image", corpus.IMAGE) != corpus.IMAGE:
         fields["image"] = template["image"]
+    if template.get("platform", corpus.DEFAULT_PLATFORM) != corpus.DEFAULT_PLATFORM:
+        fields["platform"] = template["platform"]
     return fields
 
 

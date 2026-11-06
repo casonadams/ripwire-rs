@@ -1,0 +1,26 @@
+# Godot 4.7.2 language server for the GDScript oracle, built natively for linux/arm64. Built by
+# `make corpus-image-godot-arm64`. Companion to Dockerfile.lsp, which stays linux/amd64: under amd64 emulation the
+# headless editor never answered a definition request, so the arm64 entries run this image instead.
+#
+# Holds only what the GDScript entry needs: Godot, python3 and the LSP bridge. Every digest and checksum is pinned
+# below. The Godot archive is the godotengine/godot-builds release asset, with the sha256 GitHub publishes for it.
+# Bump the version and the checksum together and re-run `make corpus-index FORCE=1 NAME=<entry>`.
+
+FROM node:22-trixie-slim@sha256:2117f713a417f3aff682ac8f5bc2ebbdf1beed51f36e67ab1e0fd3866b6d2d8f
+
+# python3 for the bridge; libfontconfig1 for Godot, as in Dockerfile.lsp.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates python3 unzip libfontconfig1 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Godot 4.7.2 (GDScript): the editor serves the GDScript language server on TCP 6005 when run headless.
+ADD --checksum=sha256:5dd0d86405cf7e8adf79fb6377b38ba682a2846cb378ffe5364f38c01ad29b9d \
+    https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.arm64.zip /tmp/godot.zip
+RUN mkdir -p /opt/godot && unzip -q /tmp/godot.zip -d /opt/godot && rm /tmp/godot.zip \
+ && ln -s /opt/godot/Godot_v4.7.2-stable_linux.arm64 /usr/local/bin/godot \
+ && chmod 0755 /opt/godot/Godot_v4.7.2-stable_linux.arm64
+
+# The bridge itself (stdlib only): scripts/corpus/lsp2scip.py.
+COPY lsp2scip.py /usr/local/lib/ripwire/lsp2scip.py
+
+WORKDIR /src
