@@ -70,7 +70,7 @@ fn external_surface_counts_calls_but_excludes_definitions_builtins_and_value_use
 }
 
 #[test]
-fn external_surface_ignores_doc_links_shell_builtins_and_callable_fields() {
+fn external_surface_ignores_doc_links_shell_and_python_builtin_decorators_and_callable_fields() {
     let xml = external_surface_xml(&[
         (
             "docs/guide.md",
@@ -83,12 +83,17 @@ fn external_surface_ignores_doc_links_shell_builtins_and_callable_fields() {
             Lang::Rust,
             b"struct Hooks { measure: fn() }\nfn run(hooks: &Hooks) {\n    (hooks.measure)();\n    vendor_send();\n}\n",
         ),
+        (
+            "src/shapes.py",
+            Lang::Python,
+            b"class Shape:\n    @classmethod\n    def make(cls):\n        return None\n\n    @vendor_wrap\n    def draw(self):\n        pass\n",
+        ),
     ]);
     let names: Vec<&str> = external_surface_rows(&xml)
         .iter()
         .map(|row| attr(row, "n"))
         .collect();
-    assert_eq!(names, ["vendor_send"], "{xml}");
+    assert_eq!(names, ["vendor_send", "vendor_wrap"], "{xml}");
 }
 
 #[test]

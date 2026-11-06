@@ -2,6 +2,7 @@ use super::{
     ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds,
     VisibilityMode, resolve_relative_or_exact, strip_import_quotes,
 };
+mod arity;
 mod bindings;
 mod builtins;
 mod immutable;
@@ -185,6 +186,19 @@ impl LanguageSemantics for PythonLanguage {
             return Some("builtins".to_string());
         }
         types::declared_receiver_class(name_node, source_bytes)
+    }
+
+    fn resolve_def_params_and_name(
+        &self,
+        def_node: Option<tree_sitter::Node<'_>>,
+        source_bytes: &[u8],
+        _kind: SymKind,
+        orig_name: &str,
+    ) -> (crate::gate::contract::ParamArity, String) {
+        let arity = def_node.map_or(crate::gate::contract::ParamArity::default(), |n| {
+            arity::python_def_arity(n, self.syntax_kinds(), source_bytes)
+        });
+        (arity, orig_name.to_string())
     }
 
     fn var_binding(&self, ctx: &DefCaptureGateContext<'_>) -> crate::domain::Binding {

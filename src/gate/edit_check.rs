@@ -1,4 +1,4 @@
-use crate::domain::{IngestResult, Interner, NodeId, RefRole, Reference, Symbol};
+use crate::domain::{IngestResult, Interner, NodeId, RefRole, Reference, SymKind, Symbol};
 use crate::gate::contract::{ContractStatus, ParamArity, SignatureContract, compare_contracts};
 use crate::graph::Graph;
 use crate::resolve::{RefOutcome, ResolutionIndex, ResolutionLookup};
@@ -172,6 +172,10 @@ impl<L: ResolutionLookup> CallJudge<'_, L> {
     /// A call the resolver bound to the focus that passes an argument count outside its arity, or one it
     /// could not bind that passes a count only HEAD's arity accepted.
     fn judge(&self, r: &Reference) -> Option<IncompatibleCallSite> {
+        // A class or struct is called as its constructor; with none known (params 0) its count is unknown.
+        if matches!(self.target.kind, SymKind::Class | SymKind::Struct) && self.target.params == 0 {
+            return None;
+        }
         let takes_self = self.target.takes_self;
         let now = expected_arity(takes_self, target_arity(self.target), r);
         if now.accepts(r.arg_count) {

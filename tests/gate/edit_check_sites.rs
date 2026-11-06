@@ -357,3 +357,48 @@ fn defaulted_variadic_and_keyword_params_bind_the_counts_they_accept() {
         );
     }
 }
+
+#[test]
+fn class_calls_are_checked_against_the_constructor_or_declined() {
+    let cases = [
+        ArityCase {
+            label: "python class ctor with a defaulted param, call passes all four",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "Client",
+            head: "class Client:\n    def __init__(self, command, cwd, config):\n        self.command = command\n\ndef run(a, b, c):\n    return Client(a, b, c)\n",
+            now: "class Client:\n    def __init__(self, command, cwd, config, connect=\"\"):\n        self.command = command\n\ndef run(a, b, c, d):\n    return Client(a, b, c, d)\n",
+            callers: 1,
+            incompatible: 0,
+        },
+        ArityCase {
+            label: "python class ctor loses a param, call still passes three",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "Client",
+            head: "class Client:\n    def __init__(self, command, cwd, config):\n        self.command = command\n\ndef run(a, b, c):\n    return Client(a, b, c)\n",
+            now: "class Client:\n    def __init__(self, command, cwd):\n        self.command = command\n\ndef run(a, b, c):\n    return Client(a, b, c)\n",
+            callers: 1,
+            incompatible: 1,
+        },
+        ArityCase {
+            label: "python class with no __init__ is declined, not compared with 0",
+            path: "s.py",
+            lang: Lang::Python,
+            name: "Client",
+            head: "class Client:\n    pass\n\ndef run(a, b):\n    return Client(a, b)\n",
+            now: "class Client:\n    limit = 1\n\ndef run(a, b):\n    return Client(a, b)\n",
+            callers: 1,
+            incompatible: 0,
+        },
+    ];
+    for case in cases {
+        let got = check(case.path, case.lang, case.head, case.now, case.name);
+        assert_eq!(got.callers, case.callers, "{}: callers", case.label);
+        assert_eq!(
+            got.incompatible, case.incompatible,
+            "{}: incompatible",
+            case.label
+        );
+    }
+}

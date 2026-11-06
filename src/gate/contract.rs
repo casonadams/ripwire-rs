@@ -1,4 +1,4 @@
-use crate::domain::Lang;
+use crate::domain::{Lang, SymKind};
 use crate::ingest::LanguageRegistry;
 use crate::languages::SyntaxKinds;
 use std::path::{Path, PathBuf};
@@ -176,7 +176,12 @@ pub fn parse_head_signature_match(
                 name = Some(text.to_string());
             }
         } else if cap_name.starts_with("definition.") {
-            arity = extract_param_arity(node, lang.semantics().syntax_kinds());
+            // The same hook ingest uses, so HEAD and working-tree arities agree (a Python class's
+            // arity is its `__init__`).
+            arity = lang
+                .semantics()
+                .resolve_def_params_and_name(Some(node), bytes, SymKind::Other, "")
+                .0;
             def_node = Some(node);
         }
     }

@@ -240,9 +240,9 @@ evidence = "measured on f59e47d: ours 58789 B, 4369 facts; upstream default 1246
 id = "dead-code-test-only-rows"
 command = "--dead-code"
 case = ""
-kind = "richer"
-why = "Functions whose every indexed caller is test code, and whose name is an identifier in no non-test file, are listed as <to> rows with a to= count outside count=, so an agent sees API that only tests keep alive without a second query. Upstream reports none here. The earlier upstream defect (pub fn rows reported as internal-linkage dead code) is fixed upstream and no longer diverges."
-evidence = "tests/cli/dead_code_test_only.rs::functions_only_tests_call_are_listed_apart_from_count; tests/cli/dead_code_test_only.rs::a_production_reference_keeps_a_function_out_of_the_test_only_group; tests/cli/architecture_behavior.rs::dead_code_reports_only_private_unused_rust_functions"
+kind = "smaller"
+why = "Upstream lists three internal-linkage candidates: row_comma (src/serialize/html.rs:128), which has callers in that file (grep), and two test-tree functions (selected, ladder_row) that ours does not list; not traced further. Ours lists one <to> row, parse_struct_fields, whose every caller is test code. Ours is smaller."
+evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 533 B, 17 facts; upstream 1111 B, 25 facts. Rows counted as test-only changed because a Rust test_ basename under src/ is now a module (src/commands/test_gate.rs), so its callers are production code."
 
 [[divergence]]
 id = "communities-file-scope-members"
@@ -367,3 +367,27 @@ case = ""
 kind = "richer"
 why = "The SITU static (src/commands/situ.rs) calls resolve_changed_or_spec_files inside its MCP tool handler, a closure in the static's initializer. Ours lists SITU as a caller at that call; upstream's answer omits it (the cause on upstream is not traced). The row is a real call site, so the contract check names one more caller that an edit to the function must keep compiling."
 evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 4 <c> rows (SITU at src/commands/situ.rs:30 plus three shared); upstream 3 rows (the three shared)."
+
+[[divergence]]
+id = "around-fit-rows-name-only-callers"
+command = "--around=fit_rows"
+case = ""
+kind = "smaller"
+why = "Upstream lists map and compute as callers of fit_rows by name (via=name). The only call to fit_rows in the index is window_fit's (src/serialize/paging.rs:41), so those two rows are name-only matches; ours lists the one real caller."
+evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 270 B with one <c>; upstream 306 B with <c> map and compute via=name plus fit_rows."
+
+[[divergence]]
+id = "for-fit-rows-task-lens"
+command = "--for=fit_rows"
+case = ""
+kind = "smaller"
+why = "The task lens for fit_rows is smaller: ours gives the signature, its one caller in a callers section, and no markdown mentions or test tail. Upstream adds a doc section and a test tail for the same symbol."
+evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 989 B; upstream 1093 B."
+
+[[divergence]]
+id = "impact-fit-rows-hedged-reaches"
+command = "--impact=fit_rows"
+case = ""
+kind = "richer"
+why = "Ours labels reaches that bind only by name with a hedged= count on the root (honest before confident); upstream reports no such count. Name-only reaches carry via=name in both outputs."
+evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 12374 B with hedged=183; upstream 6757 B."

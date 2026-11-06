@@ -89,6 +89,13 @@ impl LanguageSemantics for RustLanguage {
         matches!(lower.as_str(), "tests" | "test") || lower.ends_with("_tests")
     }
 
+    /// Outside `tests/` and `benches/` a `test_` basename is a module (`test_gate.rs`); the `_test` and
+    /// `_spec` suffixes stay partner names.
+    fn test_partner_subject<'a>(&self, file_stem: &'a str, in_test_dir: bool) -> Option<&'a str> {
+        super::common::util::universal_test_partner_subject(file_stem, in_test_dir)
+            .filter(|_| in_test_dir || !file_stem.starts_with("test_"))
+    }
+
     super::impl_grammar_method!(crate tree_sitter_rust::LANGUAGE, "tags.scm");
 
     fn is_read_capture_allowed(&self, node: tree_sitter::Node<'_>, _source: &[u8]) -> bool {

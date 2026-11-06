@@ -9,9 +9,27 @@ fn test_is_test_path_detection() {
     assert!(is_test_path("tests/foo.rs"));
     assert!(is_test_path("src/lib_test.go"));
     assert!(is_test_path("ui/component.test.ts"));
-    assert!(is_test_path("core/test_engine.rs"));
+    assert!(!is_test_path("core/test_engine.rs"));
+    assert!(is_test_path("tests/core/test_engine.rs"));
+    assert!(!is_test_path("benches/test_engine.rs"));
+    assert!(!is_test_path("src/serialize/arch_xml/test_gate.rs"));
+    assert!(is_test_path("pkg/test_engine.py"));
+    assert!(is_test_path("pkg/engine_test.py"));
     assert!(!is_test_path("src/lib.rs"));
     assert!(!is_test_path("src/engine.rs"));
+}
+
+#[test]
+fn test_is_test_or_bench_path_keeps_rust_test_module_stems_as_source() {
+    assert!(!ripwire_rs::domain::test_path::is_test_or_bench_path(
+        "src/serialize/arch_xml/test_gate.rs"
+    ));
+    assert!(ripwire_rs::domain::test_path::is_test_or_bench_path(
+        "src/serialize/tests.rs"
+    ));
+    assert!(ripwire_rs::domain::test_path::is_test_or_bench_path(
+        "tests/gate/affected.rs"
+    ));
 }
 
 #[test]
@@ -313,13 +331,13 @@ fn test_affected_partner_declined_when_unnamed() {
 fn test_affected_partner_changed_test_keeps_row_and_flags_partner() {
     let paths = [
         "src/commands/gate.rs",
-        "src/commands/test_gate.rs",
-        "src/gate/test_gate.rs",
+        "tests/commands/test_gate.rs",
+        "tests/gate/test_gate.rs",
     ];
     let (ingest, interner) = partner_fixture(&paths);
     let graph = Graph::build(&ingest, &interner);
     let report = find_affected_tests(
-        &["src/commands/gate.rs", "src/commands/test_gate.rs"],
+        &["src/commands/gate.rs", "tests/commands/test_gate.rs"],
         &ingest,
         &graph,
         &interner,
@@ -332,15 +350,15 @@ fn test_affected_partner_changed_test_keeps_row_and_flags_partner() {
     assert_eq!(
         rows,
         [
-            ("src/commands/test_gate.rs", true, true),
-            ("src/gate/test_gate.rs", false, true),
+            ("tests/commands/test_gate.rs", true, true),
+            ("tests/gate/test_gate.rs", false, true),
         ]
     );
     let xml = report.to_xml_string();
     assert!(xml.contains(
-        "<test p=\"src/commands/test_gate.rs\" partner=\"1\" seed_kind=\"test\" run_unknown=\"1\"/>"
+        "<test p=\"tests/commands/test_gate.rs\" partner=\"1\" seed_kind=\"test\" run_unknown=\"1\"/>"
     ));
-    assert!(xml.contains("<test p=\"src/gate/test_gate.rs\" partner=\"1\" run_unknown=\"1\"/>"));
+    assert!(xml.contains("<test p=\"tests/gate/test_gate.rs\" partner=\"1\" run_unknown=\"1\"/>"));
 }
 
 #[test]

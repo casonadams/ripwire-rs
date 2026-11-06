@@ -40,6 +40,7 @@ pub fn execute_external_surface_query<W: Write>(
             && !by_name.contains_key(&r.callee_name)
             && !r.lang.semantics().is_std_or_builtin_member(name)
             && !r.lang.semantics().is_builtin_keyword(name)
+            && r.qualifier.is_none_or(|q| &interner[q] != "builtins")
         {
             *ext_counts.entry((r.callee_name, r.lang)).or_default() += 1;
         }
