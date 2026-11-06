@@ -54,6 +54,10 @@ more correct, or more honest.
   the `ripwire-rs` on PATH, so keep `~/.cargo/bin` current (`make install`) or it reports bugs we already fixed.
   Languages with no indexer are checked through the LSP bridge (`docs/GATES.md` section 13 lists status per
   language); its recall is lower-confidence than a compiler index.
+- **Corpus repos.** Add one with `make corpus-add URL=https://github.com/OWNER/REPO LANG=python` (then
+  `make corpus-index` and `make corpus-measure`, or `MEASURE=1`; `make verify-ratchet` records the numbers), and retire
+  one with `make corpus-remove NAME=...`. Repo names and SHAs live only in `scripts/corpus/corpus.toml`; a new entry
+  needs a permissive license and 50 to 300 source files. Run it before claiming support for a language.
 - **Token prices are measured, not assumed.** `est_tokens=` and `budget_tokens=` come from
   `serialize::est_tokens` / `budget_bytes`, calibrated with a tokenizer (`make size` checks the disclosed
   price against tiktoken within 0.8 to 1.2). Change the constant only with a new measurement.
