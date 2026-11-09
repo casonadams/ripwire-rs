@@ -6,6 +6,7 @@ use crate::domain::{
     CallableBinding, FileInfo, ForeignBinding, ImportAlias, IngestResult, Interner, Lang, NodeId,
     Reference, Symbol,
 };
+use crate::languages::sql::dataform_vars::{ProjectVars, project_vars, resolve_names};
 use rayon::prelude::*;
 use std::{fs, io};
 use tree_sitter::{Language, Query};
@@ -55,6 +56,7 @@ pub fn definition_lines(rel_path: &str, source_bytes: &[u8], name: &str) -> Vec<
 struct CrawledRead {
     parsed: Option<(Lang, FileParseResult)>,
     aliases: Vec<ImportAlias>,
+    vars: Option<ProjectVars>,
 }
 
 /// Read one crawled file once. A read error is returned to the caller, never dropped.
@@ -62,6 +64,7 @@ fn read_crawled_file(file: &CrawledFile, registry: &LanguageRegistry) -> io::Res
     let source_bytes = fs::read(&file.path)?;
     Ok(CrawledRead {
         aliases: manifest_import_aliases(file, &source_bytes),
+        vars: project_vars(&file.rel_path, &source_bytes),
         parsed: parse_crawled(file, registry, &source_bytes),
     })
 }
@@ -132,16 +135,20 @@ pub fn ingest_crawled_files(
     )
     .len();
     let mut import_aliases = Vec::new();
+    let mut scopes = Vec::new();
     let mut parsed_files: Vec<Option<(Lang, FileParseResult)>> = reads
         .into_iter()
         .map(|(_, read)| match read {
             Ok(crawled) => {
                 import_aliases.extend(crawled.aliases);
+                scopes.extend(crawled.vars);
                 crawled.parsed
             }
             Err(_) => None,
         })
         .collect();
+    let paths: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
+    resolve_names(&mut parsed_files, &paths, &scopes);
     resolve_project_types(&mut parsed_files);
 
     let processed: Vec<(FileInfo, FileIndex)> = (0..files.len())
@@ -184,6 +191,18 @@ pub fn ingest_crawled_files(
     ingest
 }
 
+fn resolve_in_memory_names(
+    parsed: &mut [Option<(Lang, FileParseResult)>],
+    files: &[(&str, Lang, &[u8])],
+) {
+    let paths: Vec<&str> = files.iter().map(|&(path, _, _)| path).collect();
+    let scopes: Vec<ProjectVars> = files
+        .iter()
+        .filter_map(|&(path, _, source)| project_vars(path, source))
+        .collect();
+    resolve_names(parsed, &paths, &scopes);
+}
+
 /// Ingest in-memory source files directly without filesystem I/O.
 pub fn ingest_in_memory_files(
     files: &[(&str, Lang, &[u8])],
@@ -207,6 +226,7 @@ pub fn ingest_in_memory_files(
             Some((eff_lang, parsed))
         })
         .collect();
+    resolve_in_memory_names(&mut parsed_files, files);
     resolve_project_types(&mut parsed_files);
     for (index, (&(rel_path, _, source_bytes), entry)) in files.iter().zip(parsed_files).enumerate()
     {

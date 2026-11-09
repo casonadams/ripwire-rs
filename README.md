@@ -107,7 +107,7 @@ First-class Tree-Sitter AST queries extract definitions, signatures, imports, an
 | **JVM & Enterprise** | **Java** (`.java`), **Kotlin** (`.kt`, `.kts`), **Scala** (`.scala`, `.sc`), **C#** (`.cs`) |
 | **Scripting & Backend** | **Python** (`.py`, `.pyi`), **Ruby** (`.rb`, `.rake`, `.jbuilder`), **PHP** (`.php`, `.phtml`), **Elixir** (`.ex`, `.exs`), **Erlang** (`.erl`, `.hrl`), **Lua** (`.lua`), **Bash / Shell** (`.sh`, `.bash`, `.zsh`) |
 | **Mobile, Game & Media** | **Swift** (`.swift`), **Dart** (`.dart`), **GDScript** (`.gd`), **BrightScript** (`.brs`, `.bs`) |
-| **Data, Schema & Smart Contracts** | **SQL** (`.sql`, Dataform `.sqlx` models with `ref()` lineage), **GraphQL** (`.graphql`, `.gql`), **Protocol Buffers** (`.proto`), **Solidity** (`.sol`) |
+| **Data, Schema & Smart Contracts** | **SQL** (`.sql`, Dataform `.sqlx` models with `ref()`, `resolve()`, interpolated and literal table lineage; `vars` names from `workflow_settings.yaml` or `dataform.json`), **GraphQL** (`.graphql`, `.gql`), **Protocol Buffers** (`.proto`), **Solidity** (`.sol`) |
 | **Infra, Config & Docs** | **HCL / Terraform** (`.tf`, `.hcl`, `.tfvars`), **YAML** (`.yml`, `.yaml`), **TOML** (`.toml`), **JSON** (`.json`), **Markdown / Docs** (`.md`, `.markdown`, `.mdx`, `.rst`, `.adoc`, `.org`) |
 
 ---

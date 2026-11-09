@@ -109,7 +109,7 @@ registry: ## Check every language and command plugin directory is registered
 
 .PHONY: script-tests
 script-tests: ## Run the unittest checks for scripts/ (parity rule logic, corpus runner and verification parsing and baseline ratchet rules; no network)
-	@python3 -m unittest scripts/test_validate_parity.py scripts/corpus/test_corpus.py scripts/corpus/test_verify.py scripts/corpus/test_add.py
+	@python3 -m unittest scripts/test_validate_parity.py scripts/corpus/test_corpus.py scripts/corpus/test_verify.py scripts/corpus/test_add.py scripts/corpus/test_dataform_eval.py
 
 .PHONY: quality
 quality: verify-bin ## Measure quality regressions against git HEAD with the verification binary (BIN, built fresh by verify-bin; never a stale release or PATH copy)

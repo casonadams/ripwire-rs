@@ -141,7 +141,7 @@ more correct, or more honest.
   (reachability, not executed lines).
 - **Fast loop**: `make quick` (check, then the integration tests) or `make t FILTER=resolve::` (cargo test, about 2 s
   for all 734) while editing. The gates that run the binary (`size`, `resolution`, `docs-check`, `parity`, `corpus-*`)
-  build `target/fast` (`RELEASE_PROFILE`: release's optimizer, no fat LTO, about 8 s per edit, not 140 s).
+  build `target/fast` (the `fast` Cargo profile: release's optimizer, no fat LTO, about 8 s per edit, not 140 s).
   `build-release`, `bench` and `install` stay on `target/release`.
 - **Gate hygiene**: Run `make all` on a clean, committed tree after `ripwire-rs . --quality-baseline`;
   a dirty tree or a stale baseline gives false parity and quality failures. Parity probe symbols are pinned in

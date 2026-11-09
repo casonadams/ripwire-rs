@@ -303,6 +303,14 @@ Measured on a release build of this tree. Ranges span the entries of a language;
 
 Not covered: languages marked not attempted or blocked above have no floor and no measurement; a corpus floor says nothing about a language it does not index. Languages covered only by in-memory fixtures remain so until an entry measures them.
 
+**Dataform (`.sqlx`).** The SCIP scorer only sees references the parser extracted, so it cannot see a read the parser
+missed. `scripts/corpus/dataform_eval.py` compares edge sets instead: the truth is what `dataform compile --json`
+implies each model reads (compiled dependencies, plus any compiled table name found in a query outside comments),
+the found set is what `--uses` reports. It prints precision, recall and the missed and false edges, needs Node, and is
+run by hand on a checkout (`--root DIR --bin ripwire-rs`); it has no floors or baseline row yet. A model name or
+`ref()` argument written `dataform.projectConfig.vars.KEY` is resolved from the nearest `workflow_settings.yaml` or
+`dataform.json`; any other computed name stays unresolved and shows up as `tables_without_one_definition`.
+
 ### Adding a repository
 
 ```bash
