@@ -975,7 +975,7 @@ pub trait ResolutionLookup {
                 sym.scope.is_none() && self.file_imports_name(caller_file, sym.file_id, sym.name)
             })
             .collect();
-        (!imported.is_empty() && imported.len() < cands.len()).then_some(imported)
+        (!imported.is_empty()).then_some(imported)
     }
 
     fn resolve_targets(
