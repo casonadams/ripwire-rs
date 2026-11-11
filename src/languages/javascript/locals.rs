@@ -1,5 +1,14 @@
 use tree_sitter::Node;
 
+const BLOCKS: &[&str] = &[
+    "statement_block",
+    "for_statement",
+    "for_in_statement",
+    "catch_clause",
+    "switch_body",
+    "class_static_block",
+];
+
 const SCOPES: &[&str] = &[
     "function_declaration",
     "function_expression",
@@ -13,8 +22,8 @@ const SCOPES: &[&str] = &[
 
 /// Names a file binds as local variables or parameters, each with the byte span of the function or program
 /// that scopes it: `const`/`let`/`var` declarators, parameters, `catch` parameters and `for` targets.
-/// A block-scoped binding is widened to its function, so a mention is shadowed a little more often than
-/// the language says.
+/// `let`, `const` and `catch` bindings are scoped to their block, `for` statement or clause; `var` and
+/// parameters to their function.
 pub(in crate::languages) fn local_binding_names(
     root: Node<'_>,
     source: &[u8],
@@ -23,8 +32,12 @@ pub(in crate::languages) fn local_binding_names(
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         let mut names = Vec::new();
+        let mut block = false;
         match node.kind() {
             "variable_declarator" if !binds_a_module(node, source) => {
+                block = node
+                    .parent()
+                    .is_some_and(|parent| parent.kind() == "lexical_declaration");
                 if let Some(name) = node.child_by_field_name("name") {
                     push_pattern(name, source, &mut names);
                 }
@@ -36,11 +49,16 @@ pub(in crate::languages) fn local_binding_names(
                 }
             }
             "catch_clause" => {
+                block = true;
                 if let Some(parameter) = node.child_by_field_name("parameter") {
                     push_pattern(parameter, source, &mut names);
                 }
             }
             "for_in_statement" => {
+                block = node
+                    .child_by_field_name("kind")
+                    .and_then(|kind| kind.utf8_text(source).ok())
+                    .is_some_and(|kind| kind != "var");
                 if let Some(left) = node.child_by_field_name("left") {
                     push_pattern(left, source, &mut names);
                 }
@@ -48,7 +66,7 @@ pub(in crate::languages) fn local_binding_names(
             _ => {}
         }
         if !names.is_empty()
-            && let Some((start, end)) = scope_span(node)
+            && let Some((start, end)) = scope_span(node, block)
         {
             found.extend(names.into_iter().map(|name| (name, start, end)));
         }
@@ -84,12 +102,13 @@ fn binds_a_module(declarator: Node<'_>, source: &[u8]) -> bool {
             .is_some_and(|text| matches!(text, "require" | "import"))
 }
 
-/// The span of the function or program that scopes a binding written at `node`. A parameter list or an
-/// arrow function's own parameter belongs to the function around it.
-fn scope_span(node: Node<'_>) -> Option<(u32, u32)> {
+/// The span that scopes a binding written at `node`: the nearest block when `block`, else the nearest
+/// function or program. A parameter list or an arrow function's own parameter belongs to the function
+/// around it.
+fn scope_span(node: Node<'_>, block: bool) -> Option<(u32, u32)> {
     let mut current = node;
     loop {
-        if SCOPES.contains(&current.kind()) {
+        if SCOPES.contains(&current.kind()) || (block && BLOCKS.contains(&current.kind())) {
             return Some((current.start_byte() as u32, current.end_byte() as u32));
         }
         current = current.parent()?;

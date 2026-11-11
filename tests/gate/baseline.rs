@@ -318,3 +318,15 @@ fn test_typescript_exports_of_a_dynamically_imported_module_stay_alive() {
     ];
     assert_eq!(dead_symbols(&files), Vec::<String>::new());
 }
+
+#[test]
+fn test_typescript_block_scoped_binding_shadows_only_its_block() {
+    use ripwire_rs::Lang::TypeScript;
+    let decoy = "export function p1(n: number) {\n  return n;\n}\n";
+    let user = "import { p1 } from \"./decoy\";\n\nexport function main(make: () => number) {\n  if (make()) {\n    const p1 = make();\n    return p1;\n  }\n  return p1(1);\n}\n";
+    let files = [
+        ("app/src/decoy.ts", TypeScript, decoy),
+        ("app/src/user.ts", TypeScript, user),
+    ];
+    assert_eq!(dead_symbols(&files), Vec::<String>::new());
+}
