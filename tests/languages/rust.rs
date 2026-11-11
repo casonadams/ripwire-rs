@@ -559,3 +559,28 @@ impl Op {\n    fn helper(&self) {}\n    fn run(&self) { helper(); }\n}\nfn helpe
     assert!(callees("parse").is_empty(), "{:?}", callees("parse"));
     assert_eq!(callees("run"), [".helper"]);
 }
+
+#[test]
+fn rust_super_chains_and_self_follow_the_module_tree() {
+    let mut file_index = HashMap::new();
+    file_index.insert("src/b.rs", 1);
+    file_index.insert("src/a.rs", 2);
+    file_index.insert("src/a/c.rs", 3);
+    file_index.insert("src/a/b.rs", 4);
+    file_index.insert("src/a/d.rs", 5);
+    let sem = Lang::Rust.semantics();
+    let cases = [
+        ("src/a/c.rs", "super::b::helper", Some(4)),
+        ("src/a/c.rs", "super::super::b::helper", Some(1)),
+        ("src/a/c.rs", "super::super::super::b::helper", None),
+        ("src/a.rs", "self::d::run", Some(5)),
+        ("src/a.rs", "super::b::helper", Some(1)),
+    ];
+    for (importer, target, expected) in cases {
+        assert_eq!(
+            sem.resolve_import_target(importer, target, &file_index),
+            expected,
+            "{importer} imports {target}"
+        );
+    }
+}

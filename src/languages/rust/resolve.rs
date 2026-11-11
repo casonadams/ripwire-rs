@@ -61,20 +61,53 @@ fn split_rust_anchor(clean: &str) -> Option<(&str, &str)> {
     None
 }
 
-fn resolve_rust_base_and_rest<'a>(
-    importer_path: &'a str,
-    clean: &'a str,
-) -> Option<(&'a str, &'a str)> {
-    let (anchor, rest) = split_rust_anchor(clean)?;
-    let base = match anchor {
-        "crate" => find_rust_crate_src_dir(importer_path),
-        "self" => Path::new(importer_path)
+/// The directory holding the children of the module `importer_path` declares: a `mod.rs`, `lib.rs` or
+/// `main.rs` beside them, a plain `a.rs` in `a/`.
+fn rust_module_children_dir(importer_path: &str) -> String {
+    rust_child_module_dir(importer_path).unwrap_or_else(|| {
+        Path::new(importer_path)
             .parent()
             .and_then(|p| p.to_str())
-            .unwrap_or(""),
-        _ => resolve_rust_super_dir(importer_path),
-    };
-    Some((base, rest))
+            .unwrap_or("")
+            .to_string()
+    })
+}
+
+/// Climb one `super::` per leading segment of `rest` from the module whose children live in `dir`.
+/// Climbing above the crate source directory resolves nothing.
+fn climb_rust_supers<'a>(
+    importer_path: &str,
+    mut dir: String,
+    mut rest: &'a str,
+) -> Option<(String, &'a str)> {
+    let crate_dir = find_rust_crate_src_dir(importer_path);
+    while let Some(next) = rest
+        .strip_prefix("super::")
+        .or_else(|| (rest == "super").then_some(""))
+    {
+        if dir == crate_dir {
+            return None;
+        }
+        dir = Path::new(&dir).parent()?.to_str()?.to_string();
+        rest = next;
+    }
+    Some((dir, rest))
+}
+
+fn resolve_rust_base_and_rest<'a>(
+    importer_path: &str,
+    clean: &'a str,
+) -> Option<(String, &'a str)> {
+    let (anchor, rest) = split_rust_anchor(clean)?;
+    match anchor {
+        "crate" => Some((find_rust_crate_src_dir(importer_path).to_string(), rest)),
+        "self" => Some((rust_module_children_dir(importer_path), rest)),
+        _ => climb_rust_supers(
+            importer_path,
+            resolve_rust_super_dir(importer_path).to_string(),
+            rest,
+        ),
+    }
 }
 
 fn probe_rust_segs_in_base(
@@ -126,14 +159,15 @@ pub(super) fn resolve_rust_use_target(
         .trim_end_matches("::*")
         .trim_end_matches("::");
     let segs: Vec<&str> = clean.split("::").filter(|s| !s.is_empty()).collect();
-    if let Some((base_dir, rest)) = resolve_rust_base_and_rest(importer_path, clean) {
+    if split_rust_anchor(clean).is_some() {
+        let (base_dir, rest) = resolve_rust_base_and_rest(importer_path, clean)?;
         let rest_segs: Vec<&str> = rest.split("::").filter(|s| !s.is_empty()).collect();
-        if let Some(id) = probe_rust_segs_in_base(base_dir, &rest_segs, file_index) {
+        if let Some(id) = probe_rust_segs_in_base(&base_dir, &rest_segs, file_index) {
             return Some(id);
         }
         // `super::item` and `super::*` name the parent module itself when the item is not a file of its own.
         if clean == "super" || clean.starts_with("super::") {
-            return probe_with_suffixes(base_dir, file_index, &[".rs", "/mod.rs"]);
+            return probe_with_suffixes(&base_dir, file_index, &[".rs", "/mod.rs"]);
         }
         return None;
     }
