@@ -294,8 +294,8 @@ type BareMentions = HashMap<lasso::Spur, Vec<(u32, u32)>>;
 
 /// Reference names split by how far a name can be trusted to bind.
 struct SplitReferences {
-    /// Names some reference uses, matched whatever the language: only a symbol of a language that trusts
-    /// its names escapes a reference in another.
+    /// Names some reference uses that was not bound to one definition, matched whatever the language: only
+    /// a symbol of a language that trusts its names escapes a reference in another.
     referenced: HashSet<lasso::Spur>,
     referenced_in: HashSet<(crate::domain::Lang, lasso::Spur)>,
     /// Per shadowable bare name, the `(file, byte)` positions that mention it.
@@ -315,7 +315,6 @@ fn split_references(ingest: &IngestResult, graph: &Graph) -> SplitReferences {
         let trusted = r.lang.semantics().local_definition_shadows_name();
         if trusted && graph.bound_refs.get(i).copied().unwrap_or(false) {
             split.bound.insert((r.lang, r.callee_name));
-            split.referenced.insert(r.callee_name);
             continue;
         }
         let scoped = trusted && r.qualifier.is_none() && !r.member_call && !r.macro_arg;

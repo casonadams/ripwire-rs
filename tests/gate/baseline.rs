@@ -298,12 +298,12 @@ fn test_python_from_import_of_a_submodule_binds_qualified_calls() {
 }
 
 #[test]
-fn test_python_call_by_name_keeps_a_symbol_of_another_language_alive() {
+fn test_python_call_bound_to_python_does_not_keep_a_symbol_of_another_language_alive() {
     use ripwire_rs::Lang::{Python, Rust};
     let rust = "pub fn helper() -> u32 {\n    1\n}\n";
     let python = "def helper():\n    return 1\n\n\ndef main():\n    return helper()\n";
     let files = [("src/lib.rs", Rust, rust), ("app/main.py", Python, python)];
-    assert_eq!(dead_symbols(&files), Vec::<String>::new());
+    assert_eq!(dead_symbols(&files), ["src/lib.rs::helper"]);
 }
 
 #[test]
@@ -367,6 +367,18 @@ fn test_sql_function_called_from_an_embedded_query_stays_alive() {
     let files = [
         ("db/functions.sql", Sql, sql),
         ("app/repo.py", Python, python),
+    ];
+    assert_eq!(dead_symbols(&files), ["db/functions.sql::unused_function"]);
+}
+
+#[test]
+fn test_sql_function_called_through_a_supabase_rpc_stays_alive() {
+    use ripwire_rs::Lang::{Sql, TypeScript};
+    let sql = "CREATE FUNCTION public.promote_template(p uuid) RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;\n\nCREATE FUNCTION public.unused_function(p uuid) RETURNS integer LANGUAGE sql AS $$ SELECT 2 $$;\n\nCREATE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;\n";
+    let ts = "export async function promote(supabase: Client) {\n  const { data } = await supabase.rpc(\n    \"promote_template\",\n    { p: 1 },\n  );\n  supabase.rpc('is_admin').then(() => 1);\n  return data;\n}\n\nexport async function main(supabase: Client) {\n  return promote(supabase);\n}\n";
+    let files = [
+        ("db/functions.sql", Sql, sql),
+        ("web/src/api.ts", TypeScript, ts),
     ];
     assert_eq!(dead_symbols(&files), ["db/functions.sql::unused_function"]);
 }

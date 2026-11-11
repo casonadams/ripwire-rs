@@ -9,6 +9,7 @@ mod defs;
 mod imports;
 mod locals;
 mod names;
+mod rpc;
 mod next;
 mod scalar;
 mod test_runner;
@@ -26,6 +27,7 @@ use self::imports::js_import_refs;
 pub(super) use self::imports::{default_export_names, dynamic_imports};
 pub(super) use self::imports::resolve_web_import_target;
 pub(super) use self::locals::local_binding_names;
+pub(super) use self::rpc::rpc_call_refs;
 pub(super) use self::next::is_next_convention_file;
 pub(super) use self::names::{JS_STD_MEMBERS, JS_STD_QUALIFIERS};
 pub(super) use self::test_runner::{is_assertion_script, js_test_partner_subject, js_test_run_command};
@@ -93,6 +95,15 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 };
 
 impl LanguageSemantics for JavaScriptLanguage {
+    fn embedded_refs(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+        refs: &mut Vec<crate::ingest::RawRef>,
+    ) {
+        rpc_call_refs(root, source, refs);
+    }
+
     fn local_definition_shadows_name(&self) -> bool {
         true
     }
