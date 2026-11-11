@@ -85,10 +85,91 @@ fn cte_names<'a>(tokens: &[&'a str]) -> Vec<&'a str> {
         .collect()
 }
 
+/// Words that open a call-shaped group in SQL without calling a function.
+const SQL_NON_FUNCTIONS: &[&str] = &[
+    "select", "where", "and", "or", "not", "in", "exists", "values", "as", "on", "using", "case",
+    "when", "then", "else", "end", "cast", "any", "all", "over", "filter", "array", "row",
+    "returning", "conflict", "by", "having", "limit", "offset", "union", "except", "intersect",
+];
+
+/// Words after which a call-shaped name is a table or column list, not a function call.
+const SQL_NAME_POSITIONS: &[&str] = &["into", "table", "update", "as"];
+
+fn starts_with_sql_verb(text: &str) -> bool {
+    let body = text.trim_start_matches(|c: char| {
+        c.is_whitespace() || matches!(c, '"' | '\'' | '`' | 'f' | 'F' | 'r' | 'R' | 'b' | 'B' | 'u' | 'U')
+    });
+    ["select", "with", "call", "perform", "insert", "update", "delete"]
+        .iter()
+        .any(|verb| {
+            body.len() > verb.len()
+                && body.is_char_boundary(verb.len())
+                && body[..verb.len()].eq_ignore_ascii_case(verb)
+                && body.as_bytes()[verb.len()].is_ascii_whitespace()
+        })
+}
+
+/// Calls of the form `name(` in a literal that is a SQL statement: `SELECT promote_template(...)`,
+/// `CALL refresh(...)`. A schema qualifier is dropped.
+fn scan_sql_function_calls(text: &str, start_byte: usize, line: u32, refs: &mut Vec<RawRef>) {
+    if !starts_with_sql_verb(text) {
+        return;
+    }
+    let bytes = text.as_bytes();
+    let mut previous_word = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+            i += 1;
+            continue;
+        }
+        let begin = i;
+        while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+            i += 1;
+        }
+        let word = &text[begin..i];
+        let is_call = bytes.get(i) == Some(&b'(')
+            && !SQL_NON_FUNCTIONS.iter().any(|kw| word.eq_ignore_ascii_case(kw))
+            && !SQL_NAME_POSITIONS
+                .iter()
+                .any(|kw| previous_word.eq_ignore_ascii_case(kw))
+            && !(begin > 0 && bytes[begin - 1] == b'$');
+        if is_call {
+            refs.push(sql_call_ref(word, start_byte, line));
+        }
+        if bytes.get(i) != Some(&b'.') {
+            previous_word = word.to_string();
+        }
+    }
+}
+
+fn sql_call_ref(name: &str, start_byte: usize, line: u32) -> RawRef {
+    RawRef {
+        callee_name: name.to_string(),
+        qualifier: None,
+        line,
+        name_line: line,
+        start_byte,
+        role: RefRole::Call,
+        arg_count: 0,
+        arg_count_known: false,
+        lang: Some(Lang::Sql),
+        receiver: None,
+        receiver_type: None,
+        receiver_chain: None,
+        receiver_file: None,
+        callable_field: false,
+        macro_arg: false,
+        member_call: false,
+        path_call: false,
+    }
+}
+
 fn scan_sql_tokens_in_literal(text: &str, start_byte: usize, line: u32, refs: &mut Vec<RawRef>) {
     if !has_dml_anchor(text.as_bytes()) {
         return;
     }
+    scan_sql_function_calls(text, start_byte, line, refs);
     let tokens: Vec<&str> = text.split_whitespace().collect();
     let ctes = cte_names(&tokens);
     for i in 0..tokens.len() {

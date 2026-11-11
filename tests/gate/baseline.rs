@@ -358,3 +358,15 @@ fn test_typescript_dynamic_import_reaches_only_the_names_it_uses() {
         assert_eq!(dead_symbols(&files), dead, "{name}");
     }
 }
+
+#[test]
+fn test_sql_function_called_from_an_embedded_query_stays_alive() {
+    use ripwire_rs::Lang::{Python, Sql};
+    let sql = "CREATE FUNCTION public.promote_template(p uuid) RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;\n\nCREATE FUNCTION public.unused_function(p uuid) RETURNS integer LANGUAGE sql AS $$ SELECT 2 $$;\n";
+    let python = "def promote(session):\n    return session.execute(\"SELECT promote_template(CAST(:p AS uuid))\")\n\n\ndef main(session):\n    return promote(session)\n";
+    let files = [
+        ("db/functions.sql", Sql, sql),
+        ("app/repo.py", Python, python),
+    ];
+    assert_eq!(dead_symbols(&files), ["db/functions.sql::unused_function"]);
+}
