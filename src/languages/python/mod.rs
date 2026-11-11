@@ -6,6 +6,7 @@ mod arity;
 mod bindings;
 mod builtins;
 mod immutable;
+mod locals;
 mod members;
 mod std_names;
 mod types;
@@ -68,6 +69,10 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 impl LanguageSemantics for PythonLanguage {
     fn local_definition_shadows_name(&self) -> bool {
         true
+    }
+
+    fn local_bindings(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, u32, u32)> {
+        locals::local_binding_names(root, source)
     }
 
     fn env_reads(&self) -> &'static [crate::languages::common::flags::EnvRead] {

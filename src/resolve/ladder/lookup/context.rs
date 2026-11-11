@@ -10,6 +10,7 @@ pub struct ResolutionContext<'a> {
     pub by_name: &'a HashMap<Spur, Vec<NodeId>>,
     pub interner: Option<&'a Interner>,
     pub file_scopes: Option<&'a [std::collections::HashSet<Spur>]>,
+    pub local_scopes: Option<&'a crate::resolve::LocalScopes>,
     pub module_qualifiers: Option<&'a [HashMap<Spur, u32>]>,
     pub file_imports: Option<&'a [std::collections::HashSet<u32>]>,
     pub reexports: Option<&'a crate::resolve::ReexportTable>,
@@ -54,6 +55,18 @@ impl ResolutionLookup for ResolutionContext<'_> {
         self.scip?
             .get(&(r.file_id, r.name_line, r.callee_name))
             .copied()
+    }
+
+    fn bound_locally(&self, r: &Reference) -> bool {
+        r.lang.semantics().local_definition_shadows_name()
+            && self
+                .local_scopes
+                .and_then(|scopes| scopes.get(&(r.file_id, r.callee_name)))
+                .is_some_and(|spans| {
+                    spans
+                        .iter()
+                        .any(|&(start, end)| start <= r.start_byte && r.start_byte < end)
+                })
     }
 
     #[inline]

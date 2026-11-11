@@ -24,6 +24,10 @@ pub trait ResolutionLookup {
     fn file_mentions_scope(&self, _file_id: u32, _scope: Spur) -> bool {
         false
     }
+    /// True when a bare name written at `r` is a local variable or parameter bound in a scope around it.
+    fn bound_locally(&self, _r: &Reference) -> bool {
+        false
+    }
     /// True when `file_id` imports the indexed file `target`.
     fn file_imports_file(&self, _file_id: u32, _target: u32) -> bool {
         false
@@ -728,6 +732,9 @@ pub trait ResolutionLookup {
     #[must_use]
     fn classify_ref(&self, r: &Reference) -> RefOutcome {
         if !self.is_call_like_ref(r) {
+            return RefOutcome::Ignored;
+        }
+        if r.qualifier.is_none() && !r.member_call && self.bound_locally(r) {
             return RefOutcome::Ignored;
         }
         match self.classify_target(r) {

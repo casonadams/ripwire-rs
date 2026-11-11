@@ -34,10 +34,12 @@ pub(crate) fn symbol_canonical_key(sym_name: &str, file_path: &str, scope: Optio
     }
 }
 
-/// Which definitions a bare name written in one file can mean: a file that defines the name itself
-/// means its own definition, not one in another file.
+/// Which definitions a bare name written in one file can mean: a file that defines or binds the name
+/// itself means its own, not a definition in another file.
 pub(crate) struct NameScope {
     defined: Vec<HashSet<lasso::Spur>>,
+    bound: Vec<HashSet<lasso::Spur>>,
+    scopes: crate::resolve::LocalScopes,
 }
 
 impl NameScope {
@@ -48,16 +50,50 @@ impl NameScope {
                 names.insert(sym.name);
             }
         }
-        Self { defined }
+        let mut bound = vec![HashSet::new(); ingest.files.len()];
+        let mut scopes = crate::resolve::LocalScopes::new();
+        for binding in &ingest.local_bindings {
+            if let Some(names) = bound.get_mut(binding.file_id as usize) {
+                names.insert(binding.name);
+            }
+            scopes
+                .entry((binding.file_id, binding.name))
+                .or_default()
+                .push((binding.scope_start, binding.scope_end));
+        }
+        Self {
+            defined,
+            bound,
+            scopes,
+        }
     }
 
-    /// True when a bare `name` written in `from` can mean the definition in `target`.
-    pub(crate) fn reaches(&self, from: u32, target: u32, name: lasso::Spur) -> bool {
+    /// True when a bare `name` written at `byte` in `from` can mean the definition in `target`: the
+    /// file is `target`, or neither defines the name nor binds it in a scope around `byte`.
+    pub(crate) fn reaches_at(&self, from: u32, target: u32, name: lasso::Spur, byte: u32) -> bool {
         from == target
-            || !self
+            || !(self
                 .defined
                 .get(from as usize)
                 .is_some_and(|names| names.contains(&name))
+                || self.scopes.get(&(from, name)).is_some_and(|spans| {
+                    spans
+                        .iter()
+                        .any(|&(start, end)| start <= byte && byte < end)
+                }))
+    }
+
+    /// As [`Self::reaches_at`] for a use whose position is unknown: any binding in the file shadows.
+    pub(crate) fn reaches(&self, from: u32, target: u32, name: lasso::Spur) -> bool {
+        from == target
+            || !(self
+                .defined
+                .get(from as usize)
+                .is_some_and(|names| names.contains(&name))
+                || self
+                    .bound
+                    .get(from as usize)
+                    .is_some_and(|names| names.contains(&name)))
     }
 }
 
@@ -68,7 +104,7 @@ struct Reachable {
     /// Matched by name, so this is a floor.
     referenced: HashSet<lasso::Spur>,
     /// Per bare name in a language where a local definition shadows it, the files that mention it.
-    bare_in: HashMap<lasso::Spur, Vec<u32>>,
+    bare_in: BareMentions,
     scope: NameScope,
     /// Supertypes per type: the traits it implements and the classes it extends.
     supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>>,
@@ -100,10 +136,10 @@ impl Reachable {
     /// own file or from a file that does not define the name itself.
     fn mentions(&self, sym: &crate::domain::Symbol) -> bool {
         self.referenced.contains(&sym.name)
-            || self.bare_in.get(&sym.name).is_some_and(|files| {
-                files
+            || self.bare_in.get(&sym.name).is_some_and(|mentions| {
+                mentions
                     .iter()
-                    .any(|&file| self.scope.reaches(file, sym.file_id, sym.name))
+                    .any(|&(file, byte)| self.scope.reaches_at(file, sym.file_id, sym.name, byte))
             })
     }
 
@@ -180,23 +216,24 @@ fn members_by_scope(ingest: &IngestResult) -> HashMap<lasso::Spur, HashSet<lasso
     members
 }
 
-/// Splits reference names into those no import can scope and, per import-scoped bare name, the
-/// files that mention it.
-fn split_references(
-    ingest: &IngestResult,
-) -> (HashSet<lasso::Spur>, HashMap<lasso::Spur, Vec<u32>>) {
+/// Per name, the `(file, byte)` positions of its bare mentions.
+type BareMentions = HashMap<lasso::Spur, Vec<(u32, u32)>>;
+
+/// Splits reference names into those no local definition can shadow and, per shadowable bare name,
+/// the `(file, byte)` positions that mention it.
+fn split_references(ingest: &IngestResult) -> (HashSet<lasso::Spur>, BareMentions) {
     let mut referenced = HashSet::new();
-    let mut bare_in: HashMap<lasso::Spur, Vec<u32>> = HashMap::new();
+    let mut bare_in = BareMentions::new();
     for r in &ingest.references {
         let scoped = r.lang.semantics().local_definition_shadows_name()
             && r.qualifier.is_none()
             && !r.member_call
             && !r.macro_arg;
         if scoped {
-            let files = bare_in.entry(r.callee_name).or_default();
-            if !files.contains(&r.file_id) {
-                files.push(r.file_id);
-            }
+            bare_in
+                .entry(r.callee_name)
+                .or_default()
+                .push((r.file_id, r.start_byte));
         } else {
             referenced.insert(r.callee_name);
         }

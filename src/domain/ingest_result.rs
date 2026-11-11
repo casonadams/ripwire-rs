@@ -42,6 +42,15 @@ pub struct CallableBinding {
     pub target_qualifier: Option<Spur>,
 }
 
+/// A name file `file_id` binds as a local variable or parameter within the byte span of its scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalBinding {
+    pub file_id: u32,
+    pub name: Spur,
+    pub scope_start: u32,
+    pub scope_end: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Implementation {
     pub file_id: u32,
@@ -87,6 +96,8 @@ pub struct IngestResult {
     pub callable_bindings: Vec<CallableBinding>,
     #[serde(default)]
     pub implementations: Vec<Implementation>,
+    #[serde(default)]
+    pub local_bindings: Vec<LocalBinding>,
     /// Crawled files whose read failed (permission, or removed mid-run). They are indexed as empty
     /// files, so every answer over them is a floor.
     #[serde(default)]

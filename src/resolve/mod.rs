@@ -98,6 +98,9 @@ pub fn merge_resolutions(mut a: ResolutionResult, b: ResolutionResult) -> Resolu
     a
 }
 
+/// Per file and name, the byte spans of the scopes that bind the name as a local variable or parameter.
+pub type LocalScopes = HashMap<(u32, Spur), Vec<(u32, u32)>>;
+
 /// Exported name and calling language to the definitions a binding framework exposes.
 pub type ForeignIndex = HashMap<(Spur, crate::domain::Lang), Vec<NodeId>>;
 
@@ -108,6 +111,7 @@ pub struct ResolutionIndex {
     file_dirs: Vec<u32>,
     by_name: HashMap<Spur, Vec<NodeId>>,
     file_scopes: Vec<HashSet<Spur>>,
+    local_scopes: LocalScopes,
     module_qualifiers: Vec<HashMap<Spur, u32>>,
     file_imports: Vec<HashSet<u32>>,
     reexports: ReexportTable,
@@ -144,6 +148,7 @@ impl ResolutionIndex {
             foreign: index_foreign_bindings(ingest, &by_name),
             by_name,
             file_scopes: index_file_scope_mentions(ingest.files.len(), &ingest.references),
+            local_scopes: index_local_scopes(ingest),
             module_qualifiers,
             file_imports: index_file_imports(ingest, interner),
             reexports,
@@ -176,6 +181,7 @@ impl ResolutionIndex {
             by_name: &self.by_name,
             interner: Some(interner),
             file_scopes: Some(&self.file_scopes),
+            local_scopes: Some(&self.local_scopes),
             module_qualifiers: Some(&self.module_qualifiers),
             file_imports: Some(&self.file_imports),
             reexports: Some(&self.reexports),
@@ -185,6 +191,18 @@ impl ResolutionIndex {
             callables: Some(&self.callables),
         }
     }
+}
+
+/// Index `ingest.local_bindings` by file and name.
+fn index_local_scopes(ingest: &IngestResult) -> LocalScopes {
+    let mut scopes = LocalScopes::new();
+    for binding in &ingest.local_bindings {
+        scopes
+            .entry((binding.file_id, binding.name))
+            .or_default()
+            .push((binding.scope_start, binding.scope_end));
+    }
+    scopes
 }
 
 /// Bind each exported name to its target: definitions of the target's name and scope in the

@@ -10,8 +10,8 @@ mod symbol;
 pub use crate::languages::Lang;
 pub use corpus::CorpusView;
 pub use ingest_result::{
-    CallableBinding, FileInfo, ForeignBinding, Implementation, ImportAlias, IngestResult, ScipSite,
-    ScipTarget,
+    CallableBinding, FileInfo, ForeignBinding, Implementation, ImportAlias, IngestResult,
+    LocalBinding, ScipSite, ScipTarget,
 };
 pub use interner::Interner;
 pub use kinds::{Binding, RefRole, SymKind};

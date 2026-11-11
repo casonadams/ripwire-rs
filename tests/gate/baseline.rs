@@ -119,3 +119,22 @@ fn test_python_import_of_the_symbol_keeps_it_alive() {
     let files = [("src/lib.py", Python, lib), ("src/user.py", Python, user)];
     assert!(dead_symbols(&files).is_empty());
 }
+
+#[test]
+fn test_python_local_binding_of_the_same_name_does_not_keep_a_symbol_alive() {
+    use ripwire_rs::Lang::Python;
+    let probe = "def p1(a):\n    return a - 1\n\n\ndef p3(a):\n    return a - 3\n\n\ndef p4(a):\n    return a - 4\n";
+    let assigned = "def test_it(rule):\n    p1 = rule(1)\n    return p1(2)\n";
+    let unpacked = "def test_it(rule):\n    for p3, other in rule():\n        p3(other)\n";
+    let other_function = "from src.probe import p4\n\n\ndef bind(rule):\n    p4 = rule(1)\n    return p4\n\n\ndef use():\n    return p4(1)\n\n\ndef main():\n    bind(None)\n    return use()\n";
+    let files = [
+        ("src/probe.py", Python, probe),
+        ("tests/test_assigned.py", Python, assigned),
+        ("tests/test_unpacked.py", Python, unpacked),
+        ("src/other.py", Python, other_function),
+    ];
+    assert_eq!(
+        dead_symbols(&files),
+        ["src/probe.py::p1", "src/probe.py::p3"]
+    );
+}

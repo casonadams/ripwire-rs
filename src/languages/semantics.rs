@@ -262,6 +262,16 @@ pub trait LanguageSemantics: Sync {
         Vec::new()
     }
 
+    /// `(name, scope start byte, scope end byte)` for each local variable or parameter a file binds, for languages where such a binding shadows a
+    /// same-named definition elsewhere (`local_definition_shadows_name`).
+    fn local_bindings(
+        &self,
+        _root: tree_sitter::Node<'_>,
+        _source: &[u8],
+    ) -> Vec<(String, u32, u32)> {
+        Vec::new()
+    }
+
     /// Parser of this language's aggregate bodies into sized, offset fields for `--field-affinity=STRUCT`; `None` where unmodelled.
     fn layout_model(&self) -> Option<fn(&str) -> Vec<crate::metrics::FieldLayout>> {
         None
