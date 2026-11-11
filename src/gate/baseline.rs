@@ -47,6 +47,8 @@ pub(crate) struct NameScope {
     definers: HashMap<lasso::Spur, Vec<u32>>,
     /// The names each file imports from a package outside the index.
     outside: crate::resolve::ReexportTable,
+    /// Per file and imported name, the files a `from pkg import name` binds it from.
+    named_imports: HashMap<(u32, lasso::Spur), Vec<u32>>,
 }
 
 impl NameScope {
@@ -75,12 +77,25 @@ impl NameScope {
             imports: crate::resolve::index_file_imports(ingest, interner),
             definers,
             outside: crate::resolve::index_reexports(ingest, interner),
+            named_imports: crate::resolve::index_named_imports(ingest, interner),
         }
     }
 
     /// True when `from` imports a file other than `target` that defines `name` and does not import
     /// `target`: a bare `name` there is the imported definition.
     fn imports_other_definer(&self, from: u32, target: u32, name: lasso::Spur) -> bool {
+        if let Some(files) = self.named_imports.get(&(from, name)) {
+            if files.contains(&target) {
+                return false;
+            }
+            let definers = self.definers.get(&name);
+            if files
+                .iter()
+                .any(|file| definers.is_some_and(|defining| defining.contains(file)))
+            {
+                return true;
+            }
+        }
         let Some(imports) = self.imports.get(from as usize) else {
             return false;
         };

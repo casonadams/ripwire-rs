@@ -13,6 +13,7 @@ pub struct ResolutionContext<'a> {
     pub local_scopes: Option<&'a crate::resolve::LocalScopes>,
     pub module_qualifiers: Option<&'a [HashMap<Spur, u32>]>,
     pub file_imports: Option<&'a [std::collections::HashSet<u32>]>,
+    pub named_imports: Option<&'a HashMap<(u32, Spur), Vec<u32>>>,
     pub reexports: Option<&'a crate::resolve::ReexportTable>,
     pub foreign: Option<&'a HashMap<(Spur, crate::domain::Lang), Vec<NodeId>>>,
     pub scip: Option<&'a HashMap<(u32, u32, Spur), crate::domain::ScipTarget>>,
@@ -93,6 +94,12 @@ impl ResolutionLookup for ResolutionContext<'_> {
 
     #[inline]
     fn file_imports_name(&self, file_id: u32, target: u32, name: Spur) -> bool {
+        if let Some(files) = self
+            .named_imports
+            .and_then(|named| named.get(&(file_id, name)))
+        {
+            return files.contains(&target);
+        }
         self.file_imports_file(file_id, target)
             || self
                 .reexports

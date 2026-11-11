@@ -66,7 +66,7 @@ impl crate::serialize::XmlReport for DeadCodeReport<'_> {
         "dead-code",
         "ripwire-rs.dead-code/v1",
         root: true,
-        comment: "ripwire-rs dead-code schema=ripwire-rs.dead-code/v1: internal-linkage functions with no caller found in the index: <d n= t= p= l=>; <to> rows (to= count, outside count=) are functions whose every indexed caller is test code."
+        comment: "ripwire-rs dead-code schema=ripwire-rs.dead-code/v1: internal-linkage functions with no caller found in the index, and Python, TypeScript and JavaScript functions no name-scoped reference reaches: <d n= t= p= l=>; <to> rows (to= count, outside count=) are functions whose every indexed caller is test code."
     );
     fn page_window(&self) -> Option<crate::serialize::PageWindow> {
         Some(self.paged().window)

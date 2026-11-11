@@ -15,7 +15,7 @@ report_command! {
     static: DEAD_CODE,
     options: [SharedOption::Paged],
     run: report(render),
-    /// Internal functions with zero incoming callers across the repository
+    /// Internal functions, and Python, TypeScript and JavaScript functions no reference reaches
     #[arg(long = "dead-code")]
     dead_code: bool,
 }
@@ -84,7 +84,7 @@ pub fn execute_dead_code_query_paged<W: Write>(
     for (lang, uses) in &mut uses_by_lang {
         crate::ingest::identifiers::count_identifier_uses(ctx.ingest, ctx.interner, ctx.sources, *lang, uses);
     }
-    let mut dead = Vec::new();
+    let mut dead = name_scoped_dead_rows(ctx);
     for sym in candidates {
         let name = view.sym_name(sym);
         let referenced = uses_by_lang
@@ -96,6 +96,47 @@ pub fn execute_dead_code_query_paged<W: Write>(
         }
     }
     emit_report(ctx, dead, out)
+}
+
+/// Functions of the name-scoped languages (Python, TypeScript, JavaScript) that no reference reaches under the
+/// quality gate's rules: not shadowed, not an entrypoint, not loaded dynamically, not bound elsewhere.
+fn name_scoped_dead_rows<'a>(ctx: &DeadCodeContext<'a>) -> Vec<DeadRow<'a>> {
+    use crate::domain::CorpusView;
+    let view = (ctx.ingest, ctx.interner);
+    let snapshot =
+        crate::gate::baseline::compute_snapshot(ctx.ingest, ctx.graph, ctx.interner, "");
+    let candidates: Vec<(&Symbol, String)> = ctx
+        .ingest
+        .symbols
+        .iter()
+        .filter(|sym| sym.lang.semantics().local_definition_shadows_name())
+        .filter_map(|sym| {
+            let scope = sym.scope.map(|scope| ctx.interner.resolve(&scope));
+            let key = crate::gate::baseline::symbol_canonical_key(
+                view.sym_name(sym),
+                view.sym_path(sym),
+                scope,
+            );
+            snapshot.dead_symbols.contains(&key).then_some((sym, key))
+        })
+        .collect();
+    let rows: Vec<(&str, &str)> = candidates
+        .iter()
+        .map(|(sym, key)| (view.sym_path(sym), key.as_str()))
+        .collect();
+    let used = crate::gate::identifier_evidence::identifier_used_rows(
+        ctx.ingest,
+        ctx.graph,
+        ctx.interner,
+        ctx.sources,
+        &rows,
+    );
+    candidates
+        .into_iter()
+        .zip(used)
+        .filter(|&(_, used)| !used)
+        .map(|((sym, _), _)| (view.sym_name(sym), sym.kind.tag(), view.sym_path(sym), sym.line))
+        .collect()
 }
 
 fn sort_rows(rows: &mut [DeadRow<'_>]) {

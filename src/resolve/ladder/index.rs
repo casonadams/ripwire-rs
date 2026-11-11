@@ -50,6 +50,49 @@ pub fn index_file_scope_mentions(
     sets
 }
 
+/// Per file and imported name, the indexed files a `from pkg import name` statement binds it from: the file of
+/// `pkg`, whether or not `name` is itself a module. A file importing one name from one module and another name
+/// from another binds each to its own.
+#[must_use]
+pub fn index_named_imports(
+    ingest: &crate::domain::IngestResult,
+    interner: &Interner,
+) -> HashMap<(u32, Spur), Vec<u32>> {
+    let file_index: HashMap<&str, u32> = ingest
+        .files
+        .iter()
+        .map(|f| (interner.resolve(&f.path), f.id))
+        .collect();
+    let mut named: HashMap<(u32, Spur), Vec<u32>> = HashMap::new();
+    for import in &ingest.submodule_imports {
+        let Some(importer) = ingest.files.get(import.file_id as usize) else {
+            continue;
+        };
+        let target = interner.resolve(&import.target);
+        let dots = target.len() - target.trim_start_matches('.').len();
+        let module = match target[dots..].rsplit_once('.') {
+            Some((module, _)) => &target[..dots + module.len()],
+            None => &target[..dots],
+        };
+        if module.is_empty() {
+            continue;
+        }
+        if let Some(file) = crate::languages::resolve_import(
+            importer.lang,
+            interner.resolve(&importer.path),
+            module,
+            &file_index,
+            &ingest.import_aliases,
+        ) {
+            let files = named.entry((import.file_id, import.name)).or_default();
+            if !files.contains(&file) {
+                files.push(file);
+            }
+        }
+    }
+    named
+}
+
 /// The file a `from pkg import name` names when `pkg.name` is an indexed module.
 fn resolve_submodule_import(
     ingest: &crate::domain::IngestResult,

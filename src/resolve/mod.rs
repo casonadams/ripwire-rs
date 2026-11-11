@@ -134,6 +134,7 @@ pub struct ResolutionIndex {
     local_scopes: LocalScopes,
     module_qualifiers: Vec<HashMap<Spur, u32>>,
     file_imports: Vec<HashSet<u32>>,
+    named_imports: HashMap<(u32, Spur), Vec<u32>>,
     reexports: ReexportTable,
     foreign: ForeignIndex,
     scip: ScipIndex,
@@ -171,6 +172,7 @@ impl ResolutionIndex {
             local_scopes: index_local_scopes(ingest),
             module_qualifiers,
             file_imports: index_file_imports(ingest, interner),
+            named_imports: index_named_imports(ingest, interner),
             reexports,
             scip: ingest
                 .scip_sites
@@ -204,6 +206,7 @@ impl ResolutionIndex {
             local_scopes: Some(&self.local_scopes),
             module_qualifiers: Some(&self.module_qualifiers),
             file_imports: Some(&self.file_imports),
+            named_imports: Some(&self.named_imports),
             reexports: Some(&self.reexports),
             foreign: Some(&self.foreign),
             scip: Some(&self.scip),

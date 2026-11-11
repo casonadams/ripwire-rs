@@ -192,61 +192,24 @@ pub(super) fn check_source_and_clone_regressions(
     collect_changed_clone_regressions(facts.clones, state, &status, regressions);
 }
 
-/// Drops dead-code rows whose name appears as an identifier elsewhere in the tree: a macro argument,
-/// a table entry, a value or a re-export reaches it without a call edge. Where a local definition
-/// shadows a bare name, a file that defines the name itself does not count.
+/// Drops dead-code rows whose name appears as an identifier elsewhere in the tree (see
+/// [`crate::gate::identifier_evidence::identifier_used_rows`]).
 pub(super) fn drop_referenced_dead_rows(
     state: &QueryContext<'_>,
     regressions: &mut Vec<QualityRegression>,
 ) {
-    use std::collections::{HashMap, HashSet};
-    let file_of: HashMap<&str, (crate::domain::Lang, u32)> = state
-        .ingest
-        .files
+    let rows: Vec<(&str, &str)> = regressions
         .iter()
-        .map(|f| (state.interner.resolve(&f.path), (f.lang, f.id)))
+        .filter(|r| r.kind == "dead-code")
+        .map(|r| (r.file_path.as_str(), r.sym_name.as_str()))
         .collect();
-    let mut names: HashMap<crate::domain::Lang, HashSet<&str>> = HashMap::new();
-    for r in regressions.iter().filter(|r| r.kind == "dead-code") {
-        if let Some(&(lang, _)) = file_of.get(r.file_path.as_str()) {
-            names
-                .entry(lang)
-                .or_default()
-                .insert(r.sym_name.rsplit("::").next().unwrap_or(&r.sym_name));
-        }
-    }
-    let uses: HashMap<crate::domain::Lang, HashMap<String, Vec<(u32, u32)>>> = names
-        .iter()
-        .map(|(&lang, list)| {
-            let found = crate::ingest::identifiers::identifier_use_sites(
-                state.ingest,
-                state.interner,
-                state.sources,
-                lang,
-                list,
-            );
-            (lang, found)
-        })
-        .collect();
-    let scope = crate::gate::baseline::NameScope::of(state.ingest, state.graph, state.interner);
-    let referenced = |r: &QualityRegression| -> bool {
-        let Some(&(lang, file)) = file_of.get(r.file_path.as_str()) else {
-            return false;
-        };
-        let name = r.sym_name.rsplit("::").next().unwrap_or(&r.sym_name);
-        let Some(users) = uses.get(&lang).and_then(|found| found.get(name)) else {
-            return false;
-        };
-        if !lang.semantics().local_definition_shadows_name() {
-            return true;
-        }
-        let Some(spur) = state.interner.get(name) else {
-            return true;
-        };
-        let method = r.sym_name.matches("::").count() > 1;
-        users.iter().any(|&(user, byte)| {
-            scope.reaches_at(user, file, spur, byte) && !(!method && scope.is_excused(user, spur))
-        })
-    };
-    regressions.retain(|r| r.kind != "dead-code" || !referenced(r));
+    let used = crate::gate::identifier_evidence::identifier_used_rows(
+        state.ingest,
+        state.graph,
+        state.interner,
+        state.sources,
+        &rows,
+    );
+    let mut used = used.into_iter();
+    regressions.retain(|r| r.kind != "dead-code" || !used.next().unwrap_or(false));
 }

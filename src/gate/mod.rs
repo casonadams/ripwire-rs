@@ -3,6 +3,7 @@ pub mod arch;
 pub mod baseline;
 pub mod contract;
 pub mod edit_check;
+pub mod identifier_evidence;
 pub mod lanes;
 pub mod merge_scout;
 pub mod pr_context;
