@@ -65,7 +65,7 @@ fn count_uses_in_files<'a>(
                 file.lang.semantics().for_each_identifier(
                     tree.root_node(),
                     source.as_ref(),
-                    &mut |text| {
+                    &mut |text, _| {
                         if let Some((&name, _)) = known.get_key_value(text) {
                             *local.entry(name).or_insert(0) += 1;
                         }
@@ -87,47 +87,46 @@ fn count_uses_in_files<'a>(
     }
 }
 
-/// The files of `lang` that use each of `names` as an identifier; definitions and prototypes do not count.
-pub fn identifier_use_files(
+/// Where each of `names` is used as an identifier in the files of `lang`, as `(file, byte)`; definitions and
+/// prototypes do not count.
+pub fn identifier_use_sites(
     ingest: &IngestResult,
     interner: &Interner,
     sources: &dyn crate::query::SourceReader,
     lang: Lang,
     names: &std::collections::HashSet<&str>,
-) -> HashMap<String, Vec<u32>> {
+) -> HashMap<String, Vec<(u32, u32)>> {
     use rayon::prelude::*;
     let files: Vec<_> = ingest
         .files
         .iter()
         .filter(|file| file.lang == lang)
         .collect();
-    let per_file: Vec<(u32, Vec<String>)> = files
+    let per_file: Vec<Vec<(String, u32, u32)>> = files
         .par_iter()
         .map(|file| {
             let path = ingest.file_path(file.id, interner);
             let source = sources
                 .read(path)
                 .unwrap_or(std::borrow::Cow::Borrowed(&[]));
-            let mut found = std::collections::HashSet::new();
+            let mut found = Vec::new();
             if let Some(tree) = parse_file_tree(file.lang, path, source.as_ref()) {
                 file.lang.semantics().for_each_identifier(
                     tree.root_node(),
                     source.as_ref(),
-                    &mut |text| {
+                    &mut |text, byte| {
                         if names.contains(text) {
-                            found.insert(text.to_string());
+                            found.push((text.to_string(), file.id, byte as u32));
                         }
                     },
                 );
             }
-            (file.id, found.into_iter().collect())
+            found
         })
         .collect();
-    let mut by_name: HashMap<String, Vec<u32>> = HashMap::new();
-    for (file, found) in per_file {
-        for name in found {
-            by_name.entry(name).or_default().push(file);
-        }
+    let mut by_name: HashMap<String, Vec<(u32, u32)>> = HashMap::new();
+    for (name, file, byte) in per_file.into_iter().flatten() {
+        by_name.entry(name).or_default().push((file, byte));
     }
     by_name
 }

@@ -38,7 +38,6 @@ pub(crate) fn symbol_canonical_key(sym_name: &str, file_path: &str, scope: Optio
 /// itself means its own, not a definition in another file.
 pub(crate) struct NameScope {
     defined: Vec<HashSet<lasso::Spur>>,
-    bound: Vec<HashSet<lasso::Spur>>,
     scopes: crate::resolve::LocalScopes,
     /// `(file, name)` pairs whose every reference in the file is bound to another definition.
     excused: HashSet<(u32, lasso::Spur)>,
@@ -60,12 +59,8 @@ impl NameScope {
                 names.insert(sym.name);
             }
         }
-        let mut bound = vec![HashSet::new(); ingest.files.len()];
         let mut scopes = crate::resolve::LocalScopes::new();
         for binding in &ingest.local_bindings {
-            if let Some(names) = bound.get_mut(binding.file_id as usize) {
-                names.insert(binding.name);
-            }
             scopes
                 .entry((binding.file_id, binding.name))
                 .or_default()
@@ -73,7 +68,6 @@ impl NameScope {
         }
         Self {
             defined,
-            bound,
             scopes,
             excused: excused_names(ingest, graph),
             imports: crate::resolve::index_file_imports(ingest, interner),
@@ -111,20 +105,9 @@ impl NameScope {
                 }))
     }
 
-    /// As [`Self::reaches_at`] for a use whose position is unknown: any binding in the file shadows, and
-    /// so does a file whose every reference to the name is bound elsewhere, unless `method`.
-    pub(crate) fn reaches(&self, from: u32, target: u32, name: lasso::Spur, method: bool) -> bool {
-        from == target
-            || !((!method && self.excused.contains(&(from, name)))
-                || self.imports_other_definer(from, target, name)
-                || self
-                    .defined
-                    .get(from as usize)
-                    .is_some_and(|names| names.contains(&name))
-                || self
-                    .bound
-                    .get(from as usize)
-                    .is_some_and(|names| names.contains(&name)))
+    /// True when every reference `from` makes to `name` is bound to another definition.
+    pub(crate) fn is_excused(&self, from: u32, name: lasso::Spur) -> bool {
+        self.excused.contains(&(from, name))
     }
 }
 

@@ -44,7 +44,7 @@ fn member_identifiers(sym: &crate::domain::Symbol, state: &QueryContext<'_>) -> 
     {
         sym.lang
             .semantics()
-            .for_each_identifier(node, &bytes, &mut |text| {
+            .for_each_identifier(node, &bytes, &mut |text, _| {
                 names.insert(text.to_string());
             });
     }

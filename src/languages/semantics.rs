@@ -476,12 +476,12 @@ pub trait LanguageSemantics: Sync {
     /// defining it (each leaf whose kind ends in `identifier`, outside a definition's `name` and a
     /// function declarator's `declarator`, so a prototype is not a use). Dead-code checks count these
     /// as name-use evidence, so value positions (shorthand properties, fn pointers, macro arguments,
-    /// re-exports) count too.
+    /// re-exports) count too. `visit` gets each identifier's text and start byte.
     fn for_each_identifier(
         &self,
         root: tree_sitter::Node<'_>,
         source: &[u8],
-        visit: &mut dyn FnMut(&str),
+        visit: &mut dyn FnMut(&str, usize),
     ) {
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
@@ -492,7 +492,7 @@ pub trait LanguageSemantics: Sync {
                 && !is_definition_name(node)
                 && let Ok(text) = node.utf8_text(source)
             {
-                visit(text);
+                visit(text, node.start_byte());
             }
         }
     }

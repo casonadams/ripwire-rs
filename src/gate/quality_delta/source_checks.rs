@@ -215,10 +215,10 @@ pub(super) fn drop_referenced_dead_rows(
                 .insert(r.sym_name.rsplit("::").next().unwrap_or(&r.sym_name));
         }
     }
-    let uses: HashMap<crate::domain::Lang, HashMap<String, Vec<u32>>> = names
+    let uses: HashMap<crate::domain::Lang, HashMap<String, Vec<(u32, u32)>>> = names
         .iter()
         .map(|(&lang, list)| {
-            let found = crate::ingest::identifiers::identifier_use_files(
+            let found = crate::ingest::identifiers::identifier_use_sites(
                 state.ingest,
                 state.interner,
                 state.sources,
@@ -244,9 +244,9 @@ pub(super) fn drop_referenced_dead_rows(
             return true;
         };
         let method = r.sym_name.matches("::").count() > 1;
-        users
-            .iter()
-            .any(|&user| scope.reaches(user, file, spur, method))
+        users.iter().any(|&(user, byte)| {
+            scope.reaches_at(user, file, spur, byte) && !(!method && scope.is_excused(user, spur))
+        })
     };
     regressions.retain(|r| r.kind != "dead-code" || !referenced(r));
 }
