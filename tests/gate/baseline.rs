@@ -171,3 +171,106 @@ fn test_python_method_reached_through_a_typed_call_to_its_protocol_stays_alive()
     ];
     assert!(dead_symbols(&files).is_empty());
 }
+
+#[test]
+fn test_python_imports_bind_through_package_roots_and_relative_levels() {
+    use ripwire_rs::Lang::Python;
+    let decoy = "def classify(a):\n    return a - 1\n";
+    let real = "def classify(a):\n    return a * 2\n";
+    type Case<'a> = (&'a str, &'a [(&'a str, &'a str)]);
+    let cases: [Case<'_>; 3] = [
+        (
+            "package root above the importer",
+            &[
+                ("svc/src/pkg/real.py", real),
+                (
+                    "svc/src/pkg/user.py",
+                    "from pkg.real import classify\n\n\ndef main():\n    return classify(1)\n",
+                ),
+            ],
+        ),
+        (
+            "tests importing the service through its src directory",
+            &[
+                ("svc/src/real.py", real),
+                (
+                    "svc/tests/test_user.py",
+                    "from src.real import classify\n\n\ndef main():\n    return classify(1)\n",
+                ),
+            ],
+        ),
+        (
+            "relative import two levels up",
+            &[
+                ("svc/pkg/real.py", real),
+                (
+                    "svc/pkg/sub/user.py",
+                    "from ..real import classify\n\n\ndef main():\n    return classify(1)\n",
+                ),
+            ],
+        ),
+    ];
+    for (name, files) in cases {
+        let mut all: Vec<(&str, ripwire_rs::Lang, &str)> =
+            files.iter().map(|&(p, s)| (p, Python, s)).collect();
+        all.push(("other/decoy.py", Python, decoy));
+        assert_eq!(dead_symbols(&all), ["other/decoy.py::classify"], "{name}");
+    }
+}
+
+#[test]
+fn test_python_module_conforming_to_a_protocol_stays_alive_behind_a_receiver_call() {
+    use ripwire_rs::Lang::Python;
+    let protocol = "from typing import Protocol\n\n\nclass Runtime(Protocol):\n    def configure(self, mode: str) -> None: ...\n";
+    let module = "def configure(mode: str) -> None:\n    return None\n";
+    let user = "from src.protocol import Runtime\n\n\ndef run(runtime: Runtime) -> None:\n    runtime.configure(\"x\")\n\n\ndef main():\n    return run(None)\n";
+    let files = [
+        ("src/protocol.py", Python, protocol),
+        ("src/module.py", Python, module),
+        ("src/user.py", Python, user),
+    ];
+    assert_eq!(dead_symbols(&files), Vec::<String>::new());
+}
+
+#[test]
+fn test_python_module_stays_alive_behind_a_call_on_an_untyped_receiver() {
+    use ripwire_rs::Lang::Python;
+    let protocol = "from typing import Protocol\n\n\nclass Runtime(Protocol):\n    def configure(self, mode: str) -> None: ...\n\n\ndef _runtime() -> Runtime:\n    import src.module as module\n\n    return module\n\n\ndef main():\n    _runtime().configure(\"x\")\n";
+    let module = "def configure(mode: str) -> None:\n    return None\n";
+    let files = [
+        ("src/protocol.py", Python, protocol),
+        ("src/module.py", Python, module),
+    ];
+    assert_eq!(dead_symbols(&files), Vec::<String>::new());
+}
+
+#[test]
+fn test_python_function_is_not_kept_alive_by_a_call_in_another_language() {
+    use ripwire_rs::Lang::{Python, TypeScript};
+    let py = "def classify(a):\n    return a - 1\n";
+    let ts = "export function run(x: number): number {\n  return x.classify(1);\n}\n";
+    let files = [("src/probe.py", Python, py), ("web/run.ts", TypeScript, ts)];
+    assert_eq!(
+        dead_symbols(&files),
+        ["src/probe.py::classify", "web/run.ts::run"]
+    );
+}
+
+#[test]
+fn test_python_value_use_of_an_imported_definition_does_not_keep_another_alive() {
+    use ripwire_rs::Lang::Python;
+    let probe = "def worker(a):\n    return a - 1\n\n\ndef task(a):\n    return a - 2\n";
+    let real = "def worker(a):\n    return a * 2\n\n\ndef task(a):\n    return a * 3\n";
+    let user = "from src.real import worker\n\n\ndef main(queue):\n    queue.add(worker)\n";
+    let kept = "from src.probe import task\n\n\ndef main(queue):\n    queue.add(task)\n";
+    let files = [
+        ("src/probe.py", Python, probe),
+        ("src/real.py", Python, real),
+        ("src/user.py", Python, user),
+        ("src/kept.py", Python, kept),
+    ];
+    assert_eq!(
+        dead_symbols(&files),
+        ["src/probe.py::worker", "src/real.py::task"]
+    );
+}

@@ -228,7 +228,7 @@ pub(super) fn drop_referenced_dead_rows(
             (lang, found)
         })
         .collect();
-    let scope = crate::gate::baseline::NameScope::of(state.ingest, state.graph);
+    let scope = crate::gate::baseline::NameScope::of(state.ingest, state.graph, state.interner);
     let referenced = |r: &QualityRegression| -> bool {
         let Some(&(lang, file)) = file_of.get(r.file_path.as_str()) else {
             return false;

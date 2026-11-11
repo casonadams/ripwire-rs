@@ -42,10 +42,18 @@ pub(crate) struct NameScope {
     scopes: crate::resolve::LocalScopes,
     /// `(file, name)` pairs whose every reference in the file is bound to another definition.
     excused: HashSet<(u32, lasso::Spur)>,
+    /// Per file, the indexed files its imports resolve to.
+    imports: Vec<HashSet<u32>>,
+    /// Per name, the files that define it at module level.
+    definers: HashMap<lasso::Spur, Vec<u32>>,
 }
 
 impl NameScope {
-    pub(crate) fn of(ingest: &IngestResult, graph: &Graph) -> Self {
+    pub(crate) fn of(ingest: &IngestResult, graph: &Graph, interner: &Interner) -> Self {
+        let mut definers: HashMap<lasso::Spur, Vec<u32>> = HashMap::new();
+        for sym in ingest.symbols.iter().filter(|sym| sym.scope.is_none()) {
+            definers.entry(sym.name).or_default().push(sym.file_id);
+        }
         let mut defined = vec![HashSet::new(); ingest.files.len()];
         for sym in &ingest.symbols {
             if let Some(names) = defined.get_mut(sym.file_id as usize) {
@@ -68,17 +76,34 @@ impl NameScope {
             bound,
             scopes,
             excused: excused_names(ingest, graph),
+            imports: crate::resolve::index_file_imports(ingest, interner),
+            definers,
         }
+    }
+
+    /// True when `from` imports a file other than `target` that defines `name` and does not import
+    /// `target`: a bare `name` there is the imported definition.
+    fn imports_other_definer(&self, from: u32, target: u32, name: lasso::Spur) -> bool {
+        let Some(imports) = self.imports.get(from as usize) else {
+            return false;
+        };
+        !imports.contains(&target)
+            && self.definers.get(&name).is_some_and(|files| {
+                files
+                    .iter()
+                    .any(|file| *file != target && imports.contains(file))
+            })
     }
 
     /// True when a bare `name` written at `byte` in `from` can mean the definition in `target`: the
     /// file is `target`, or neither defines the name nor binds it in a scope around `byte`.
     pub(crate) fn reaches_at(&self, from: u32, target: u32, name: lasso::Spur, byte: u32) -> bool {
         from == target
-            || !(self
-                .defined
-                .get(from as usize)
-                .is_some_and(|names| names.contains(&name))
+            || !(self.imports_other_definer(from, target, name)
+                || self
+                    .defined
+                    .get(from as usize)
+                    .is_some_and(|names| names.contains(&name))
                 || self.scopes.get(&(from, name)).is_some_and(|spans| {
                     spans
                         .iter()
@@ -91,6 +116,7 @@ impl NameScope {
     pub(crate) fn reaches(&self, from: u32, target: u32, name: lasso::Spur, method: bool) -> bool {
         from == target
             || !((!method && self.excused.contains(&(from, name)))
+                || self.imports_other_definer(from, target, name)
                 || self
                     .defined
                     .get(from as usize)
@@ -108,11 +134,14 @@ struct Reachable {
     /// macro-argument references, and every reference in a language that does not shadow by name.
     /// Matched by name, so this is a floor.
     referenced: HashSet<lasso::Spur>,
+    /// The same, per language of the reference: where names are trusted, a reference in another language
+    /// is not what reaches a symbol.
+    referenced_in: HashSet<(crate::domain::Lang, lasso::Spur)>,
     /// Per bare name in a language where a local definition shadows it, the files that mention it.
     bare_in: BareMentions,
     /// Names a reference bound to one definition by import or type evidence. That reaches a free
     /// function only through its target, but a method also through any type that implements it.
-    bound: HashSet<lasso::Spur>,
+    bound: HashSet<(crate::domain::Lang, lasso::Spur)>,
     scope: NameScope,
     /// Supertypes per type: the traits it implements and the classes it extends.
     supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>>,
@@ -125,15 +154,16 @@ struct Reachable {
 }
 
 impl Reachable {
-    fn of(ingest: &IngestResult, graph: &Graph) -> Self {
+    fn of(ingest: &IngestResult, graph: &Graph, interner: &Interner) -> Self {
         let mut supertypes = extends_supertypes(ingest);
         let (trait_impls, implemented_in) = implementation_records(ingest, &mut supertypes);
-        let (referenced, bare_in, bound) = split_references(ingest, graph);
+        let refs = split_references(ingest, graph);
         Self {
-            referenced,
-            bare_in,
-            bound,
-            scope: NameScope::of(ingest, graph),
+            referenced: refs.referenced,
+            referenced_in: refs.referenced_in,
+            bare_in: refs.bare_in,
+            bound: refs.bound,
+            scope: NameScope::of(ingest, graph, interner),
             supertypes,
             members: members_by_scope(ingest),
             trait_impls,
@@ -144,8 +174,14 @@ impl Reachable {
     /// True when some reference can mean `sym`: a name nothing shadows, or a bare mention from its
     /// own file or from a file that does not define the name itself.
     fn mentions(&self, sym: &crate::domain::Symbol) -> bool {
-        self.referenced.contains(&sym.name)
-            || (sym.scope.is_some() && self.bound.contains(&sym.name))
+        let trusted = sym.lang.semantics().local_definition_shadows_name();
+        let named = if trusted {
+            self.referenced_in.contains(&(sym.lang, sym.name))
+        } else {
+            self.referenced.contains(&sym.name)
+        };
+        named
+            || (sym.scope.is_some() && self.bound.contains(&(sym.lang, sym.name)))
             || self.bare_in.get(&sym.name).is_some_and(|mentions| {
                 mentions
                     .iter()
@@ -246,32 +282,43 @@ fn excused_names(ingest: &IngestResult, graph: &Graph) -> HashSet<(u32, lasso::S
 /// Per name, the `(file, byte)` positions of its bare mentions.
 type BareMentions = HashMap<lasso::Spur, Vec<(u32, u32)>>;
 
-/// Splits reference names into those no local definition can shadow and, per shadowable bare name,
-/// the `(file, byte)` positions that mention it.
-fn split_references(
-    ingest: &IngestResult,
-    graph: &Graph,
-) -> (HashSet<lasso::Spur>, BareMentions, HashSet<lasso::Spur>) {
-    let mut referenced = HashSet::new();
-    let mut bare_in = BareMentions::new();
-    let mut bound = HashSet::new();
+/// Reference names split by how far a name can be trusted to bind.
+struct SplitReferences {
+    /// Names no local definition can shadow, matched whatever the language.
+    referenced: HashSet<lasso::Spur>,
+    referenced_in: HashSet<(crate::domain::Lang, lasso::Spur)>,
+    /// Per shadowable bare name, the `(file, byte)` positions that mention it.
+    bare_in: BareMentions,
+    /// Names a reference bound to one definition by import evidence, per language.
+    bound: HashSet<(crate::domain::Lang, lasso::Spur)>,
+}
+
+fn split_references(ingest: &IngestResult, graph: &Graph) -> SplitReferences {
+    let mut split = SplitReferences {
+        referenced: HashSet::new(),
+        referenced_in: HashSet::new(),
+        bare_in: BareMentions::new(),
+        bound: HashSet::new(),
+    };
     for (i, r) in ingest.references.iter().enumerate() {
         let trusted = r.lang.semantics().local_definition_shadows_name();
         if trusted && graph.bound_refs.get(i).copied().unwrap_or(false) {
-            bound.insert(r.callee_name);
+            split.bound.insert((r.lang, r.callee_name));
             continue;
         }
         let scoped = trusted && r.qualifier.is_none() && !r.member_call && !r.macro_arg;
         if scoped {
-            bare_in
+            split
+                .bare_in
                 .entry(r.callee_name)
                 .or_default()
                 .push((r.file_id, r.start_byte));
         } else {
-            referenced.insert(r.callee_name);
+            split.referenced.insert(r.callee_name);
+            split.referenced_in.insert((r.lang, r.callee_name));
         }
     }
-    (referenced, bare_in, bound)
+    split
 }
 
 /// Constructors are reached through their type: `constructor`, `__init__`, `__new__`, or a method
@@ -327,7 +374,7 @@ pub fn compute_snapshot(
         ..Default::default()
     };
 
-    let reachable = Reachable::of(ingest, graph);
+    let reachable = Reachable::of(ingest, graph, interner);
     for sym in &ingest.symbols {
         if sym.kind == SymKind::Section || sym.kind == SymKind::ModuleScope {
             continue;

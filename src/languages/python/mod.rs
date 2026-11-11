@@ -1,6 +1,6 @@
 use super::{
     ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds,
-    VisibilityMode, resolve_relative_or_exact, strip_import_quotes,
+    VisibilityMode, normalize_lexical_path, probe_with_suffixes, strip_import_quotes,
 };
 mod arity;
 mod bindings;
@@ -294,15 +294,40 @@ impl LanguageSemantics for PythonLanguage {
         file_index: &HashMap<&str, u32>,
     ) -> Option<u32> {
         let (module, _) = self.import_binding(raw_target)?;
-        let rel_mod = module.trim_start_matches('.').replace('.', "/");
-        if rel_mod.is_empty() {
+        let dots = module.chars().take_while(|&c| c == '.').count();
+        let path = module[dots..].replace('.', "/");
+        let importer_dir = importer_path.rsplit_once('/').map_or("", |(dir, _)| dir);
+        if dots > 0 {
+            let mut base = importer_dir;
+            for _ in 1..dots {
+                base = base.rsplit_once('/').map_or("", |(parent, _)| parent);
+            }
+            return probe_module(base, &path, file_index);
+        }
+        if path.is_empty() {
             return None;
         }
-        resolve_relative_or_exact(
-            importer_path,
-            &rel_mod,
-            file_index,
-            &[".py", "/__init__.py"],
-        )
+        // An absolute module is rooted at some directory above the importer: the repository root, or a
+        // package root such as a service's `src/`.
+        let mut dir = importer_dir;
+        loop {
+            if let Some(id) = probe_module(dir, &path, file_index) {
+                return Some(id);
+            }
+            if dir.is_empty() {
+                return None;
+            }
+            dir = dir.rsplit_once('/').map_or("", |(parent, _)| parent);
+        }
     }
+}
+
+fn probe_module(dir: &str, module_path: &str, file_index: &HashMap<&str, u32>) -> Option<u32> {
+    if module_path.is_empty() {
+        return file_index
+            .get(normalize_lexical_path(dir, "__init__.py").as_str())
+            .copied();
+    }
+    let target = normalize_lexical_path(dir, module_path);
+    probe_with_suffixes(&target, file_index, &[".py", "/__init__.py"])
 }

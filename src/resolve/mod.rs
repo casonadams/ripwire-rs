@@ -36,13 +36,17 @@ pub struct ResolutionResult {
     pub bound_refs: Vec<bool>,
 }
 
-/// True when evidence beyond the name alone pins the call to one definition other than the caller, so a
-/// same-named definition elsewhere is not what it reaches.
-fn is_bound_elsewhere(resolved: &ResolvedRef) -> bool {
-    !matches!(
-        resolved.prov,
-        EdgeProv::Split | EdgeProv::Template | EdgeProv::Name
-    ) && resolved.targets.iter().any(|&to| to != resolved.from)
+/// True when lexical or import evidence pins the call to one definition other than the caller, so a
+/// same-named definition elsewhere is not what it reaches. A call typed by its receiver is not: it also
+/// reaches a module or class that merely conforms to the receiver's protocol, and so does a call on a
+/// receiver of unknown type.
+fn is_bound_elsewhere(r: &Reference, resolved: &ResolvedRef) -> bool {
+    !(r.member_call && r.qualifier.is_none())
+        && matches!(
+            resolved.prov,
+            EdgeProv::Local | EdgeProv::Import | EdgeProv::Binding | EdgeProv::Scip
+        )
+        && resolved.targets.iter().any(|&to| to != resolved.from)
 }
 
 /// Resolve all call references from an ingestion result into edge accumulators and ambiguity metrics.
@@ -82,7 +86,7 @@ pub fn resolve_reference_chunk_with_context<L: ResolutionLookup>(
         let mut bound = false;
         match lookup.classify_ref(r) {
             RefOutcome::Resolved(resolved) => {
-                bound = is_bound_elsewhere(&resolved);
+                bound = is_bound_elsewhere(r, &resolved);
                 record_resolved_ref(resolved, &mut res.edge_accumulators, &mut res.amb_out);
             }
             RefOutcome::Unresolved => res.unresolved += 1,
