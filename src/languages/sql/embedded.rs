@@ -35,7 +35,8 @@ fn clean_sql_token(tok: &str) -> &str {
     trim_sql_punct(last)
 }
 
-fn is_valid_sql_table_ident(ident: &str) -> bool {
+/// A bare SQL identifier that is not a reserved word: a table or a function name.
+pub fn is_valid_sql_ident(ident: &str) -> bool {
     if ident.len() < 2
         || ident.starts_with('$')
         || !ident
@@ -143,7 +144,8 @@ fn scan_sql_function_calls(text: &str, start_byte: usize, line: u32, refs: &mut 
     }
 }
 
-fn sql_call_ref(name: &str, start_byte: usize, line: u32) -> RawRef {
+/// A call reference to the SQL function `name`, for a host-language string that names it.
+pub fn sql_call_ref(name: &str, start_byte: usize, line: u32) -> RawRef {
     RawRef {
         callee_name: name.to_string(),
         qualifier: None,
@@ -190,7 +192,7 @@ fn scan_sql_tokens_in_literal(text: &str, start_byte: usize, line: u32, refs: &m
         }
         if let Some(&raw_target) = tokens.get(target_idx) {
             let table = clean_sql_token(raw_target);
-            if is_valid_sql_table_ident(table)
+            if is_valid_sql_ident(table)
                 && !ctes.iter().any(|c| c.eq_ignore_ascii_case(table))
             {
                 refs.push(RawRef {

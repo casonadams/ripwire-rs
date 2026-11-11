@@ -7,6 +7,7 @@ mod bindings;
 mod builtins;
 mod immutable;
 mod locals;
+mod rpc;
 mod submodules;
 mod members;
 mod std_names;
@@ -68,6 +69,15 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 };
 
 impl LanguageSemantics for PythonLanguage {
+    fn embedded_refs(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+        refs: &mut Vec<crate::ingest::RawRef>,
+    ) {
+        rpc::rpc_call_refs(root, source, refs);
+    }
+
     fn local_definition_shadows_name(&self) -> bool {
         true
     }

@@ -1,4 +1,3 @@
-use crate::domain::{Lang, RefRole};
 use crate::ingest::RawRef;
 use tree_sitter::Node;
 
@@ -21,41 +20,15 @@ pub(in crate::languages) fn rpc_call_refs(root: Node<'_>, source: &[u8], refs: &
             && let Ok(text) = argument.utf8_text(source)
         {
             let name = text.trim_matches(|c| matches!(c, '"' | '\'' | '`'));
-            if is_function_name(name) {
-                refs.push(sql_call(name, argument));
+            if crate::languages::sql::embedded::is_valid_sql_ident(name) {
+                refs.push(crate::languages::sql::embedded::sql_call_ref(
+                    name,
+                    argument.start_byte(),
+                    argument.start_position().row as u32 + 1,
+                ));
             }
         }
         let mut cursor = node.walk();
         stack.extend(node.children(&mut cursor));
-    }
-}
-
-fn is_function_name(name: &str) -> bool {
-    name.bytes()
-        .next()
-        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
-        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-}
-
-fn sql_call(name: &str, node: Node<'_>) -> RawRef {
-    let line = node.start_position().row as u32 + 1;
-    RawRef {
-        callee_name: name.to_string(),
-        qualifier: None,
-        line,
-        name_line: line,
-        start_byte: node.start_byte(),
-        role: RefRole::Call,
-        arg_count: 0,
-        arg_count_known: false,
-        lang: Some(Lang::Sql),
-        receiver: None,
-        receiver_type: None,
-        receiver_chain: None,
-        receiver_file: None,
-        callable_field: false,
-        macro_arg: false,
-        member_call: false,
-        path_call: false,
     }
 }

@@ -410,3 +410,21 @@ fn test_snapshot_counts_a_variadic_parameter_as_one() {
         (Some(1), Some(3), Some(2), Some(1), Some(2))
     );
 }
+
+#[test]
+fn test_sql_function_called_through_a_python_rpc_stays_alive() {
+    use ripwire_rs::Lang::{Python, Sql};
+    let sql = "CREATE FUNCTION public.promote_template(p uuid) RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;\n\nCREATE FUNCTION public.unused_function(p uuid) RETURNS integer LANGUAGE sql AS $$ SELECT 2 $$;\n\nCREATE FUNCTION public.by_variable(p uuid) RETURNS integer LANGUAGE sql AS $$ SELECT 3 $$;\n";
+    let python = "def promote(client):\n    return client.rpc(\n        \"promote_template\",\n        {\"p\": 1},\n    ).execute()\n\n\ndef dynamic(client, name):\n    return client.rpc(name, {}).execute()\n\n\ndef main(client):\n    dynamic(client, \"by_variable\")\n    return promote(client)\n";
+    let files = [
+        ("db/functions.sql", Sql, sql),
+        ("app/repo.py", Python, python),
+    ];
+    assert_eq!(
+        dead_symbols(&files),
+        [
+            "db/functions.sql::by_variable",
+            "db/functions.sql::unused_function"
+        ]
+    );
+}
