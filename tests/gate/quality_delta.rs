@@ -977,3 +977,48 @@ fn a_sidecar_baseline_names_its_file_and_a_git_baseline_does_not() {
     let from_git = compute_quality_delta(&snap, &snap, "git-HEAD").to_xml_string();
     assert!(!from_git.contains(" sidecar=\""), "{from_git}");
 }
+
+#[test]
+fn test_an_unchanged_tree_has_no_dead_code_rows_against_itself() {
+    use ripwire_rs::gate::quality_delta::{WorkingTree, rebuild_baseline};
+    let registry =
+        ripwire_rs::LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
+    let interner = Interner::new();
+    let probe = "def classify(a):\n    return a - 1\n";
+    let real = "def classify(a):\n    return a * 2\n";
+    let user = "from src.real import classify\n\n\ndef main():\n    return classify(1)\n";
+    let other = "def untouched(a):\n    return a\n";
+    let files = [
+        ("src/probe.py", Lang::Python, probe),
+        ("src/real.py", Lang::Python, real),
+        ("src/user.py", Lang::Python, user),
+        ("src/other.py", Lang::Python, other),
+    ];
+    let slices: Vec<_> = files
+        .iter()
+        .map(|(p, l, s)| (*p, *l, s.as_bytes()))
+        .collect();
+    let ingest = ripwire_rs::ingest_in_memory_files(&slices, &registry, &interner);
+    let graph = Graph::build(&ingest, &interner);
+    let working = compute_snapshot(&ingest, &graph, &interner, "head");
+    assert!(working.dead_symbols.contains("src/probe.py::classify"));
+    let changed = ["src/other.py".to_string()];
+    let tree = WorkingTree {
+        ingest: &ingest,
+        interner: &interner,
+        snapshot: &working,
+        changed_files: &changed,
+    };
+    let baseline = rebuild_baseline(
+        &tree,
+        &[("src/other.py", Lang::Python, other.as_bytes())],
+        "base",
+    );
+    let rows: Vec<_> = compute_quality_delta(&working, &baseline, "git-ref")
+        .regressions
+        .into_iter()
+        .filter(|r| r.kind == "dead-code")
+        .map(|r| r.sym_name)
+        .collect();
+    assert_eq!(rows, Vec::<String>::new());
+}

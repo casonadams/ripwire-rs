@@ -175,9 +175,9 @@ pub struct WorkingTree<'a> {
 }
 
 /// The baseline: the working snapshot with each changed file replaced by its baseline version in
-/// `slices`. A symbol is dead at the baseline only when no reference there uses its name, in the
-/// baseline versions of the changed files or in the unchanged files, so removing a function's
-/// last caller in another file makes it newly dead.
+/// `slices`. A symbol is dead at the baseline only when it existed there and no reference in the baseline
+/// versions of the changed files uses its name, so removing a function's last caller in another file makes
+/// it newly dead.
 #[must_use]
 pub fn rebuild_baseline(
     tree: &WorkingTree<'_>,
@@ -211,20 +211,25 @@ pub fn rebuild_baseline(
         );
         merge_snapshot_entries(&mut snap, delta_snap);
     }
+    // A symbol dead in the working tree is dead at the baseline when it existed there and no reference in
+    // the baseline version of a changed file uses its name. References in unchanged files are the same on
+    // both sides, and the working snapshot already judged them.
     let reached: std::collections::HashSet<&str> = head_ingest
         .references
         .iter()
         .map(|r| head_interner.resolve(&r.callee_name))
-        .chain(
-            tree.ingest
-                .references
-                .iter()
-                .filter(|r| !changed_set.contains(tree.ingest.file_path(r.file_id, tree.interner)))
-                .map(|r| tree.interner.resolve(&r.callee_name)),
-        )
         .collect();
-    snap.dead_symbols
-        .retain(|key| !reached.contains(key.rsplit("::").next().unwrap_or(key)));
+    snap.dead_symbols = tree
+        .snapshot
+        .dead_symbols
+        .iter()
+        .filter(|key| {
+            let file = key.split("::").next().unwrap_or(key);
+            let existed = !changed_set.contains(file) || snap.ccx_by_sym.contains_key(*key);
+            existed && !reached.contains(key.rsplit("::").next().unwrap_or(key))
+        })
+        .cloned()
+        .collect();
     snap
 }
 
