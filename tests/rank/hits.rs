@@ -44,6 +44,7 @@ fn test_hits_two_node_chain() {
         unresolved: 0,
         external: 0,
         declined: 0,
+        bound_refs: Vec::new(),
     };
     let graph = Graph::from_resolution(2, resolution);
     let res = compute_hits(&graph, &HitsConfig::default());

@@ -32,6 +32,17 @@ pub struct ResolutionResult {
     pub unresolved: usize,
     pub external: usize,
     pub declined: usize,
+    /// Per reference, in input order: bound to a definition by evidence stronger than its name alone.
+    pub bound_refs: Vec<bool>,
+}
+
+/// True when evidence beyond the name alone pins the call to one definition other than the caller, so a
+/// same-named definition elsewhere is not what it reaches.
+fn is_bound_elsewhere(resolved: &ResolvedRef) -> bool {
+    !matches!(
+        resolved.prov,
+        EdgeProv::Split | EdgeProv::Template | EdgeProv::Name
+    ) && resolved.targets.iter().any(|&to| to != resolved.from)
 }
 
 /// Resolve all call references from an ingestion result into edge accumulators and ambiguity metrics.
@@ -65,10 +76,13 @@ pub fn resolve_reference_chunk_with_context<L: ResolutionLookup>(
         unresolved: 0,
         external: 0,
         declined: 0,
+        bound_refs: Vec::with_capacity(chunk.len()),
     };
     for r in chunk {
+        let mut bound = false;
         match lookup.classify_ref(r) {
             RefOutcome::Resolved(resolved) => {
+                bound = is_bound_elsewhere(&resolved);
                 record_resolved_ref(resolved, &mut res.edge_accumulators, &mut res.amb_out);
             }
             RefOutcome::Unresolved => res.unresolved += 1,
@@ -76,6 +90,7 @@ pub fn resolve_reference_chunk_with_context<L: ResolutionLookup>(
             RefOutcome::Declined | RefOutcome::Builtin => res.declined += 1,
             RefOutcome::Ignored => {}
         }
+        res.bound_refs.push(bound);
     }
     res
 }
@@ -95,6 +110,7 @@ pub fn merge_resolutions(mut a: ResolutionResult, b: ResolutionResult) -> Resolu
     a.unresolved += b.unresolved;
     a.external += b.external;
     a.declined += b.declined;
+    a.bound_refs.extend(b.bound_refs);
     a
 }
 

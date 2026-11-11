@@ -228,7 +228,7 @@ pub(super) fn drop_referenced_dead_rows(
             (lang, found)
         })
         .collect();
-    let scope = crate::gate::baseline::NameScope::of(state.ingest);
+    let scope = crate::gate::baseline::NameScope::of(state.ingest, state.graph);
     let referenced = |r: &QualityRegression| -> bool {
         let Some(&(lang, file)) = file_of.get(r.file_path.as_str()) else {
             return false;
@@ -243,7 +243,10 @@ pub(super) fn drop_referenced_dead_rows(
         let Some(spur) = state.interner.get(name) else {
             return true;
         };
-        users.iter().any(|&user| scope.reaches(user, file, spur))
+        let method = r.sym_name.matches("::").count() > 1;
+        users
+            .iter()
+            .any(|&user| scope.reaches(user, file, spur, method))
     };
     regressions.retain(|r| r.kind != "dead-code" || !referenced(r));
 }

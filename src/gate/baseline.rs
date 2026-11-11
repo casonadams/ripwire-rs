@@ -40,10 +40,12 @@ pub(crate) struct NameScope {
     defined: Vec<HashSet<lasso::Spur>>,
     bound: Vec<HashSet<lasso::Spur>>,
     scopes: crate::resolve::LocalScopes,
+    /// `(file, name)` pairs whose every reference in the file is bound to another definition.
+    excused: HashSet<(u32, lasso::Spur)>,
 }
 
 impl NameScope {
-    pub(crate) fn of(ingest: &IngestResult) -> Self {
+    pub(crate) fn of(ingest: &IngestResult, graph: &Graph) -> Self {
         let mut defined = vec![HashSet::new(); ingest.files.len()];
         for sym in &ingest.symbols {
             if let Some(names) = defined.get_mut(sym.file_id as usize) {
@@ -65,6 +67,7 @@ impl NameScope {
             defined,
             bound,
             scopes,
+            excused: excused_names(ingest, graph),
         }
     }
 
@@ -83,13 +86,15 @@ impl NameScope {
                 }))
     }
 
-    /// As [`Self::reaches_at`] for a use whose position is unknown: any binding in the file shadows.
-    pub(crate) fn reaches(&self, from: u32, target: u32, name: lasso::Spur) -> bool {
+    /// As [`Self::reaches_at`] for a use whose position is unknown: any binding in the file shadows, and
+    /// so does a file whose every reference to the name is bound elsewhere, unless `method`.
+    pub(crate) fn reaches(&self, from: u32, target: u32, name: lasso::Spur, method: bool) -> bool {
         from == target
-            || !(self
-                .defined
-                .get(from as usize)
-                .is_some_and(|names| names.contains(&name))
+            || !((!method && self.excused.contains(&(from, name)))
+                || self
+                    .defined
+                    .get(from as usize)
+                    .is_some_and(|names| names.contains(&name))
                 || self
                     .bound
                     .get(from as usize)
@@ -105,6 +110,9 @@ struct Reachable {
     referenced: HashSet<lasso::Spur>,
     /// Per bare name in a language where a local definition shadows it, the files that mention it.
     bare_in: BareMentions,
+    /// Names a reference bound to one definition by import or type evidence. That reaches a free
+    /// function only through its target, but a method also through any type that implements it.
+    bound: HashSet<lasso::Spur>,
     scope: NameScope,
     /// Supertypes per type: the traits it implements and the classes it extends.
     supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>>,
@@ -117,14 +125,15 @@ struct Reachable {
 }
 
 impl Reachable {
-    fn of(ingest: &IngestResult) -> Self {
+    fn of(ingest: &IngestResult, graph: &Graph) -> Self {
         let mut supertypes = extends_supertypes(ingest);
         let (trait_impls, implemented_in) = implementation_records(ingest, &mut supertypes);
-        let (referenced, bare_in) = split_references(ingest);
+        let (referenced, bare_in, bound) = split_references(ingest, graph);
         Self {
             referenced,
             bare_in,
-            scope: NameScope::of(ingest),
+            bound,
+            scope: NameScope::of(ingest, graph),
             supertypes,
             members: members_by_scope(ingest),
             trait_impls,
@@ -136,6 +145,7 @@ impl Reachable {
     /// own file or from a file that does not define the name itself.
     fn mentions(&self, sym: &crate::domain::Symbol) -> bool {
         self.referenced.contains(&sym.name)
+            || (sym.scope.is_some() && self.bound.contains(&sym.name))
             || self.bare_in.get(&sym.name).is_some_and(|mentions| {
                 mentions
                     .iter()
@@ -216,19 +226,42 @@ fn members_by_scope(ingest: &IngestResult) -> HashMap<lasso::Spur, HashSet<lasso
     members
 }
 
+/// The `(file, name)` pairs where the file has references to the name and every one of them is bound to a
+/// definition other than its caller by evidence beyond the name.
+fn excused_names(ingest: &IngestResult, graph: &Graph) -> HashSet<(u32, lasso::Spur)> {
+    let mut bound = HashSet::new();
+    let mut unbound = HashSet::new();
+    for (i, r) in ingest.references.iter().enumerate() {
+        let key = (r.file_id, r.callee_name);
+        if graph.bound_refs.get(i).copied().unwrap_or(false) {
+            bound.insert(key);
+        } else {
+            unbound.insert(key);
+        }
+    }
+    bound.retain(|key| !unbound.contains(key));
+    bound
+}
+
 /// Per name, the `(file, byte)` positions of its bare mentions.
 type BareMentions = HashMap<lasso::Spur, Vec<(u32, u32)>>;
 
 /// Splits reference names into those no local definition can shadow and, per shadowable bare name,
 /// the `(file, byte)` positions that mention it.
-fn split_references(ingest: &IngestResult) -> (HashSet<lasso::Spur>, BareMentions) {
+fn split_references(
+    ingest: &IngestResult,
+    graph: &Graph,
+) -> (HashSet<lasso::Spur>, BareMentions, HashSet<lasso::Spur>) {
     let mut referenced = HashSet::new();
     let mut bare_in = BareMentions::new();
-    for r in &ingest.references {
-        let scoped = r.lang.semantics().local_definition_shadows_name()
-            && r.qualifier.is_none()
-            && !r.member_call
-            && !r.macro_arg;
+    let mut bound = HashSet::new();
+    for (i, r) in ingest.references.iter().enumerate() {
+        let trusted = r.lang.semantics().local_definition_shadows_name();
+        if trusted && graph.bound_refs.get(i).copied().unwrap_or(false) {
+            bound.insert(r.callee_name);
+            continue;
+        }
+        let scoped = trusted && r.qualifier.is_none() && !r.member_call && !r.macro_arg;
         if scoped {
             bare_in
                 .entry(r.callee_name)
@@ -238,7 +271,7 @@ fn split_references(ingest: &IngestResult) -> (HashSet<lasso::Spur>, BareMention
             referenced.insert(r.callee_name);
         }
     }
-    (referenced, bare_in)
+    (referenced, bare_in, bound)
 }
 
 /// Constructors are reached through their type: `constructor`, `__init__`, `__new__`, or a method
@@ -294,7 +327,7 @@ pub fn compute_snapshot(
         ..Default::default()
     };
 
-    let reachable = Reachable::of(ingest);
+    let reachable = Reachable::of(ingest, graph);
     for sym in &ingest.symbols {
         if sym.kind == SymKind::Section || sym.kind == SymKind::ModuleScope {
             continue;

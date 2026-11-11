@@ -138,3 +138,36 @@ fn test_python_local_binding_of_the_same_name_does_not_keep_a_symbol_alive() {
         ["src/probe.py::p1", "src/probe.py::p3"]
     );
 }
+
+#[test]
+fn test_python_calls_bound_to_another_definition_do_not_keep_a_symbol_alive() {
+    use ripwire_rs::Lang::Python;
+    let probe = "def classify(a):\n    return a - 1\n\n\ndef grade(a):\n    return a - 2\n";
+    let real = "def classify(a):\n    return a * 2\n\n\ndef grade(a):\n    return a * 3\n";
+    let user = "from src.real import classify\nimport src.real as real\n\n\ndef main():\n    return classify(1) + real.classify(2)\n";
+    let kept = "from src.probe import grade\n\n\ndef main():\n    return grade(1)\n";
+    let files = [
+        ("src/probe.py", Python, probe),
+        ("src/real.py", Python, real),
+        ("src/user.py", Python, user),
+        ("src/kept.py", Python, kept),
+    ];
+    assert_eq!(
+        dead_symbols(&files),
+        ["src/probe.py::classify", "src/real.py::grade"]
+    );
+}
+
+#[test]
+fn test_python_method_reached_through_a_typed_call_to_its_protocol_stays_alive() {
+    use ripwire_rs::Lang::Python;
+    let steps = "from typing import Protocol\n\n\nclass Steps(Protocol):\n    def fetch(self) -> int: ...\n";
+    let impl_ = "class Impl:\n    def fetch(self) -> int:\n        return 1\n";
+    let user = "from src.steps import Steps\n\n\ndef run(steps: Steps) -> int:\n    return steps.fetch()\n\n\ndef main():\n    return run(None)\n";
+    let files = [
+        ("src/steps.py", Python, steps),
+        ("src/impl.py", Python, impl_),
+        ("src/user.py", Python, user),
+    ];
+    assert!(dead_symbols(&files).is_empty());
+}

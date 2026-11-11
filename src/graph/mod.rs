@@ -50,6 +50,10 @@ pub struct Graph {
     pub unindexed: usize,
     #[serde(default)]
     pub prior_weights: Vec<f64>,
+    /// Per reference of the ingest this graph was built from: bound to one definition by evidence beyond
+    /// its name (see `ResolvedRef::is_bound_elsewhere`).
+    #[serde(default)]
+    pub bound_refs: Vec<bool>,
 }
 
 impl Graph {
@@ -247,6 +251,7 @@ impl Graph {
             declined: resolution.declined,
             unindexed: 0,
             prior_weights: Vec::new(),
+            bound_refs: resolution.bound_refs,
         }
     }
 }

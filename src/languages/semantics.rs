@@ -337,8 +337,9 @@ pub trait LanguageSemantics: Sync {
         false
     }
 
-    /// True when a bare name written in a file that defines that name itself means that definition,
-    /// so a same-named definition in another file is not what it reaches.
+    /// True when name resolution is trusted to exclude same-named definitions: a bare name written in a
+    /// file that defines or binds it means that definition, and a reference bound by import or type
+    /// evidence reaches only its target.
     fn local_definition_shadows_name(&self) -> bool {
         false
     }
