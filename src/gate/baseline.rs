@@ -127,7 +127,11 @@ struct Reachable {
     bound: HashSet<(crate::domain::Lang, lasso::Spur)>,
     scope: NameScope,
     /// Files some other file loads with a dynamic `import()`: whatever they export is reached.
-    dynamic: HashSet<u32>,
+    dynamic: DynamicReach,
+    /// The name each file exports as its default.
+    defaults: HashSet<(u32, lasso::Spur)>,
+    /// The interned name `default`.
+    default_name: lasso::Spur,
     /// Supertypes per type: the traits it implements and the classes it extends.
     supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>>,
     /// Member names per indexed type, to tell which methods a supertype declares.
@@ -150,6 +154,12 @@ impl Reachable {
             bound: refs.bound,
             scope: NameScope::of(ingest, graph, interner),
             dynamic: dynamically_imported_files(ingest, interner),
+            defaults: ingest
+                .default_exports
+                .iter()
+                .map(|export| (export.file_id, export.name))
+                .collect(),
+            default_name: interner.intern("default"),
             supertypes,
             members: members_by_scope(ingest),
             trait_impls,
@@ -173,6 +183,20 @@ impl Reachable {
                     .iter()
                     .any(|&(file, byte)| self.scope.reaches_at(file, sym.file_id, sym.name, byte))
             })
+    }
+
+    /// True when a dynamic `import()` of the symbol's file uses it: by name, as the default export, or because
+    /// the module is used opaquely.
+    fn loaded_dynamically(&self, sym: &crate::domain::Symbol) -> bool {
+        match self.dynamic.get(&sym.file_id) {
+            None => false,
+            Some(None) => true,
+            Some(Some(names)) => {
+                names.contains(&sym.name)
+                    || (names.contains(&self.default_name)
+                        && self.defaults.contains(&(sym.file_id, sym.name)))
+            }
+        }
     }
 
     /// A supertype reaches `name` when it lies outside the tree (its members are unknown) or
@@ -309,27 +333,38 @@ fn split_references(ingest: &IngestResult, graph: &Graph) -> SplitReferences {
     split
 }
 
-/// The indexed files that a dynamic `import("path")` in another file resolves to.
-fn dynamically_imported_files(ingest: &IngestResult, interner: &Interner) -> HashSet<u32> {
+/// What a dynamic `import("path")` reaches in each indexed file it resolves to: the names it goes on to use,
+/// or `None` for every export when any importer uses the module opaquely.
+type DynamicReach = HashMap<u32, Option<HashSet<lasso::Spur>>>;
+
+fn dynamically_imported_files(ingest: &IngestResult, interner: &Interner) -> DynamicReach {
     let file_index: HashMap<&str, u32> = ingest
         .files
         .iter()
         .map(|f| (interner.resolve(&f.path), f.id))
         .collect();
-    ingest
-        .dynamic_imports
-        .iter()
-        .filter_map(|import| {
-            let importer = ingest.files.get(import.file_id as usize)?;
-            crate::languages::resolve_import(
-                importer.lang,
-                interner.resolve(&importer.path),
-                interner.resolve(&import.target),
-                &file_index,
-                &ingest.import_aliases,
-            )
-        })
-        .collect()
+    let mut reach = DynamicReach::new();
+    for import in &ingest.dynamic_imports {
+        let Some(importer) = ingest.files.get(import.file_id as usize) else {
+            continue;
+        };
+        let Some(file) = crate::languages::resolve_import(
+            importer.lang,
+            interner.resolve(&importer.path),
+            interner.resolve(&import.target),
+            &file_index,
+            &ingest.import_aliases,
+        ) else {
+            continue;
+        };
+        let entry = reach.entry(file).or_insert_with(|| Some(HashSet::new()));
+        if import.names.is_empty() {
+            *entry = None;
+        } else if let Some(names) = entry {
+            names.extend(import.names.iter().copied());
+        }
+    }
+    reach
 }
 
 /// Constructors are reached through their type: `constructor`, `__init__`, `__new__`, or a method
@@ -362,7 +397,7 @@ fn is_unreferenced_callable(
         && sym.sig_end_byte < sym.end_byte
         && graph.in_degree(sym.id) == 0
         && !reachable.mentions(sym)
-        && !(sym.scope.is_none() && reachable.dynamic.contains(&sym.file_id))
+        && !(sym.scope.is_none() && reachable.loaded_dynamically(sym))
         && !method_reached
         && !sym.registered
         && !is_constructor(name, scope)

@@ -272,9 +272,18 @@ pub trait LanguageSemantics: Sync {
         Vec::new()
     }
 
-    /// Module paths a file loads with a dynamic `import("path")`, whose exports the importer reaches without
-    /// naming them.
-    fn dynamic_imports(&self, _root: tree_sitter::Node<'_>, _source: &[u8]) -> Vec<String> {
+    /// Module paths a file loads with a dynamic `import("path")`, each with the export names the importer then
+    /// uses; no names means it is used opaquely and every export is reached.
+    fn dynamic_imports(
+        &self,
+        _root: tree_sitter::Node<'_>,
+        _source: &[u8],
+    ) -> Vec<(String, Vec<String>)> {
+        Vec::new()
+    }
+
+    /// The names a file exports as its default export.
+    fn default_export_names(&self, _root: tree_sitter::Node<'_>, _source: &[u8]) -> Vec<String> {
         Vec::new()
     }
 

@@ -307,19 +307,6 @@ fn test_python_call_by_name_keeps_a_symbol_of_another_language_alive() {
 }
 
 #[test]
-fn test_typescript_exports_of_a_dynamically_imported_module_stay_alive() {
-    use ripwire_rs::Lang::TypeScript;
-    let panel = "export default function Panel() {\n  return null;\n}\n\nexport function helper() {\n  return 1;\n}\n";
-    let user =
-        "import { lazy } from \"react\";\n\nexport const Lazy = lazy(() => import(\"./panel\"));\n";
-    let files = [
-        ("app/src/panel.tsx", TypeScript, panel),
-        ("app/src/user.tsx", TypeScript, user),
-    ];
-    assert_eq!(dead_symbols(&files), Vec::<String>::new());
-}
-
-#[test]
 fn test_typescript_block_scoped_binding_shadows_only_its_block() {
     use ripwire_rs::Lang::TypeScript;
     let decoy = "export function p1(n: number) {\n  return n;\n}\n";
@@ -329,4 +316,45 @@ fn test_typescript_block_scoped_binding_shadows_only_its_block() {
         ("app/src/user.ts", TypeScript, user),
     ];
     assert_eq!(dead_symbols(&files), Vec::<String>::new());
+}
+
+#[test]
+fn test_typescript_dynamic_import_reaches_only_the_names_it_uses() {
+    use ripwire_rs::Lang::TypeScript;
+    let panel = "export default function Panel() {\n  return null;\n}\n\nexport function Foo() {\n  return 1;\n}\n\nexport function Bar() {\n  return 2;\n}\n";
+    type Case<'a> = (&'a str, &'a str, &'a [&'a str]);
+    let cases: [Case<'_>; 5] = [
+        (
+            "lazy loads the default export",
+            "import { lazy } from \"react\";\n\nexport const Lazy = lazy(() => import(\"./panel\"));\n",
+            &["app/src/panel.tsx::Bar", "app/src/panel.tsx::Foo"],
+        ),
+        (
+            "then picks one export",
+            "export const picked = import(\"./panel\").then((m) => ({ default: m.Foo }));\n",
+            &["app/src/panel.tsx::Bar", "app/src/panel.tsx::Panel"],
+        ),
+        (
+            "then destructures its parameter",
+            "export const picked = import(\"./panel\").then(({ Bar }) => Bar);\n",
+            &["app/src/panel.tsx::Foo", "app/src/panel.tsx::Panel"],
+        ),
+        (
+            "await destructures the module",
+            "export const { Bar } = await import(\"./panel\");\n",
+            &["app/src/panel.tsx::Foo", "app/src/panel.tsx::Panel"],
+        ),
+        (
+            "an opaque module reaches everything",
+            "export const whole = await import(\"./panel\");\n",
+            &[],
+        ),
+    ];
+    for (name, user, dead) in cases {
+        let files = [
+            ("app/src/panel.tsx", TypeScript, panel),
+            ("app/src/user.tsx", TypeScript, user),
+        ];
+        assert_eq!(dead_symbols(&files), dead, "{name}");
+    }
 }

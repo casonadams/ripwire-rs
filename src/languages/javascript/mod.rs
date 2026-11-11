@@ -23,7 +23,7 @@ pub(super) use self::defs::{
 };
 use self::defs::{is_cjs_export_target, is_member_assigned_function_name, is_prototype_member_target};
 use self::imports::js_import_refs;
-pub(super) use self::imports::dynamic_import_paths;
+pub(super) use self::imports::{default_export_names, dynamic_imports};
 pub(super) use self::imports::resolve_web_import_target;
 pub(super) use self::locals::local_binding_names;
 pub(super) use self::next::is_next_convention_file;
@@ -97,8 +97,16 @@ impl LanguageSemantics for JavaScriptLanguage {
         true
     }
 
-    fn dynamic_imports(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
-        dynamic_import_paths(root, source)
+    fn dynamic_imports(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+    ) -> Vec<(String, Vec<String>)> {
+        dynamic_imports(root, source)
+    }
+
+    fn default_export_names(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
+        default_export_names(root, source)
     }
 
     fn local_bindings(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, u32, u32)> {

@@ -271,6 +271,7 @@ pub struct FileIndex {
     pub local_bindings: Vec<crate::domain::LocalBinding>,
     pub submodule_imports: Vec<crate::domain::SubmoduleImport>,
     pub dynamic_imports: Vec<crate::domain::DynamicImport>,
+    pub default_exports: Vec<crate::domain::DefaultExport>,
 }
 
 pub fn index_file(
@@ -294,33 +295,10 @@ pub fn index_file(
     );
     let foreign_bindings = intern_foreign_bindings(parsed.foreign_exports, file_id, interner);
     let implementations = intern_implementations(parsed.implementations, file_id, interner);
-    let local_bindings = parsed
-        .local_bindings
-        .iter()
-        .map(|(name, start, end)| crate::domain::LocalBinding {
-            file_id,
-            name: interner.intern(name),
-            scope_start: *start,
-            scope_end: *end,
-        })
-        .collect();
-    let submodule_imports = parsed
-        .submodule_imports
-        .iter()
-        .map(|(name, target)| crate::domain::SubmoduleImport {
-            file_id,
-            name: interner.intern(name),
-            target: interner.intern(target),
-        })
-        .collect();
-    let dynamic_imports = parsed
-        .dynamic_imports
-        .iter()
-        .map(|target| crate::domain::DynamicImport {
-            file_id,
-            target: interner.intern(target),
-        })
-        .collect();
+    let local_bindings = intern_local_bindings(&parsed.local_bindings, file_id, interner);
+    let submodule_imports = intern_submodule_imports(&parsed.submodule_imports, file_id, interner);
+    let dynamic_imports = intern_dynamic_imports(&parsed.dynamic_imports, file_id, interner);
+    let default_exports = intern_default_exports(&parsed.default_exports, file_id, interner);
     FileIndex {
         symbols,
         references,
@@ -330,7 +308,68 @@ pub fn index_file(
         local_bindings,
         submodule_imports,
         dynamic_imports,
+        default_exports,
     }
+}
+
+fn intern_local_bindings(
+    bindings: &[(String, u32, u32)],
+    file_id: u32,
+    interner: &Interner,
+) -> Vec<crate::domain::LocalBinding> {
+    bindings
+        .iter()
+        .map(|(name, start, end)| crate::domain::LocalBinding {
+            file_id,
+            name: interner.intern(name),
+            scope_start: *start,
+            scope_end: *end,
+        })
+        .collect()
+}
+
+fn intern_submodule_imports(
+    imports: &[(String, String)],
+    file_id: u32,
+    interner: &Interner,
+) -> Vec<crate::domain::SubmoduleImport> {
+    imports
+        .iter()
+        .map(|(name, target)| crate::domain::SubmoduleImport {
+            file_id,
+            name: interner.intern(name),
+            target: interner.intern(target),
+        })
+        .collect()
+}
+
+fn intern_dynamic_imports(
+    imports: &[(String, Vec<String>)],
+    file_id: u32,
+    interner: &Interner,
+) -> Vec<crate::domain::DynamicImport> {
+    imports
+        .iter()
+        .map(|(target, names)| crate::domain::DynamicImport {
+            file_id,
+            target: interner.intern(target),
+            names: names.iter().map(|name| interner.intern(name)).collect(),
+        })
+        .collect()
+}
+
+fn intern_default_exports(
+    names: &[String],
+    file_id: u32,
+    interner: &Interner,
+) -> Vec<crate::domain::DefaultExport> {
+    names
+        .iter()
+        .map(|name| crate::domain::DefaultExport {
+            file_id,
+            name: interner.intern(name),
+        })
+        .collect()
 }
 
 fn intern_foreign_bindings(
@@ -452,6 +491,7 @@ fn append_file(ingest: &mut IngestResult, file_info: FileInfo, mut index: FileIn
         .submodule_imports
         .append(&mut index.submodule_imports);
     ingest.dynamic_imports.append(&mut index.dynamic_imports);
+    ingest.default_exports.append(&mut index.default_exports);
 }
 
 pub fn build_file_symbols(

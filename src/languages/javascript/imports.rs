@@ -53,10 +53,14 @@ pub(crate) fn resolve_web_import_target(
     None
 }
 
-/// The module paths of `import("path")` calls: a dynamic import names no binding, so the importer reaches
-/// whatever the module exports (`lazy(() => import("./Panel"))` loads its default export).
-pub(in crate::languages) fn dynamic_import_paths(root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
-    let mut paths = Vec::new();
+/// The `import("path")` calls of a file, each with the export names the importer goes on to use; no names
+/// means the module is used opaquely, so everything it exports is reached. `lazy(() => import("./Panel"))`
+/// loads `default`, `.then((m) => m.Foo)` and `const { Foo } = await import(..)` load `Foo`.
+pub(in crate::languages) fn dynamic_imports(
+    root: tree_sitter::Node<'_>,
+    source: &[u8],
+) -> Vec<(String, Vec<String>)> {
+    let mut found = Vec::new();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         if node.kind() == "call_expression"
@@ -69,14 +73,144 @@ pub(in crate::languages) fn dynamic_import_paths(root: tree_sitter::Node<'_>, so
                 .filter(|module| module.kind() == "string")
             && let Some(text) = node_text(module, source)
         {
-            paths.push(strip_import_quotes(&text).to_string());
+            let mut names = used_export_names(node, source).unwrap_or_default();
+            names.sort_unstable();
+            names.dedup();
+            found.push((strip_import_quotes(&text).to_string(), names));
         }
         let mut cursor = node.walk();
         stack.extend(node.children(&mut cursor));
     }
-    paths.sort_unstable();
-    paths.dedup();
-    paths
+    found.sort_unstable();
+    found.dedup();
+    found
+}
+
+/// The export names an `import()` call's result is used for, or `None` when it is used opaquely.
+fn used_export_names(call: tree_sitter::Node<'_>, source: &[u8]) -> Option<Vec<String>> {
+    let mut value = call;
+    let mut parent = call.parent()?;
+    if parent.kind() == "await_expression" {
+        value = parent;
+        parent = parent.parent()?;
+    }
+    match parent.kind() {
+        "arrow_function" => {
+            let outer = parent.parent()?.parent()?;
+            let function = node_text(outer.child_by_field_name("function")?, source)?;
+            (outer.kind() == "call_expression"
+                && matches!(function.as_str(), "lazy" | "React.lazy" | "dynamic" | "loadable"))
+            .then(|| vec!["default".to_string()])
+        }
+        "variable_declarator" if parent.child_by_field_name("value") == Some(value) => {
+            pattern_keys(parent.child_by_field_name("name")?, source)
+        }
+        "member_expression" if parent.child_by_field_name("object") == Some(value) => {
+            let property = node_text(parent.child_by_field_name("property")?, source)?;
+            let then = parent.parent()?;
+            if property != "then" || then.kind() != "call_expression" {
+                return None;
+            }
+            callback_names(then.child_by_field_name("arguments")?.named_child(0)?, source)
+        }
+        _ => None,
+    }
+}
+
+/// The names a `.then` callback takes from the module: its destructured keys, or each `m.Name` it reads.
+fn callback_names(callback: tree_sitter::Node<'_>, source: &[u8]) -> Option<Vec<String>> {
+    if !matches!(callback.kind(), "arrow_function" | "function_expression" | "function") {
+        return None;
+    }
+    let parameter = callback
+        .child_by_field_name("parameter")
+        .or_else(|| callback.child_by_field_name("parameters")?.named_child(0))?;
+    let parameter = if parameter.kind() == "required_parameter" {
+        parameter.child_by_field_name("pattern")?
+    } else {
+        parameter
+    };
+    if parameter.kind() != "identifier" {
+        return pattern_keys(parameter, source);
+    }
+    let module = node_text(parameter, source)?;
+    let mut names = Vec::new();
+    let mut stack = vec![callback.child_by_field_name("body")?];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "identifier" && node_text(node, source).as_deref() == Some(module.as_str())
+        {
+            let member = node.parent().filter(|parent| {
+                parent.kind() == "member_expression"
+                    && parent.child_by_field_name("object") == Some(node)
+            })?;
+            names.push(node_text(member.child_by_field_name("property")?, source)?);
+        }
+        let mut cursor = node.walk();
+        stack.extend(node.children(&mut cursor));
+    }
+    Some(names)
+}
+
+/// The keys an object pattern takes (`{ Foo, Bar: baz }` takes `Foo` and `Bar`); `None` for a rest element or
+/// a pattern that is not an object.
+fn pattern_keys(pattern: tree_sitter::Node<'_>, source: &[u8]) -> Option<Vec<String>> {
+    if pattern.kind() != "object_pattern" {
+        return None;
+    }
+    let mut names = Vec::new();
+    for child in children(pattern).filter(|child| child.is_named()) {
+        match child.kind() {
+            "shorthand_property_identifier_pattern" | "object_assignment_pattern" => {
+                let key = if child.kind() == "object_assignment_pattern" {
+                    child.child_by_field_name("left")?
+                } else {
+                    child
+                };
+                names.push(node_text(key, source)?);
+            }
+            "pair_pattern" => names.push(node_text(child.child_by_field_name("key")?, source)?),
+            _ => return None,
+        }
+    }
+    Some(names)
+}
+
+/// The names a file exports as its default: `export default function Panel`, `export default Panel` and
+/// `export { Panel as default }`.
+pub(in crate::languages) fn default_export_names(
+    root: tree_sitter::Node<'_>,
+    source: &[u8],
+) -> Vec<String> {
+    let mut names = Vec::new();
+    for statement in children(root).filter(|node| node.kind() == "export_statement") {
+        let is_default = children(statement).any(|child| child.kind() == "default");
+        if is_default {
+            let declared = statement
+                .child_by_field_name("declaration")
+                .and_then(|declaration| declaration.child_by_field_name("name"))
+                .or_else(|| {
+                    statement
+                        .child_by_field_name("value")
+                        .filter(|value| value.kind() == "identifier")
+                });
+            names.extend(declared.and_then(|name| node_text(name, source)));
+        }
+        for clause in children(statement).filter(|node| node.kind() == "export_clause") {
+            for spec in children(clause).filter(|node| node.kind() == "export_specifier") {
+                let alias = spec
+                    .child_by_field_name("alias")
+                    .and_then(|alias| node_text(alias, source));
+                if alias.as_deref() == Some("default")
+                    && let Some(name) = spec.child_by_field_name("name")
+                {
+                    names.extend(node_text(name, source));
+                }
+            }
+        }
+    }
+    names.sort_unstable();
+    names.dedup();
+    names
 }
 
 /// Import references for `import` statements and CommonJS `require` calls, each named with the local names it

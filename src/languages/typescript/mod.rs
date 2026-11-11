@@ -2,7 +2,7 @@ use super::javascript::{
     JS_KINDS, JS_STD_MEMBERS, JS_STD_QUALIFIERS, TS_CONFIG_MANIFESTS, is_assertion_script,
     is_container_const, is_jsx_intrinsic_tag_call, is_std_member_call_value, js_definition_span_start,
     js_test_partner_subject, js_var_binding, parse_tsconfig_paths, resolve_web_import_target,
-    is_write_target_root, javascript_read_position, is_next_convention_file, local_binding_names, dynamic_import_paths,
+    is_write_target_root, javascript_read_position, is_next_convention_file, local_binding_names, dynamic_imports, default_export_names,
 };
 use super::{ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds};
 use crate::domain::Lang;
@@ -120,8 +120,16 @@ impl LanguageSemantics for TypeScriptLanguage {
         true
     }
 
-    fn dynamic_imports(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
-        dynamic_import_paths(root, source)
+    fn dynamic_imports(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+    ) -> Vec<(String, Vec<String>)> {
+        dynamic_imports(root, source)
+    }
+
+    fn default_export_names(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
+        default_export_names(root, source)
     }
 
     fn local_bindings(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, u32, u32)> {

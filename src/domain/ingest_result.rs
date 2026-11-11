@@ -42,11 +42,20 @@ pub struct CallableBinding {
     pub target_qualifier: Option<Spur>,
 }
 
-/// A module path file `file_id` loads with a dynamic `import("path")`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// A module path file `file_id` loads with a dynamic `import("path")`, and the export names it goes on to use;
+/// none means the module is used opaquely.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DynamicImport {
     pub file_id: u32,
     pub target: Spur,
+    pub names: Vec<Spur>,
+}
+
+/// The name file `file_id` exports as its default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefaultExport {
+    pub file_id: u32,
+    pub name: Spur,
 }
 
 /// A name file `file_id` binds by `from pkg import name`, which is the module `target` when one exists.
@@ -117,6 +126,8 @@ pub struct IngestResult {
     pub submodule_imports: Vec<SubmoduleImport>,
     #[serde(default)]
     pub dynamic_imports: Vec<DynamicImport>,
+    #[serde(default)]
+    pub default_exports: Vec<DefaultExport>,
     /// Crawled files whose read failed (permission, or removed mid-run). They are indexed as empty
     /// files, so every answer over them is a floor.
     #[serde(default)]
