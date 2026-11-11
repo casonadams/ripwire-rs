@@ -24,6 +24,13 @@ pub struct ParamArity {
 /// A `max` at or above this bound is open-ended: the definition takes a variadic parameter.
 pub const VARIADIC_PARAMS: u16 = 64;
 
+/// The parameters a definition declares, given its `max`: each variadic counts as one, not as the open-ended
+/// `VARIADIC_PARAMS` slots a call may bind.
+#[must_use]
+pub const fn declared_params(max: u16) -> u16 {
+    max / VARIADIC_PARAMS + max % VARIADIC_PARAMS
+}
+
 impl ParamArity {
     #[must_use]
     pub const fn fixed(n: u16) -> Self {

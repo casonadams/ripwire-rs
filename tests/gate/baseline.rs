@@ -382,3 +382,31 @@ fn test_sql_function_called_through_a_supabase_rpc_stays_alive() {
     ];
     assert_eq!(dead_symbols(&files), ["db/functions.sql::unused_function"]);
 }
+
+#[test]
+fn test_snapshot_counts_a_variadic_parameter_as_one() {
+    use ripwire_rs::Lang::{Python, TypeScript};
+    use ripwire_rs::{Graph, Interner, LanguageRegistry, ingest_in_memory_files};
+    let registry = LanguageRegistry::new().unwrap_or_else(|e| panic!("registry: {e:?}"));
+    let interner = Interner::new();
+    let py = "def rest(*args):\n    return args\n\n\ndef mixed(a, *args, **kwargs):\n    return a\n\n\ndef plain(a, b):\n    return a\n";
+    let ts = "export function join(...inputs: string[]) {\n  return inputs;\n}\n\nexport function both(a: number, ...rest: number[]) {\n  return a;\n}\n";
+    let files = [
+        ("src/a.py", Python, py.as_bytes()),
+        ("src/b.ts", TypeScript, ts.as_bytes()),
+    ];
+    let ingest = ingest_in_memory_files(&files, &registry, &interner);
+    let graph = Graph::build(&ingest, &interner);
+    let snap = ripwire_rs::gate::baseline::compute_snapshot(&ingest, &graph, &interner, "head");
+    let params = |key: &str| snap.params_by_sym.get(key).copied();
+    assert_eq!(
+        (
+            params("src/a.py::rest"),
+            params("src/a.py::mixed"),
+            params("src/a.py::plain"),
+            params("src/b.ts::join"),
+            params("src/b.ts::both"),
+        ),
+        (Some(1), Some(3), Some(2), Some(1), Some(2))
+    );
+}

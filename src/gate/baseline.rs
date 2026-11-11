@@ -457,8 +457,8 @@ pub fn compute_snapshot(
 
         snap.params_by_sym
             .entry(key.clone())
-            .and_modify(|v| *v = (*v).max(sym.params))
-            .or_insert(sym.params);
+            .and_modify(|v| *v = (*v).max(crate::gate::contract::declared_params(sym.params)))
+            .or_insert(crate::gate::contract::declared_params(sym.params));
 
         if is_unreferenced_callable(sym, path, graph, interner, &reachable) {
             snap.dead_symbols.insert(key.clone());
