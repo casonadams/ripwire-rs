@@ -24,6 +24,7 @@ pub(super) use self::defs::{
 };
 use self::defs::{is_cjs_export_target, is_member_assigned_function_name, is_prototype_member_target};
 use self::imports::js_import_refs;
+pub(super) use self::imports::js_named_import_refs;
 pub(super) use self::imports::{default_export_names, dynamic_imports};
 pub(super) use self::imports::resolve_web_import_target;
 pub(super) use self::locals::local_binding_names;

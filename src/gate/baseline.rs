@@ -45,6 +45,8 @@ pub(crate) struct NameScope {
     imports: Vec<HashSet<u32>>,
     /// Per name, the files that define it at module level.
     definers: HashMap<lasso::Spur, Vec<u32>>,
+    /// The names each file imports from a package outside the index.
+    outside: crate::resolve::ReexportTable,
 }
 
 impl NameScope {
@@ -72,6 +74,7 @@ impl NameScope {
             excused: excused_names(ingest, graph),
             imports: crate::resolve::index_file_imports(ingest, interner),
             definers,
+            outside: crate::resolve::index_reexports(ingest, interner),
         }
     }
 
@@ -94,6 +97,7 @@ impl NameScope {
     pub(crate) fn reaches_at(&self, from: u32, target: u32, name: lasso::Spur, byte: u32) -> bool {
         from == target
             || !(self.imports_other_definer(from, target, name)
+                || self.outside.imports_outside(from, name)
                 || self
                     .defined
                     .get(from as usize)

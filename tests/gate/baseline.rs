@@ -428,3 +428,25 @@ fn test_sql_function_called_through_a_python_rpc_stays_alive() {
         ]
     );
 }
+
+#[test]
+fn test_typescript_name_imported_from_an_external_package_does_not_keep_a_symbol_alive() {
+    use ripwire_rs::Lang::TypeScript;
+    let probe = "export function cn(...inputs: string[]) {\n  return inputs.join(\" \");\n}\n";
+    let external = "import { cn } from \"@acme/ui/cn\";\n\nexport function Avatar() {\n  return cn(\"a\");\n}\n";
+    let local =
+        "import { cn } from \"./probe\";\n\nexport function Chip() {\n  return cn(\"a\");\n}\n";
+    let files = [
+        ("app/src/probe.ts", TypeScript, probe),
+        ("app/src/Avatar.tsx", TypeScript, external),
+    ];
+    assert_eq!(
+        dead_symbols(&files),
+        ["app/src/Avatar.tsx::Avatar", "app/src/probe.ts::cn"]
+    );
+    let files = [
+        ("app/src/probe.ts", TypeScript, probe),
+        ("app/src/Chip.tsx", TypeScript, local),
+    ];
+    assert_eq!(dead_symbols(&files), ["app/src/Chip.tsx::Chip"]);
+}

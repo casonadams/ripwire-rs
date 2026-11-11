@@ -213,9 +213,21 @@ pub(in crate::languages) fn default_export_names(
     names
 }
 
+/// The named-binding import references of `js_import_refs` (`"p as X"`): for a language whose tags query
+/// already captures each import's plain module path.
+pub(in crate::languages) fn js_named_import_refs(
+    root: tree_sitter::Node<'_>,
+    source: &[u8],
+    refs: &mut Vec<crate::ingest::RawRef>,
+) {
+    let mut all = Vec::new();
+    js_import_refs(root, source, &mut all);
+    refs.extend(all.into_iter().filter(|r| r.callee_name.contains(" as ")));
+}
+
 /// Import references for `import` statements and CommonJS `require` calls, each named with the local names it
 /// binds (`"p as X"`), so a name the file imports resolves to the module the import names.
-pub(super) fn js_import_refs(
+pub(in crate::languages) fn js_import_refs(
     root: tree_sitter::Node<'_>,
     source: &[u8],
     refs: &mut Vec<crate::ingest::RawRef>,

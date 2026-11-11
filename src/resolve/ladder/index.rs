@@ -333,7 +333,53 @@ pub fn index_reexports(ingest: &crate::domain::IngestResult, interner: &Interner
             }
         }
     }
+    record_outside_package_imports(ingest, interner, &file_index, &mut table);
     table
+}
+
+/// A module specifier that names a package (`react`, `@acme/ui/cn`), not a path or a path alias
+/// (`./x`, `/x`, `@/x`, `~/x`, `#x`, `$x`).
+fn is_package_specifier(module: &str) -> bool {
+    !module.is_empty()
+        && !module.starts_with(['.', '/', '~', '#', '$'])
+        && !module.starts_with("@/")
+}
+
+/// The names a file binds from a package outside the index (`import { cn } from "@acme/ui/cn"`), for
+/// languages that trust their names: a specifier that is not relative and names no indexed file.
+fn record_outside_package_imports(
+    ingest: &crate::domain::IngestResult,
+    interner: &Interner,
+    file_index: &HashMap<&str, u32>,
+    table: &mut ReexportTable,
+) {
+    for r in ingest.references.iter().filter(|r| {
+        r.role == RefRole::Import
+            && !r.lang.semantics().import_reexports()
+            && r.lang.semantics().local_definition_shadows_name()
+    }) {
+        let raw = interner.resolve(&r.callee_name);
+        let Some((module, bound)) = raw.split_once(" as ") else {
+            continue;
+        };
+        let module = module.trim_matches(['"', '\'', '`']);
+        let Some(importer) = ingest.files.get(r.file_id as usize) else {
+            continue;
+        };
+        if bound == module || !is_package_specifier(module) {
+            continue;
+        }
+        let resolved = crate::languages::resolve_import(
+            r.lang,
+            interner.resolve(&importer.path),
+            raw,
+            file_index,
+            &ingest.import_aliases,
+        );
+        if resolved.is_none() {
+            table.outside[r.file_id as usize].push(interner.intern(bound.trim()));
+        }
+    }
 }
 
 /// A Rust path that begins with neither an anchor (`crate`, `self`, `super`) nor a module of the index: it

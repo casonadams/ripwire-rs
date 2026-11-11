@@ -881,6 +881,19 @@ pub trait ResolutionLookup {
         }
     }
 
+    /// True when a bare call names something the caller imports from a package outside the index and no
+    /// candidate is defined in the caller's file or imported by it: the in-tree namesakes are other things.
+    fn names_an_outside_import(&self, r: &Reference, cands: &[NodeId]) -> bool {
+        r.qualifier.is_none()
+            && !r.member_call
+            && r.lang.semantics().local_definition_shadows_name()
+            && self.imported_from_outside(r.file_id, r.callee_name)
+            && !cands.iter().any(|&id| {
+                let sym = &self.symbols()[id as usize];
+                sym.file_id == r.file_id || self.file_imports_name(r.file_id, sym.file_id, sym.name)
+            })
+    }
+
     fn classify_by_name(&self, r: &Reference) -> RefOutcome {
         let Some(named) = self.by_name().get(&r.callee_name) else {
             return RefOutcome::External;
@@ -906,6 +919,9 @@ pub trait ResolutionLookup {
         } else {
             named
         };
+        if self.names_an_outside_import(r, all_cands) {
+            return RefOutcome::External;
+        }
         if let Some(outcome) = self.exact_specialization_outcome(r, all_cands) {
             return outcome;
         }

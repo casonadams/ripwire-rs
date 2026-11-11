@@ -2,10 +2,11 @@ use super::javascript::{
     JS_KINDS, JS_STD_MEMBERS, JS_STD_QUALIFIERS, TS_CONFIG_MANIFESTS, is_assertion_script,
     is_container_const, is_jsx_intrinsic_tag_call, is_std_member_call_value, js_definition_span_start,
     js_test_partner_subject, js_var_binding, parse_tsconfig_paths, resolve_web_import_target,
-    is_write_target_root, javascript_read_position, is_next_convention_file, local_binding_names, dynamic_imports, default_export_names,
+    is_write_target_root, javascript_read_position, is_next_convention_file, local_binding_names, dynamic_imports, default_export_names, js_named_import_refs,
 };
 use super::{ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds};
 use crate::domain::Lang;
+use crate::languages::strip_import_quotes;
 mod types;
 pub mod astro;
 
@@ -118,6 +119,20 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 impl LanguageSemantics for TypeScriptLanguage {
     fn local_definition_shadows_name(&self) -> bool {
         true
+    }
+
+    fn import_binding<'a>(&self, raw_target: &'a str) -> Option<(&'a str, &'a str)> {
+        let (module, bound) = raw_target.split_once(" as ")?;
+        Some((strip_import_quotes(module), bound.trim()))
+    }
+
+    fn import_refs(
+        &self,
+        root: tree_sitter::Node<'_>,
+        source: &[u8],
+        refs: &mut Vec<crate::ingest::RawRef>,
+    ) {
+        js_named_import_refs(root, source, refs);
     }
 
     fn dynamic_imports(
