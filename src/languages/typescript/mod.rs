@@ -2,7 +2,7 @@ use super::javascript::{
     JS_KINDS, JS_STD_MEMBERS, JS_STD_QUALIFIERS, TS_CONFIG_MANIFESTS, is_assertion_script,
     is_container_const, is_jsx_intrinsic_tag_call, is_std_member_call_value, js_definition_span_start,
     js_test_partner_subject, js_var_binding, parse_tsconfig_paths, resolve_web_import_target,
-    is_write_target_root, javascript_read_position,
+    is_write_target_root, javascript_read_position, is_next_convention_file, local_binding_names, dynamic_import_paths,
 };
 use super::{ComplexityKinds, DefCaptureGateContext, DialectGroup, LanguageSemantics, SyntaxKinds};
 use crate::domain::Lang;
@@ -116,6 +116,30 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 };
 
 impl LanguageSemantics for TypeScriptLanguage {
+    fn local_definition_shadows_name(&self) -> bool {
+        true
+    }
+
+    fn dynamic_imports(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
+        dynamic_import_paths(root, source)
+    }
+
+    fn local_bindings(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, u32, u32)> {
+        local_binding_names(root, source)
+    }
+
+    fn is_entrypoint_symbol(
+        &self,
+        sym_name: &str,
+        scope: Option<&str>,
+        kind: crate::domain::SymKind,
+        rel_path: &str,
+    ) -> bool {
+        kind.is_callable()
+            && !super::is_non_entrypoint_path(rel_path)
+            && ((sym_name == "main" && scope.is_none()) || is_next_convention_file(rel_path))
+    }
+
     fn env_reads(&self) -> &'static [crate::languages::common::flags::EnvRead] {
         &[crate::languages::common::flags::EnvRead::Member("process.env")]
     }

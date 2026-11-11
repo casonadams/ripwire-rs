@@ -272,6 +272,12 @@ pub trait LanguageSemantics: Sync {
         Vec::new()
     }
 
+    /// Module paths a file loads with a dynamic `import("path")`, whose exports the importer reaches without
+    /// naming them.
+    fn dynamic_imports(&self, _root: tree_sitter::Node<'_>, _source: &[u8]) -> Vec<String> {
+        Vec::new()
+    }
+
     /// `(name, scope start byte, scope end byte)` for each local variable or parameter a file binds, for languages where such a binding shadows a
     /// same-named definition elsewhere (`local_definition_shadows_name`).
     fn local_bindings(

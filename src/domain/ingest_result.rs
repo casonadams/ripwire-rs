@@ -42,6 +42,13 @@ pub struct CallableBinding {
     pub target_qualifier: Option<Spur>,
 }
 
+/// A module path file `file_id` loads with a dynamic `import("path")`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DynamicImport {
+    pub file_id: u32,
+    pub target: Spur,
+}
+
 /// A name file `file_id` binds by `from pkg import name`, which is the module `target` when one exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubmoduleImport {
@@ -108,6 +115,8 @@ pub struct IngestResult {
     pub local_bindings: Vec<LocalBinding>,
     #[serde(default)]
     pub submodule_imports: Vec<SubmoduleImport>,
+    #[serde(default)]
+    pub dynamic_imports: Vec<DynamicImport>,
     /// Crawled files whose read failed (permission, or removed mid-run). They are indexed as empty
     /// files, so every answer over them is a floor.
     #[serde(default)]

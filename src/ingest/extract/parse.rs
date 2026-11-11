@@ -63,6 +63,7 @@ pub fn parse_file_tree(
             implementations: lang.semantics().implementations(ctx.root, source_bytes),
             local_bindings: lang.semantics().local_bindings(ctx.root, source_bytes),
             submodule_imports,
+            dynamic_imports: lang.semantics().dynamic_imports(ctx.root, source_bytes),
             members: member_types(&bindings),
             pending_fields,
             aliases,

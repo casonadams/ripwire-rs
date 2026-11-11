@@ -7,7 +7,9 @@ mod access;
 mod binding;
 mod defs;
 mod imports;
+mod locals;
 mod names;
+mod next;
 mod scalar;
 mod test_runner;
 mod tsconfig;
@@ -21,7 +23,10 @@ pub(super) use self::defs::{
 };
 use self::defs::{is_cjs_export_target, is_member_assigned_function_name, is_prototype_member_target};
 use self::imports::js_import_refs;
+pub(super) use self::imports::dynamic_import_paths;
 pub(super) use self::imports::resolve_web_import_target;
+pub(super) use self::locals::local_binding_names;
+pub(super) use self::next::is_next_convention_file;
 pub(super) use self::names::{JS_STD_MEMBERS, JS_STD_QUALIFIERS};
 pub(super) use self::test_runner::{is_assertion_script, js_test_partner_subject, js_test_run_command};
 pub(super) use self::tsconfig::{TS_CONFIG_MANIFESTS, parse_tsconfig_paths};
@@ -88,6 +93,30 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 };
 
 impl LanguageSemantics for JavaScriptLanguage {
+    fn local_definition_shadows_name(&self) -> bool {
+        true
+    }
+
+    fn dynamic_imports(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
+        dynamic_import_paths(root, source)
+    }
+
+    fn local_bindings(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, u32, u32)> {
+        local_binding_names(root, source)
+    }
+
+    fn is_entrypoint_symbol(
+        &self,
+        sym_name: &str,
+        scope: Option<&str>,
+        kind: crate::domain::SymKind,
+        rel_path: &str,
+    ) -> bool {
+        kind.is_callable()
+            && !super::is_non_entrypoint_path(rel_path)
+            && ((sym_name == "main" && scope.is_none()) || is_next_convention_file(rel_path))
+    }
+
     /// Class members are reached through `this.` or a qualifier; a bare `f()` never names one.
     fn bare_calls_skip_type_members(&self) -> bool {
         true

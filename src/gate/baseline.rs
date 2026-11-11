@@ -126,6 +126,8 @@ struct Reachable {
     /// function only through its target, but a method also through any type that implements it.
     bound: HashSet<(crate::domain::Lang, lasso::Spur)>,
     scope: NameScope,
+    /// Files some other file loads with a dynamic `import()`: whatever they export is reached.
+    dynamic: HashSet<u32>,
     /// Supertypes per type: the traits it implements and the classes it extends.
     supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>>,
     /// Member names per indexed type, to tell which methods a supertype declares.
@@ -147,6 +149,7 @@ impl Reachable {
             bare_in: refs.bare_in,
             bound: refs.bound,
             scope: NameScope::of(ingest, graph, interner),
+            dynamic: dynamically_imported_files(ingest, interner),
             supertypes,
             members: members_by_scope(ingest),
             trait_impls,
@@ -306,6 +309,29 @@ fn split_references(ingest: &IngestResult, graph: &Graph) -> SplitReferences {
     split
 }
 
+/// The indexed files that a dynamic `import("path")` in another file resolves to.
+fn dynamically_imported_files(ingest: &IngestResult, interner: &Interner) -> HashSet<u32> {
+    let file_index: HashMap<&str, u32> = ingest
+        .files
+        .iter()
+        .map(|f| (interner.resolve(&f.path), f.id))
+        .collect();
+    ingest
+        .dynamic_imports
+        .iter()
+        .filter_map(|import| {
+            let importer = ingest.files.get(import.file_id as usize)?;
+            crate::languages::resolve_import(
+                importer.lang,
+                interner.resolve(&importer.path),
+                interner.resolve(&import.target),
+                &file_index,
+                &ingest.import_aliases,
+            )
+        })
+        .collect()
+}
+
 /// Constructors are reached through their type: `constructor`, `__init__`, `__new__`, or a method
 /// named after its type.
 fn is_constructor(name: &str, scope: Option<&str>) -> bool {
@@ -336,6 +362,7 @@ fn is_unreferenced_callable(
         && sym.sig_end_byte < sym.end_byte
         && graph.in_degree(sym.id) == 0
         && !reachable.mentions(sym)
+        && !(sym.scope.is_none() && reachable.dynamic.contains(&sym.file_id))
         && !method_reached
         && !sym.registered
         && !is_constructor(name, scope)

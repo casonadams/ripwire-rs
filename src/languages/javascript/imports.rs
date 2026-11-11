@@ -53,6 +53,32 @@ pub(crate) fn resolve_web_import_target(
     None
 }
 
+/// The module paths of `import("path")` calls: a dynamic import names no binding, so the importer reaches
+/// whatever the module exports (`lazy(() => import("./Panel"))` loads its default export).
+pub(in crate::languages) fn dynamic_import_paths(root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "call_expression"
+            && node
+                .child_by_field_name("function")
+                .is_some_and(|function| function.kind() == "import")
+            && let Some(module) = node
+                .child_by_field_name("arguments")
+                .and_then(|args| args.named_child(0))
+                .filter(|module| module.kind() == "string")
+            && let Some(text) = node_text(module, source)
+        {
+            paths.push(strip_import_quotes(&text).to_string());
+        }
+        let mut cursor = node.walk();
+        stack.extend(node.children(&mut cursor));
+    }
+    paths.sort_unstable();
+    paths.dedup();
+    paths
+}
+
 /// Import references for `import` statements and CommonJS `require` calls, each named with the local names it
 /// binds (`"p as X"`), so a name the file imports resolves to the module the import names.
 pub(super) fn js_import_refs(

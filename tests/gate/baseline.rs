@@ -305,3 +305,16 @@ fn test_python_call_by_name_keeps_a_symbol_of_another_language_alive() {
     let files = [("src/lib.rs", Rust, rust), ("app/main.py", Python, python)];
     assert_eq!(dead_symbols(&files), Vec::<String>::new());
 }
+
+#[test]
+fn test_typescript_exports_of_a_dynamically_imported_module_stay_alive() {
+    use ripwire_rs::Lang::TypeScript;
+    let panel = "export default function Panel() {\n  return null;\n}\n\nexport function helper() {\n  return 1;\n}\n";
+    let user =
+        "import { lazy } from \"react\";\n\nexport const Lazy = lazy(() => import(\"./panel\"));\n";
+    let files = [
+        ("app/src/panel.tsx", TypeScript, panel),
+        ("app/src/user.tsx", TypeScript, user),
+    ];
+    assert_eq!(dead_symbols(&files), Vec::<String>::new());
+}
