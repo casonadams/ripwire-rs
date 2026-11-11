@@ -292,3 +292,43 @@ fn a_caller_bound_by_name_alone_is_marked_via_name() {
     assert!(xml.contains(" reaches=\"1\" hedged=\"1\""), "{xml}");
     assert!(!impact_row(&xml, "sibling").contains("via="), "{xml}");
 }
+
+#[test]
+fn impact_of_an_indexed_file_path_lists_the_files_that_import_it() {
+    let files: Vec<(&str, Lang, &[u8])> = vec![
+        ("util.py", Lang::Python, b"def helper():\n    return 1\n"),
+        (
+            "main.py",
+            Lang::Python,
+            b"from util import helper\ndef go():\n    return helper()\n",
+        ),
+        ("lone.py", Lang::Python, b"def alone():\n    return 2\n"),
+    ];
+    let xml = render(&files, NavMode::Impact, "util.py", PageRequest::default());
+    assert!(xml.contains(" selector=\"file\" file=\"util.py\""), "{xml}");
+    assert!(
+        xml.contains(" importers=\"1\" root=\".\" shown=\"1\""),
+        "{xml}"
+    );
+    assert!(
+        xml.contains("<f via=\"import\" p=\"main.py\" lazy=\"0\"/>"),
+        "{xml}"
+    );
+    assert!(!xml.contains(" reaches="), "{xml}");
+
+    let none = render(&files, NavMode::Impact, "lone.py", PageRequest::default());
+    assert!(none.contains(" importers=\"0\""), "{none}");
+
+    let (ingest, graph, interner) = index_files(&files);
+    let pr = graph.page_rank(&PageRankConfig::default());
+    let missing = nav_report_paged(
+        &ingest,
+        &graph,
+        &pr.ranks,
+        &interner,
+        "nowhere.py",
+        NavMode::Impact,
+        PageRequest::default(),
+    );
+    assert!(missing.is_err());
+}

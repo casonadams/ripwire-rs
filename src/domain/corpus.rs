@@ -166,6 +166,25 @@ pub trait CorpusView<'a> {
             .iter()
             .filter_map(|&id| ingest.sym(id).map(|s| s.name))
             .collect();
+        self.importers_of(&seed_files, &seed_names)
+    }
+
+    /// Sorted, deduplicated paths of the files that import the indexed file `path`; `None` when no
+    /// indexed file has that path.
+    #[must_use]
+    fn resolve_file_importers(&self, path: &str) -> Option<Vec<&'a str>> {
+        let file_id = *self.file_index_map().get(path)?;
+        let seed_files = std::collections::HashSet::from([file_id]);
+        Some(self.importers_of(&seed_files, &std::collections::HashSet::new()))
+    }
+
+    #[must_use]
+    fn importers_of(
+        &self,
+        seed_files: &std::collections::HashSet<u32>,
+        seed_names: &std::collections::HashSet<Spur>,
+    ) -> Vec<&'a str> {
+        let ingest = self.ingest();
         let file_index = self.file_index_map();
         let mut importers = std::collections::BTreeSet::new();
 
@@ -181,8 +200,8 @@ pub trait CorpusView<'a> {
                     ingest,
                     self.interner(),
                     &file_index,
-                    &seed_files,
-                    &seed_names,
+                    seed_files,
+                    seed_names,
                 )
             {
                 importers.insert(src_path);

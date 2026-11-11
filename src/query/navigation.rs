@@ -94,7 +94,14 @@ pub fn execute_nav_symbol_query_in_root<W: Write>(
     ctx: &NavContext<'_>,
     out: &mut W,
 ) -> io::Result<()> {
+    use crate::domain::CorpusView;
     let ids = crate::navigate::find_symbols_by_name(sym, ctx.ingest, ctx.interner);
+    if ids.is_empty()
+        && mode == NavMode::Impact
+        && let Some(importers) = ctx.resolve_file_importers(sym)
+    {
+        return serialize_file_impact(root, sym, importers, ctx, out);
+    }
     if ids.is_empty() && !matches!(mode, NavMode::Uses) {
         return Err(symbol_not_found(mode, sym, ctx));
     }
@@ -108,6 +115,24 @@ pub fn execute_nav_symbol_query_in_root<W: Write>(
         NavMode::Impact => serialize_impact(root, sym, &ids, ctx, out),
         NavMode::Callers | NavMode::Callees => serialize_one_hop(root, sym, mode, &ids, ctx, out),
     }
+}
+
+fn serialize_file_impact<W: Write>(
+    root: &str,
+    file: &str,
+    importers: Vec<&str>,
+    ctx: &NavContext<'_>,
+    out: &mut W,
+) -> io::Result<()> {
+    use crate::serialize::XmlReport;
+    crate::navigate::FileImpactReport {
+        root,
+        file,
+        importers,
+        gauge_attrs: &ctx.graph.xml_gauge_attrs(),
+        page: ctx.page,
+    }
+    .render_envelope(out)
 }
 
 fn serialize_impact<W: Write>(

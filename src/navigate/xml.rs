@@ -440,6 +440,47 @@ impl crate::serialize::XmlReport for ImpactReport<'_> {
     }
 }
 
+/// `--impact=<path>`: the files that import an indexed file, there being no symbol to reach from.
+pub struct FileImpactReport<'a> {
+    pub root: &'a str,
+    pub file: &'a str,
+    pub importers: Vec<&'a str>,
+    pub gauge_attrs: &'a str,
+    pub page: crate::serialize::PageRequest,
+}
+
+impl crate::serialize::XmlReport for FileImpactReport<'_> {
+    crate::xml_report_meta!(
+        "impact",
+        "ripwire-rs.impact/v1",
+        root: false,
+        comment: "ripwire-rs impact schema=ripwire-rs.impact/v1: selector=file: of= is an indexed file, not a symbol; <f via=import p=> is a file that imports it. importers=K counts them."
+    );
+    fn write_extra_attrs<W: Write>(&self, out: &mut W) -> io::Result<()> {
+        let importers = Paged::new(&self.importers, self.page, |p| {
+            row_bytes(|mut w| write_importer_row(&mut w, p))
+        });
+        let file = self.file.xml_escaped();
+        write!(
+            out,
+            " of=\"{file}\" selector=\"file\" file=\"{file}\" importers=\"{}\" root=\"{}\"{} {}",
+            importers.window.total,
+            self.root.xml_escaped(),
+            importers.attrs(),
+            self.gauge_attrs,
+        )
+    }
+    fn write_body<W: Write>(&self, out: &mut W) -> io::Result<()> {
+        let importers = Paged::new(&self.importers, self.page, |p| {
+            row_bytes(|mut w| write_importer_row(&mut w, p))
+        });
+        for p in importers.rows() {
+            write_importer_row(out, p)?;
+        }
+        Ok(())
+    }
+}
+
 /// Serialize static use-sites to Ripwire-compatible XML.
 pub fn serialize_uses_xml<W: Write>(
     sym_name: &str,
