@@ -33,9 +33,17 @@ impl SkillsEnv {
                 None
             }
         });
+        Self::from_values(std::env::var("AGENTS_HOME").ok(), home)
+    }
+
+    /// An environment holding only the absolute values: an empty or relative root is ignored, as the XDG
+    /// Base Directory spec directs, so it can never place files relative to the working directory.
+    #[must_use]
+    pub fn from_values(agents_home: Option<String>, home: Option<String>) -> Self {
+        let absolute = |value: Option<String>| value.filter(|p| Path::new(p).is_absolute());
         Self {
-            agents_home: std::env::var("AGENTS_HOME").ok(),
-            home,
+            agents_home: absolute(agents_home),
+            home: absolute(home),
         }
     }
 }
@@ -148,9 +156,23 @@ fn write_all_skill_files(dest_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Where an install writes: the explicit `custom_path`, else the default skills directory, which must be
+/// absolute so a missing or unusable `HOME` and `AGENTS_HOME` cannot write into the working directory.
+pub fn install_destination(custom_path: Option<&str>, env: &SkillsEnv) -> io::Result<PathBuf> {
+    let dest = resolve_skills_dir_in(custom_path, env);
+    let explicit = custom_path.is_some_and(|p| !p.trim().is_empty());
+    if !explicit && !dest.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "no absolute skills directory: set HOME or AGENTS_HOME to an absolute path, or pass a DIR",
+        ));
+    }
+    Ok(dest)
+}
+
 /// Install embedded skills and write active manifest to destination directory.
 pub fn install_skills(custom_path: Option<&str>) -> io::Result<SkillInstallReport> {
-    let dest_dir = resolve_skills_dir(custom_path);
+    let dest_dir = install_destination(custom_path, &SkillsEnv::from_process())?;
     fs::create_dir_all(&dest_dir)?;
     write_all_skill_files(&dest_dir)?;
     let skill_names = get_skill_names();

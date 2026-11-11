@@ -1,6 +1,7 @@
 use ripwire_rs::skills::{
     SkillsEnv, default_skills_dir_in, expand_tilde_in, generate_manifest_content, get_skill_names,
-    resolve_skills_dir_in, scan_content_for_exfil, scan_skills_directory, serialize_skill_scan_xml,
+    install_destination, resolve_skills_dir_in, scan_content_for_exfil, scan_skills_directory,
+    serialize_skill_scan_xml,
 };
 use std::path::{Path, PathBuf};
 
@@ -167,4 +168,44 @@ fn test_scan_content_flags_credential_paths_and_ignores_prose_backticks() {
         let hits: Vec<(usize, &str)> = findings.iter().map(|f| (f.line, f.rule)).collect();
         assert_eq!(hits, vec![(2, "EXFILTRATE:ssh-aws-creds")]);
     }
+}
+
+#[test]
+fn test_empty_or_relative_roots_are_ignored_not_written_into_the_working_directory() {
+    let cases: [(Option<&str>, Option<&str>, Option<&str>); 5] = [
+        (Some(""), Some("/home/u"), Some("/home/u/.agents/skills")),
+        (
+            Some("rel/dir"),
+            Some("/home/u"),
+            Some("/home/u/.agents/skills"),
+        ),
+        (Some("/agents"), Some("rel"), Some("/agents/skills")),
+        (Some(""), Some(""), None),
+        (None, Some("./home"), None),
+    ];
+    for (agents_home, home, expected) in cases {
+        let env = SkillsEnv::from_values(agents_home.map(String::from), home.map(String::from));
+        let dest = install_destination(None, &env);
+        match expected {
+            Some(path) => assert_eq!(
+                dest.unwrap(),
+                PathBuf::from(path),
+                "{agents_home:?} {home:?}"
+            ),
+            None => assert_eq!(
+                dest.unwrap_err().kind(),
+                std::io::ErrorKind::InvalidInput,
+                "{agents_home:?} {home:?}"
+            ),
+        }
+    }
+}
+
+#[test]
+fn test_an_explicit_relative_destination_is_the_users_choice() {
+    let none = env(None, None);
+    assert_eq!(
+        install_destination(Some("./my-skills"), &none).unwrap(),
+        PathBuf::from("./my-skills")
+    );
 }
