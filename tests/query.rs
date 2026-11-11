@@ -3,6 +3,7 @@ mod commands;
 mod defs;
 mod facts;
 mod module_anchor;
+mod named_file;
 mod retrieval_rank;
 mod safety;
 mod stray_lines;

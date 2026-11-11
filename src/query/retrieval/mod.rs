@@ -7,6 +7,7 @@ use crate::query::lexical::Lexical;
 use serde_json::{Value, json};
 
 mod collect;
+mod named_file;
 mod ranking;
 mod rows;
 mod scoring;
@@ -218,16 +219,21 @@ pub fn call_for_task_with_options(
         Err(error) => return json!({ "error": error }),
     };
     let raw_terms = query_terms(task);
-    let conceptual = !is_exact_name_query(ingest, interner, &raw_terms);
-    let lexical = conceptual.then(|| Lexical::build(ingest, interner, opts.sources, &raw_terms));
-    let scored = rank_candidates(
-        ingest,
-        interner,
-        ranks,
-        &raw_terms,
-        lexical.as_ref(),
-        opts.in_scope,
-    );
+    let named = named_file::named_file(ingest, interner, ranks, task);
+    let conceptual = named.is_some() || !is_exact_name_query(ingest, interner, &raw_terms);
+    let lexical = (conceptual && named.is_none())
+        .then(|| Lexical::build(ingest, interner, opts.sources, &raw_terms));
+    let scored = match &named {
+        Some(file) => file.scored.clone(),
+        None => rank_candidates(
+            ingest,
+            interner,
+            ranks,
+            &raw_terms,
+            lexical.as_ref(),
+            opts.in_scope,
+        ),
+    };
     let budget_page = crate::serialize::PageRequest {
         limit: None,
         offset: None,
@@ -249,9 +255,15 @@ pub fn call_for_task_with_options(
         .filter(|s| s["body"].is_string())
         .count();
     let (bundle, reason, follow) = body_disclosure(opts, conceptual, &symbols_json, wanted, served);
-    let (route, confidence, margin_pct) =
-        compute_for_route_metadata(task, &raw_terms, &scored, interner);
-    let coverage = term_coverage_percent(&raw_terms, &scored, lexical.as_ref(), interner);
+    let (route, confidence, margin_pct, coverage) = match &named {
+        Some(file) => (format!("file({})", file.path), "high", 100, 100),
+        None => {
+            let (route, confidence, margin_pct) =
+                compute_for_route_metadata(task, &raw_terms, &scored, interner);
+            let coverage = term_coverage_percent(&raw_terms, &scored, lexical.as_ref(), interner);
+            (route, confidence, margin_pct, coverage)
+        }
+    };
     let side = side_lists(&SideRequest {
         ingest,
         interner,
