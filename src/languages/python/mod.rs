@@ -66,6 +66,10 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 };
 
 impl LanguageSemantics for PythonLanguage {
+    fn local_definition_shadows_name(&self) -> bool {
+        true
+    }
+
     fn env_reads(&self) -> &'static [crate::languages::common::flags::EnvRead] {
         use crate::languages::common::flags::EnvRead;
         &[EnvRead::Call("getenv"), EnvRead::Call("environ.get"), EnvRead::Index("environ")]

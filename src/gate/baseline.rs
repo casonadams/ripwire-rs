@@ -34,11 +34,42 @@ pub(crate) fn symbol_canonical_key(sym_name: &str, file_path: &str, scope: Optio
     }
 }
 
+/// Which definitions a bare name written in one file can mean: a file that defines the name itself
+/// means its own definition, not one in another file.
+pub(crate) struct NameScope {
+    defined: Vec<HashSet<lasso::Spur>>,
+}
+
+impl NameScope {
+    pub(crate) fn of(ingest: &IngestResult) -> Self {
+        let mut defined = vec![HashSet::new(); ingest.files.len()];
+        for sym in &ingest.symbols {
+            if let Some(names) = defined.get_mut(sym.file_id as usize) {
+                names.insert(sym.name);
+            }
+        }
+        Self { defined }
+    }
+
+    /// True when a bare `name` written in `from` can mean the definition in `target`.
+    pub(crate) fn reaches(&self, from: u32, target: u32, name: lasso::Spur) -> bool {
+        from == target
+            || !self
+                .defined
+                .get(from as usize)
+                .is_some_and(|names| names.contains(&name))
+    }
+}
+
 /// What can reach a callable without a resolved call edge, gathered once per snapshot.
 struct Reachable {
-    /// Every name some reference uses: bound, declined or unresolved calls, reads, values, macro
-    /// arguments. Matched by name, so this is a floor.
+    /// Names some reference uses that no local definition can shadow: qualified, member and
+    /// macro-argument references, and every reference in a language that does not shadow by name.
+    /// Matched by name, so this is a floor.
     referenced: HashSet<lasso::Spur>,
+    /// Per bare name in a language where a local definition shadows it, the files that mention it.
+    bare_in: HashMap<lasso::Spur, Vec<u32>>,
+    scope: NameScope,
     /// Supertypes per type: the traits it implements and the classes it extends.
     supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>>,
     /// Member names per indexed type, to tell which methods a supertype declares.
@@ -51,40 +82,29 @@ struct Reachable {
 
 impl Reachable {
     fn of(ingest: &IngestResult) -> Self {
-        let mut supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>> = HashMap::new();
-        for r in &ingest.references {
-            if r.role == crate::domain::RefRole::Extends
-                && let Some(ty) = r.receiver_type.or(r.qualifier)
-            {
-                supertypes.entry(ty).or_default().push(r.callee_name);
-            }
-        }
-        let mut trait_impls: HashMap<u32, Vec<(u32, u32, lasso::Spur)>> = HashMap::new();
-        let mut implemented_in = HashSet::new();
-        for imp in &ingest.implementations {
-            implemented_in.insert((imp.file_id, imp.subject));
-            if let Some(trait_name) = imp.trait_name {
-                supertypes.entry(imp.subject).or_default().push(trait_name);
-                trait_impls.entry(imp.file_id).or_default().push((
-                    imp.start_byte,
-                    imp.end_byte,
-                    trait_name,
-                ));
-            }
-        }
-        let mut members: HashMap<lasso::Spur, HashSet<lasso::Spur>> = HashMap::new();
-        for s in &ingest.symbols {
-            if let Some(scope) = s.scope {
-                members.entry(scope).or_default().insert(s.name);
-            }
-        }
+        let mut supertypes = extends_supertypes(ingest);
+        let (trait_impls, implemented_in) = implementation_records(ingest, &mut supertypes);
+        let (referenced, bare_in) = split_references(ingest);
         Self {
-            referenced: ingest.references.iter().map(|r| r.callee_name).collect(),
+            referenced,
+            bare_in,
+            scope: NameScope::of(ingest),
             supertypes,
-            members,
+            members: members_by_scope(ingest),
             trait_impls,
             implemented_in,
         }
+    }
+
+    /// True when some reference can mean `sym`: a name nothing shadows, or a bare mention from its
+    /// own file or from a file that does not define the name itself.
+    fn mentions(&self, sym: &crate::domain::Symbol) -> bool {
+        self.referenced.contains(&sym.name)
+            || self.bare_in.get(&sym.name).is_some_and(|files| {
+                files
+                    .iter()
+                    .any(|&file| self.scope.reaches(file, sym.file_id, sym.name))
+            })
     }
 
     /// A supertype reaches `name` when it lies outside the tree (its members are unknown) or
@@ -112,6 +132,76 @@ impl Reachable {
             .get(&scope)
             .is_some_and(|supers| supers.iter().any(|&s| self.supertype_declares(s, sym.name)))
     }
+}
+
+type TraitImpls = HashMap<u32, Vec<(u32, u32, lasso::Spur)>>;
+
+fn extends_supertypes(ingest: &IngestResult) -> HashMap<lasso::Spur, Vec<lasso::Spur>> {
+    let mut supertypes: HashMap<lasso::Spur, Vec<lasso::Spur>> = HashMap::new();
+    for r in &ingest.references {
+        if r.role == crate::domain::RefRole::Extends
+            && let Some(ty) = r.receiver_type.or(r.qualifier)
+        {
+            supertypes.entry(ty).or_default().push(r.callee_name);
+        }
+    }
+    supertypes
+}
+
+/// Per-file trait implementation spans and the types with an implementation record; trait
+/// implementations also add to `supertypes`.
+fn implementation_records(
+    ingest: &IngestResult,
+    supertypes: &mut HashMap<lasso::Spur, Vec<lasso::Spur>>,
+) -> (TraitImpls, HashSet<(u32, lasso::Spur)>) {
+    let mut trait_impls: TraitImpls = HashMap::new();
+    let mut implemented_in = HashSet::new();
+    for imp in &ingest.implementations {
+        implemented_in.insert((imp.file_id, imp.subject));
+        if let Some(trait_name) = imp.trait_name {
+            supertypes.entry(imp.subject).or_default().push(trait_name);
+            trait_impls.entry(imp.file_id).or_default().push((
+                imp.start_byte,
+                imp.end_byte,
+                trait_name,
+            ));
+        }
+    }
+    (trait_impls, implemented_in)
+}
+
+fn members_by_scope(ingest: &IngestResult) -> HashMap<lasso::Spur, HashSet<lasso::Spur>> {
+    let mut members: HashMap<lasso::Spur, HashSet<lasso::Spur>> = HashMap::new();
+    for s in &ingest.symbols {
+        if let Some(scope) = s.scope {
+            members.entry(scope).or_default().insert(s.name);
+        }
+    }
+    members
+}
+
+/// Splits reference names into those no import can scope and, per import-scoped bare name, the
+/// files that mention it.
+fn split_references(
+    ingest: &IngestResult,
+) -> (HashSet<lasso::Spur>, HashMap<lasso::Spur, Vec<u32>>) {
+    let mut referenced = HashSet::new();
+    let mut bare_in: HashMap<lasso::Spur, Vec<u32>> = HashMap::new();
+    for r in &ingest.references {
+        let scoped = r.lang.semantics().local_definition_shadows_name()
+            && r.qualifier.is_none()
+            && !r.member_call
+            && !r.macro_arg;
+        if scoped {
+            let files = bare_in.entry(r.callee_name).or_default();
+            if !files.contains(&r.file_id) {
+                files.push(r.file_id);
+            }
+        } else {
+            referenced.insert(r.callee_name);
+        }
+    }
+    (referenced, bare_in)
 }
 
 /// Constructors are reached through their type: `constructor`, `__init__`, `__new__`, or a method
@@ -143,7 +233,7 @@ fn is_unreferenced_callable(
     matches!(sym.kind, SymKind::Function | SymKind::Method)
         && sym.sig_end_byte < sym.end_byte
         && graph.in_degree(sym.id) == 0
-        && !reachable.referenced.contains(&sym.name)
+        && !reachable.mentions(sym)
         && !method_reached
         && !sym.registered
         && !is_constructor(name, scope)

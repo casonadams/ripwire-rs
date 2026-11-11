@@ -98,3 +98,24 @@ fn test_snapshot_dead_symbols_follow_each_language_dispatch_rules() {
         assert_eq!(dead_symbols(files), expected);
     }
 }
+
+#[test]
+fn test_python_local_definition_of_the_same_name_does_not_keep_a_symbol_alive() {
+    use ripwire_rs::Lang::Python;
+    let probe = "def p1(a):\n    return a - 1\n";
+    let local = "def test_it():\n    def p1(now):\n        return now\n\n    handler = p1\n    return handler\n";
+    let files = [
+        ("src/probe.py", Python, probe),
+        ("tests/test_local.py", Python, local),
+    ];
+    assert_eq!(dead_symbols(&files), ["src/probe.py::p1"]);
+}
+
+#[test]
+fn test_python_import_of_the_symbol_keeps_it_alive() {
+    use ripwire_rs::Lang::Python;
+    let lib = "def helper(a):\n    return a + 1\n";
+    let user = "from src.lib import helper\n\n\nregistry = {\"h\": helper}\n";
+    let files = [("src/lib.py", Python, lib), ("src/user.py", Python, user)];
+    assert!(dead_symbols(&files).is_empty());
+}

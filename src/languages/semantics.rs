@@ -327,6 +327,12 @@ pub trait LanguageSemantics: Sync {
         false
     }
 
+    /// True when a bare name written in a file that defines that name itself means that definition,
+    /// so a same-named definition in another file is not what it reaches.
+    fn local_definition_shadows_name(&self) -> bool {
+        false
+    }
+
     /// True when this language's `Section` symbols are module declarations (`mod name;`) that an exact-name
     /// query anchors on like a code symbol. Markdown and YAML sections are not anchors.
     fn module_declarations_are_anchors(&self) -> bool {
