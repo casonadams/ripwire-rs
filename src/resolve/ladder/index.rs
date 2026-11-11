@@ -50,6 +50,23 @@ pub fn index_file_scope_mentions(
     sets
 }
 
+/// The file a `from pkg import name` names when `pkg.name` is an indexed module.
+fn resolve_submodule_import(
+    ingest: &crate::domain::IngestResult,
+    interner: &Interner,
+    file_index: &HashMap<&str, u32>,
+    import: &crate::domain::SubmoduleImport,
+) -> Option<u32> {
+    let importer = ingest.files.get(import.file_id as usize)?;
+    crate::languages::resolve_import(
+        importer.lang,
+        interner.resolve(&importer.path),
+        interner.resolve(&import.target),
+        file_index,
+        &ingest.import_aliases,
+    )
+}
+
 /// Per file, the identifiers its imports bind to an indexed module file (`import x as y` binds `y`).
 #[must_use]
 pub fn index_module_qualifiers(
@@ -83,6 +100,11 @@ pub fn index_module_qualifiers(
             ) {
                 maps[r.file_id as usize].insert(bound, file);
             }
+        }
+    }
+    for import in &ingest.submodule_imports {
+        if let Some(file) = resolve_submodule_import(ingest, interner, &file_index, import) {
+            maps[import.file_id as usize].insert(import.name, file);
         }
     }
     for symbol in ingest.symbols.iter().filter(|symbol| !symbol.has_body()) {
@@ -180,6 +202,11 @@ pub fn index_file_imports(
             &ingest.import_aliases,
         ) {
             sets[r.file_id as usize].insert(target);
+        }
+    }
+    for import in &ingest.submodule_imports {
+        if let Some(file) = resolve_submodule_import(ingest, interner, &file_index, import) {
+            sets[import.file_id as usize].insert(file);
         }
     }
     sets

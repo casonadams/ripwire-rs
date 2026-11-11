@@ -42,6 +42,14 @@ pub struct CallableBinding {
     pub target_qualifier: Option<Spur>,
 }
 
+/// A name file `file_id` binds by `from pkg import name`, which is the module `target` when one exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmoduleImport {
+    pub file_id: u32,
+    pub name: Spur,
+    pub target: Spur,
+}
+
 /// A name file `file_id` binds as a local variable or parameter within the byte span of its scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalBinding {
@@ -98,6 +106,8 @@ pub struct IngestResult {
     pub implementations: Vec<Implementation>,
     #[serde(default)]
     pub local_bindings: Vec<LocalBinding>,
+    #[serde(default)]
+    pub submodule_imports: Vec<SubmoduleImport>,
     /// Crawled files whose read failed (permission, or removed mid-run). They are indexed as empty
     /// files, so every answer over them is a floor.
     #[serde(default)]

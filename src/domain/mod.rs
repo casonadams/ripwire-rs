@@ -11,7 +11,7 @@ pub use crate::languages::Lang;
 pub use corpus::CorpusView;
 pub use ingest_result::{
     CallableBinding, FileInfo, ForeignBinding, Implementation, ImportAlias, IngestResult,
-    LocalBinding, ScipSite, ScipTarget,
+    LocalBinding, ScipSite, ScipTarget, SubmoduleImport,
 };
 pub use interner::Interner;
 pub use kinds::{Binding, RefRole, SymKind};

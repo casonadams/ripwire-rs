@@ -7,6 +7,7 @@ mod bindings;
 mod builtins;
 mod immutable;
 mod locals;
+mod submodules;
 mod members;
 mod std_names;
 mod types;
@@ -69,6 +70,10 @@ const SYNTAX: SyntaxKinds = SyntaxKinds {
 impl LanguageSemantics for PythonLanguage {
     fn local_definition_shadows_name(&self) -> bool {
         true
+    }
+
+    fn submodule_imports(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, String)> {
+        submodules::submodule_imports(root, source)
     }
 
     fn local_bindings(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, u32, u32)> {

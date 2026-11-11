@@ -274,3 +274,34 @@ fn test_python_value_use_of_an_imported_definition_does_not_keep_another_alive()
         ["src/probe.py::worker", "src/real.py::task"]
     );
 }
+
+#[test]
+fn test_python_from_import_of_a_submodule_binds_qualified_calls() {
+    use ripwire_rs::Lang::Python;
+    let probe = "def classify(a):\n    return a - 1\n";
+    let real = "def classify(a):\n    return a * 2\n";
+    let plain = "from src import real\n\n\ndef main():\n    return real.classify(2)\n";
+    let aliased = "from src import real as r\n\n\ndef main():\n    return r.classify(2)\n";
+    let relative = "from . import real\n\n\ndef main():\n    return real.classify(2)\n";
+    for (user_path, user) in [
+        ("app/user.py", plain),
+        ("app/aliased.py", aliased),
+        ("src/relative.py", relative),
+    ] {
+        let files = [
+            ("src/probe.py", Python, probe),
+            ("src/real.py", Python, real),
+            (user_path, Python, user),
+        ];
+        assert_eq!(dead_symbols(&files), ["src/probe.py::classify"], "{user}");
+    }
+}
+
+#[test]
+fn test_python_call_by_name_keeps_a_symbol_of_another_language_alive() {
+    use ripwire_rs::Lang::{Python, Rust};
+    let rust = "pub fn helper() -> u32 {\n    1\n}\n";
+    let python = "def helper():\n    return 1\n\n\ndef main():\n    return helper()\n";
+    let files = [("src/lib.rs", Rust, rust), ("app/main.py", Python, python)];
+    assert_eq!(dead_symbols(&files), Vec::<String>::new());
+}

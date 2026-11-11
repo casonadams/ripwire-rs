@@ -8,7 +8,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 /// Blob layout and serialized-type version. A blob of any other version is a miss, never parsed.
-pub const CACHE_VERSION: u32 = 41;
+pub const CACHE_VERSION: u32 = 42;
 
 /// Every blob starts with these four bytes, then `CACHE_VERSION` as a little-endian `u32`; the
 /// postcard body follows.

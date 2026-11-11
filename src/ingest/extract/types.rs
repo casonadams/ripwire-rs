@@ -118,6 +118,7 @@ pub struct FileParseResult {
     pub members: Vec<MemberType>,
     pub implementations: Vec<crate::languages::Implementation>,
     pub local_bindings: Vec<(String, u32, u32)>,
+    pub submodule_imports: Vec<(String, String)>,
     /// References to a field the file does not declare, reached through `this` of the class `class`.
     pub pending_fields: Vec<PendingField>,
     /// Type aliases this file declares, as `(alias, declared target type)`; set only where the language types

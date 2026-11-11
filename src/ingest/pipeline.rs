@@ -269,6 +269,7 @@ pub struct FileIndex {
     pub callable_bindings: Vec<CallableBinding>,
     pub implementations: Vec<crate::domain::Implementation>,
     pub local_bindings: Vec<crate::domain::LocalBinding>,
+    pub submodule_imports: Vec<crate::domain::SubmoduleImport>,
 }
 
 pub fn index_file(
@@ -302,6 +303,15 @@ pub fn index_file(
             scope_end: *end,
         })
         .collect();
+    let submodule_imports = parsed
+        .submodule_imports
+        .iter()
+        .map(|(name, target)| crate::domain::SubmoduleImport {
+            file_id,
+            name: interner.intern(name),
+            target: interner.intern(target),
+        })
+        .collect();
     FileIndex {
         symbols,
         references,
@@ -309,6 +319,7 @@ pub fn index_file(
         callable_bindings,
         implementations,
         local_bindings,
+        submodule_imports,
     }
 }
 
@@ -427,6 +438,9 @@ fn append_file(ingest: &mut IngestResult, file_info: FileInfo, mut index: FileIn
         .append(&mut index.callable_bindings);
     ingest.implementations.append(&mut index.implementations);
     ingest.local_bindings.append(&mut index.local_bindings);
+    ingest
+        .submodule_imports
+        .append(&mut index.submodule_imports);
 }
 
 pub fn build_file_symbols(

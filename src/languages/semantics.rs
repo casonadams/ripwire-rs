@@ -262,6 +262,16 @@ pub trait LanguageSemantics: Sync {
         Vec::new()
     }
 
+    /// `(bound name, module path)` for each imported name that may be a submodule (`from pkg import mod`),
+    /// so qualified calls through the name can bind into that module's file.
+    fn submodule_imports(
+        &self,
+        _root: tree_sitter::Node<'_>,
+        _source: &[u8],
+    ) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
     /// `(name, scope start byte, scope end byte)` for each local variable or parameter a file binds, for languages where such a binding shadows a
     /// same-named definition elsewhere (`local_definition_shadows_name`).
     fn local_bindings(

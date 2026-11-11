@@ -50,7 +50,8 @@ pub fn parse_file_tree(
         attach_receiver_types(&mut refs, &bindings, lang);
         let pending_fields = pending_facts(lang, &refs, &bindings);
         append_embedded_refs(&ctx, &mut refs);
-        qualify_import_bound_receivers(&mut refs, lang);
+        let submodule_imports = lang.semantics().submodule_imports(ctx.root, source_bytes);
+        qualify_import_bound_receivers(&mut refs, lang, &submodule_imports);
         finalize_defs(&mut defs);
         FileParseResult {
             line_count,
@@ -61,6 +62,7 @@ pub fn parse_file_tree(
             callable_bindings: lang.semantics().callable_bindings(ctx.root, source_bytes),
             implementations: lang.semantics().implementations(ctx.root, source_bytes),
             local_bindings: lang.semantics().local_bindings(ctx.root, source_bytes),
+            submodule_imports,
             members: member_types(&bindings),
             pending_fields,
             aliases,
@@ -192,19 +194,34 @@ fn dedup_conditional_macros(defs: &mut Vec<RawDef>) {
 
 /// Give `alias.f()` the qualifier `alias` when this file's own imports bind `alias`; where the language names
 /// module members through their module, `alias.T.f()` takes the qualifier `alias::T`.
-fn qualify_import_bound_receivers(refs: &mut [RawRef], lang: Lang) {
+fn qualify_import_bound_receivers(
+    refs: &mut [RawRef],
+    lang: Lang,
+    submodule_imports: &[(String, String)],
+) {
     let bound: Vec<String> = refs
         .iter()
         .filter(|r| r.role == RefRole::Import)
         .filter_map(|r| lang.semantics().import_binding(&r.callee_name))
         .map(|(_, name)| name.to_string())
         .collect();
-    if bound.is_empty() {
+    // A name imported with `from pkg import name` may be a submodule: qualify an untyped receiver by it
+    // and let the resolver bind it only when `pkg.name` is an indexed module.
+    let modules: Vec<&str> = submodule_imports
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect();
+    if bound.is_empty() && modules.is_empty() {
         return;
     }
     let module_members = lang.semantics().module_member_qualifiers();
     for r in refs.iter_mut() {
-        if r.receiver.as_ref().is_some_and(|recv| bound.contains(recv)) {
+        if r.receiver.as_ref().is_some_and(|recv| bound.contains(recv))
+            || (r.receiver_type.is_none()
+                && r.receiver
+                    .as_deref()
+                    .is_some_and(|recv| modules.contains(&recv)))
+        {
             r.qualifier = r.receiver.take();
         } else if module_members
             && let Some(qualifier) = module_member_qualifier(r.receiver.as_deref(), &bound)
