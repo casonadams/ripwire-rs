@@ -31,40 +31,7 @@ pub(in crate::languages) fn local_binding_names(
     let mut found = Vec::new();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        let mut names = Vec::new();
-        let mut block = false;
-        match node.kind() {
-            "variable_declarator" if !binds_a_module(node, source) => {
-                block = node
-                    .parent()
-                    .is_some_and(|parent| parent.kind() == "lexical_declaration");
-                if let Some(name) = node.child_by_field_name("name") {
-                    push_pattern(name, source, &mut names);
-                }
-            }
-            "formal_parameters" => push_parameters(node, source, &mut names),
-            "arrow_function" => {
-                if let Some(parameter) = node.child_by_field_name("parameter") {
-                    push_pattern(parameter, source, &mut names);
-                }
-            }
-            "catch_clause" => {
-                block = true;
-                if let Some(parameter) = node.child_by_field_name("parameter") {
-                    push_pattern(parameter, source, &mut names);
-                }
-            }
-            "for_in_statement" => {
-                block = node
-                    .child_by_field_name("kind")
-                    .and_then(|kind| kind.utf8_text(source).ok())
-                    .is_some_and(|kind| kind != "var");
-                if let Some(left) = node.child_by_field_name("left") {
-                    push_pattern(left, source, &mut names);
-                }
-            }
-            _ => {}
-        }
+        let (names, block) = node_bindings(node, source);
         if !names.is_empty()
             && let Some((start, end)) = scope_span(node, block)
         {
@@ -76,6 +43,41 @@ pub(in crate::languages) fn local_binding_names(
     found.sort_unstable();
     found.dedup();
     found
+}
+
+/// The names `node` itself binds and whether they are scoped to a block rather than a function.
+fn node_bindings(node: Node<'_>, source: &[u8]) -> (Vec<String>, bool) {
+    let mut names = Vec::new();
+    let mut block = false;
+    match node.kind() {
+        "variable_declarator" if !binds_a_module(node, source) => {
+            block = node
+                .parent()
+                .is_some_and(|parent| parent.kind() == "lexical_declaration");
+            push_field(node, "name", source, &mut names);
+        }
+        "formal_parameters" => push_parameters(node, source, &mut names),
+        "arrow_function" => push_field(node, "parameter", source, &mut names),
+        "catch_clause" => {
+            block = true;
+            push_field(node, "parameter", source, &mut names);
+        }
+        "for_in_statement" => {
+            block = node
+                .child_by_field_name("kind")
+                .and_then(|kind| kind.utf8_text(source).ok())
+                .is_some_and(|kind| kind != "var");
+            push_field(node, "left", source, &mut names);
+        }
+        _ => {}
+    }
+    (names, block)
+}
+
+fn push_field(node: Node<'_>, field: &str, source: &[u8], names: &mut Vec<String>) {
+    if let Some(pattern) = node.child_by_field_name(field) {
+        push_pattern(pattern, source, names);
+    }
 }
 
 /// True for `const x = require("m")`, `const x = require("m").default` and `const x = await import("m")`: that binds the module's export, so
@@ -122,8 +124,12 @@ fn push_pattern(pattern: Node<'_>, source: &[u8], names: &mut Vec<String>) {
                 names.push(text.to_string());
             }
         }
-        "object_pattern" | "array_pattern" | "rest_pattern" | "assignment_pattern"
-        | "pair_pattern" | "object_assignment_pattern" => {
+        "object_pattern"
+        | "array_pattern"
+        | "rest_pattern"
+        | "assignment_pattern"
+        | "pair_pattern"
+        | "object_assignment_pattern" => {
             let mut cursor = pattern.walk();
             for child in pattern.named_children(&mut cursor) {
                 let target = match child.kind() {
