@@ -16,15 +16,22 @@
 # The parity checker grew a lower-total rule and tests (scripts/validate-parity.py, test_validate_parity.py):
 # +8 standard-library calls the resolver cannot bind (reading 530), so the ceiling sits 2% above that.
 
+# graph_ambiguous read 603 at 2a63938, already over the old bound of 600, and 618 now (a9b8e88). Growth by commit:
+# +1 TypeScript block scoping (446221a), +2 Rust super chains and self (af7c310), +1 embedded SQL calls (344d754),
+# +10 across the Python, TypeScript and dead-code import-binding commits (8d4176a to ba3999b), +1 re-exporting
+# module paths (d11162f). Over the same commits SCIP precision rose 0.9873 -> 0.9876 and recall 0.9798 -> 0.9819,
+# so the added ambiguity is calls bound to several same-named definitions that were unbound or hedged before;
+# the per-commit split of the +10 was not traced. The ceiling sits 2% above 618.
+
 [[ceiling]]
 gauge = "graph_ambiguous"
-max = 600
+max = 630
 
 [[ceiling]]
 gauge = "graph_unresolved"
 max = 541
 
-# SCIP oracle (rust-analyzer), measured on this repository: precision=0.9873, recall=0.9798.
+# SCIP oracle (rust-analyzer), measured on this repository: precision=0.9876, recall=0.9819.
 # Floors sit just under the measurement; raise one in the commit that improves it.
 
 [[floor]]
@@ -33,4 +40,4 @@ min = 0.9870
 
 [[floor]]
 metric = "recall"
-min = 0.9795
+min = 0.9800
