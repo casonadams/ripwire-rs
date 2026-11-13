@@ -3,6 +3,7 @@ mod declared_receiver_owner;
 mod import_provenance;
 mod imported_std_names;
 mod ladder;
+mod local_function_values;
 mod receiver_call_results;
 mod rust_calls;
 mod rust_imports;

@@ -50,7 +50,7 @@ fn node_bindings(node: Node<'_>, source: &[u8]) -> (Vec<String>, bool) {
     let mut names = Vec::new();
     let mut block = false;
     match node.kind() {
-        "variable_declarator" if !binds_a_module(node, source) => {
+        "variable_declarator" if !binds_a_module(node, source) && !defines_a_function(node) => {
             block = node
                 .parent()
                 .is_some_and(|parent| parent.kind() == "lexical_declaration");
@@ -78,6 +78,14 @@ fn push_field(node: Node<'_>, field: &str, source: &[u8], names: &mut Vec<String
     if let Some(pattern) = node.child_by_field_name(field) {
         push_pattern(pattern, source, names);
     }
+}
+
+/// True for `const f = () => ..` and `const f = function () ..`: the declarator is itself an indexed function
+/// definition, so calls to `f` in its scope bind it instead of being treated as calls of a local variable.
+fn defines_a_function(declarator: Node<'_>) -> bool {
+    declarator
+        .child_by_field_name("value")
+        .is_some_and(|value| matches!(value.kind(), "arrow_function" | "function_expression"))
 }
 
 /// True for `const x = require("m")`, `const x = require("m").default` and `const x = await import("m")`: that binds the module's export, so
