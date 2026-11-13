@@ -4,8 +4,8 @@
 
 [[repo]]
 name = "rich"
-precision = 0.9860
-recall = 0.9160
+precision = 0.9863
+recall = 0.9192
 sha = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
 indexer_version = "0.6.8"
 
@@ -32,8 +32,8 @@ indexer_version = "0.5.1"
 
 [[repo]]
 name = "dart-xml"
-precision = 0.9751
-recall = 0.8373
+precision = 0.9805
+recall = 0.8460
 sha = "e083bbaf4188beccdebac514acacc9440297de53"
 indexer_version = "1.8.1"
 
@@ -157,8 +157,29 @@ sha = "a91c469f517cef1946d5ed4dd9771df4843a30ef"
 indexer_version = "clangd-19.0"
 
 [[repo]]
+name = "oneof"
+precision = 0.8448
+recall = 0.8448
+sha = "6e02dbe75d0f20f198c640d4c04190a85c5ac9e6"
+indexer_version = "0.2.16"
+
+[[repo]]
+name = "deepcopy"
+precision = 0.9838
+recall = 0.8792
+sha = "958a0803aae2ade58a9fa4ae31b7cade3bb9ed6f"
+indexer_version = "0.0.2"
+
+[[repo]]
+name = "emailvalidator"
+precision = 0.9835
+recall = 0.9794
+sha = "d42c8731f0624ad6bdc8d3e5e9a4524f68801cfa"
+indexer_version = "0.0.2"
+
+[[repo]]
 name = "ripwire-rs-self"
-precision = 0.9873
-recall = 0.9799
+precision = 0.9876
+recall = 0.9819
 sha = "check-resolution"
 indexer_version = ""

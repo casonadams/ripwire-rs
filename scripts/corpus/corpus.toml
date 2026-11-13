@@ -50,8 +50,8 @@ indexer = "scip-python"
 indexer_version = "0.6.8"
 setup = "python3 -m venv /tmp/venv && /tmp/venv/bin/pip install -q -e ."
 index = "PATH=/tmp/venv/bin:$PATH scip-python index --cwd /src --project-name=rich --output={out} --quiet"
-precision_floor = 0.984
-recall_floor = 0.914
+precision_floor = 0.9843
+recall_floor = 0.9172
 
 [[repo]]
 name = "superstruct"
@@ -108,8 +108,8 @@ indexer = "scip_dart"
 indexer_version = "1.8.1"
 setup = "dart pub get"
 index = "cd /src && dart pub global run scip_dart /src && mv index.scip {out}"
-precision_floor = 0.9731
-recall_floor = 0.8353
+precision_floor = 0.9785
+recall_floor = 0.8440
 
 [[repo]]
 name = "kotlinpoet"
