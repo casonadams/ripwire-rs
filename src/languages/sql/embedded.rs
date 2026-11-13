@@ -19,7 +19,6 @@ pub fn has_dml_anchor(bytes: &[u8]) -> bool {
     false
 }
 
-
 fn trim_sql_punct(s: &str) -> &str {
     s.trim_matches(|c: char| {
         matches!(
@@ -88,9 +87,38 @@ fn cte_names<'a>(tokens: &[&'a str]) -> Vec<&'a str> {
 
 /// Words that open a call-shaped group in SQL without calling a function.
 const SQL_NON_FUNCTIONS: &[&str] = &[
-    "select", "where", "and", "or", "not", "in", "exists", "values", "as", "on", "using", "case",
-    "when", "then", "else", "end", "cast", "any", "all", "over", "filter", "array", "row",
-    "returning", "conflict", "by", "having", "limit", "offset", "union", "except", "intersect",
+    "select",
+    "where",
+    "and",
+    "or",
+    "not",
+    "in",
+    "exists",
+    "values",
+    "as",
+    "on",
+    "using",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
+    "cast",
+    "any",
+    "all",
+    "over",
+    "filter",
+    "array",
+    "row",
+    "returning",
+    "conflict",
+    "by",
+    "having",
+    "limit",
+    "offset",
+    "union",
+    "except",
+    "intersect",
 ];
 
 /// Words after which a call-shaped name is a table or column list, not a function call.
@@ -98,16 +126,22 @@ const SQL_NAME_POSITIONS: &[&str] = &["into", "table", "update", "as"];
 
 fn starts_with_sql_verb(text: &str) -> bool {
     let body = text.trim_start_matches(|c: char| {
-        c.is_whitespace() || matches!(c, '"' | '\'' | '`' | 'f' | 'F' | 'r' | 'R' | 'b' | 'B' | 'u' | 'U')
+        c.is_whitespace()
+            || matches!(
+                c,
+                '"' | '\'' | '`' | 'f' | 'F' | 'r' | 'R' | 'b' | 'B' | 'u' | 'U'
+            )
     });
-    ["select", "with", "call", "perform", "insert", "update", "delete"]
-        .iter()
-        .any(|verb| {
-            body.len() > verb.len()
-                && body.is_char_boundary(verb.len())
-                && body[..verb.len()].eq_ignore_ascii_case(verb)
-                && body.as_bytes()[verb.len()].is_ascii_whitespace()
-        })
+    [
+        "select", "with", "call", "perform", "insert", "update", "delete",
+    ]
+    .iter()
+    .any(|verb| {
+        body.len() > verb.len()
+            && body.is_char_boundary(verb.len())
+            && body[..verb.len()].eq_ignore_ascii_case(verb)
+            && body.as_bytes()[verb.len()].is_ascii_whitespace()
+    })
 }
 
 /// Calls of the form `name(` in a literal that is a SQL statement: `SELECT promote_template(...)`,
@@ -118,30 +152,69 @@ fn scan_sql_function_calls(text: &str, start_byte: usize, line: u32, refs: &mut 
     }
     let bytes = text.as_bytes();
     let mut previous_word = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
-            i += 1;
-            continue;
-        }
-        let begin = i;
-        while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-            i += 1;
-        }
-        let word = &text[begin..i];
-        let is_call = bytes.get(i) == Some(&b'(')
-            && !SQL_NON_FUNCTIONS.iter().any(|kw| word.eq_ignore_ascii_case(kw))
-            && !SQL_NAME_POSITIONS
-                .iter()
-                .any(|kw| previous_word.eq_ignore_ascii_case(kw))
-            && !(begin > 0 && bytes[begin - 1] == b'$');
-        if is_call {
+    let mut from = 0;
+    while let Some((begin, end)) = next_word(bytes, from) {
+        from = end;
+        let word = &text[begin..end];
+        if is_function_call(bytes, begin, end, &previous_word) {
             refs.push(sql_call_ref(word, start_byte, line));
         }
-        if bytes.get(i) != Some(&b'.') {
+        if bytes.get(end) != Some(&b'.') {
             previous_word = word.to_string();
         }
     }
+}
+
+/// The next identifier at or after `from` as `(begin, end)`, skipping `${..}` interpolations.
+fn next_word(bytes: &[u8], mut from: usize) -> Option<(usize, usize)> {
+    while from < bytes.len() {
+        let byte = bytes[from];
+        if byte == b'$' && bytes.get(from + 1) == Some(&b'{') {
+            from = interpolation_end(bytes, from);
+        } else if byte.is_ascii_alphabetic() || byte == b'_' {
+            let end = bytes[from..]
+                .iter()
+                .position(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+                .map_or(bytes.len(), |len| from + len);
+            return Some((from, end));
+        } else {
+            from += 1;
+        }
+    }
+    None
+}
+
+/// True when the word at `begin..end` is followed by `(`, is no keyword or name-list position, and is not a
+/// `$name(` placeholder.
+fn is_function_call(bytes: &[u8], begin: usize, end: usize, previous_word: &str) -> bool {
+    let word = std::str::from_utf8(&bytes[begin..end]).unwrap_or_default();
+    bytes.get(end) == Some(&b'(')
+        && !SQL_NON_FUNCTIONS
+            .iter()
+            .any(|kw| word.eq_ignore_ascii_case(kw))
+        && !SQL_NAME_POSITIONS
+            .iter()
+            .any(|kw| previous_word.eq_ignore_ascii_case(kw))
+        && !(begin > 0 && bytes[begin - 1] == b'$')
+}
+
+/// The index after the `}` closing the `${` at `start`, or the end of `bytes` when it never closes. What a
+/// template interpolation holds is host code, not SQL.
+fn interpolation_end(bytes: &[u8], start: usize) -> usize {
+    let mut depth = 0;
+    for (offset, &byte) in bytes[start + 1..].iter().enumerate() {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return start + 2 + offset;
+                }
+            }
+            _ => {}
+        }
+    }
+    bytes.len()
 }
 
 /// A call reference to the SQL function `name`, for a host-language string that names it.
@@ -192,9 +265,7 @@ fn scan_sql_tokens_in_literal(text: &str, start_byte: usize, line: u32, refs: &m
         }
         if let Some(&raw_target) = tokens.get(target_idx) {
             let table = clean_sql_token(raw_target);
-            if is_valid_sql_ident(table)
-                && !ctes.iter().any(|c| c.eq_ignore_ascii_case(table))
-            {
+            if is_valid_sql_ident(table) && !ctes.iter().any(|c| c.eq_ignore_ascii_case(table)) {
                 refs.push(RawRef {
                     callee_name: table.to_string(),
                     qualifier: None,
@@ -210,7 +281,7 @@ fn scan_sql_tokens_in_literal(text: &str, start_byte: usize, line: u32, refs: &m
                     receiver_chain: None,
                     receiver_file: None,
                     callable_field: false,
-                macro_arg: false,
+                    macro_arg: false,
                     member_call: false,
                     path_call: false,
                 });
@@ -219,11 +290,7 @@ fn scan_sql_tokens_in_literal(text: &str, start_byte: usize, line: u32, refs: &m
     }
 }
 
-pub fn extract_refs(
-    node: tree_sitter::Node<'_>,
-    source_bytes: &[u8],
-    refs: &mut Vec<RawRef>,
-) {
+pub fn extract_refs(node: tree_sitter::Node<'_>, source_bytes: &[u8], refs: &mut Vec<RawRef>) {
     if is_sql_string_node(node.kind()) {
         if let Ok(text) = node.utf8_text(source_bytes) {
             let line = node.start_position().row as u32 + 1;
@@ -237,4 +304,3 @@ pub fn extract_refs(
         }
     }
 }
-

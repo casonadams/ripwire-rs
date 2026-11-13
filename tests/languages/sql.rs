@@ -183,3 +183,20 @@ fn sqlx_project_vars_apply_only_below_their_settings_file() {
     assert!(symbols.iter().any(|s| s == "b"));
     assert!(!symbols.iter().any(|s| s == "a"));
 }
+
+#[test]
+fn a_template_interpolation_in_an_embedded_query_holds_no_sql_calls() {
+    use ripwire_rs::{Interner, LanguageRegistry, ingest_in_memory_files};
+    let source = b"const Q: &str = \"SELECT ${wrap(inner(1))}, real_fn(2) FROM t\";\n";
+    let registry = LanguageRegistry::new().unwrap();
+    let interner = Interner::new();
+    let ingest = ingest_in_memory_files(&[("src/q.rs", Lang::Rust, source)], &registry, &interner);
+    let mut sql_calls: Vec<&str> = ingest
+        .references
+        .iter()
+        .filter(|r| r.lang == Lang::Sql)
+        .map(|r| interner.resolve(&r.callee_name))
+        .collect();
+    sql_calls.sort_unstable();
+    assert_eq!(sql_calls, ["real_fn"]);
+}
