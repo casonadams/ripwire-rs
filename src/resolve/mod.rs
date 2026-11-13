@@ -216,14 +216,31 @@ impl ResolutionIndex {
     }
 }
 
-/// Index `ingest.local_bindings` by file and name.
+/// Index `ingest.local_bindings` by file and name. A binding whose scope holds the file's own definition of
+/// that name is that definition (`TaskID = NewType(..)`, `const f = () => ..`), not a variable shadowing it.
 fn index_local_scopes(ingest: &IngestResult) -> LocalScopes {
+    let mut definitions: HashMap<(u32, Spur), Vec<u32>> = HashMap::new();
+    for sym in ingest.symbols.iter().filter(|sym| sym.scope.is_none()) {
+        definitions
+            .entry((sym.file_id, sym.name))
+            .or_default()
+            .push(sym.sig_start_byte);
+    }
     let mut scopes = LocalScopes::new();
     for binding in &ingest.local_bindings {
-        scopes
-            .entry((binding.file_id, binding.name))
-            .or_default()
-            .push((binding.scope_start, binding.scope_end));
+        let is_definition = definitions
+            .get(&(binding.file_id, binding.name))
+            .is_some_and(|starts| {
+                starts
+                    .iter()
+                    .any(|&start| binding.scope_start <= start && start < binding.scope_end)
+            });
+        if !is_definition {
+            scopes
+                .entry((binding.file_id, binding.name))
+                .or_default()
+                .push((binding.scope_start, binding.scope_end));
+        }
     }
     scopes
 }
