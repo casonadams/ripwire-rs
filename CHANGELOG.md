@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.7.1](https://github.com/casonadams/ripwire-rs/compare/v0.7.0...v0.7.1) (2026-11-13)
+
+
+### Features
+
+* **dead-code:** list name-scoped dead functions, and bind Python imports per name ([95dba2f](https://github.com/casonadams/ripwire-rs/commit/95dba2f8f902b21171be0a8edf0fc1494a345712))
+* **gate:** a dynamic import reaches only the export names it uses ([bfdd668](https://github.com/casonadams/ripwire-rs/commit/bfdd6681ecf17668a63e73a72519a5d55c71ab05))
+* **gate:** apply name scoping, local bindings and framework entrypoints to TypeScript ([06199fc](https://github.com/casonadams/ripwire-rs/commit/06199fc1a7bfc5b5ee36867eaffb0517a65637ec))
+* **impact:** --impact=&lt;path&gt; lists the files that import an indexed file ([b7326c6](https://github.com/casonadams/ripwire-rs/commit/b7326c6789ded3a34c7853fb95fcc6142b85ea29))
+* **resolve:** a name imported from an outside package is not an in-repo namesake ([d32cc74](https://github.com/casonadams/ripwire-rs/commit/d32cc74d9ba64d308fe7e734118f7b46d7977604))
+* **sql:** calls of SQL functions inside embedded SQL strings are references ([344d754](https://github.com/casonadams/ripwire-rs/commit/344d754d501d990700b9e041ec0a30634ff80d42))
+* **sql:** Python client.rpc("name") calls reference the SQL function ([0ebb1b6](https://github.com/casonadams/ripwire-rs/commit/0ebb1b690402493a8407682de2d0bc5bc7a88b1c))
+* **sql:** rpc("name") calls reference the SQL function, and bound refs stay in their language ([8d4176a](https://github.com/casonadams/ripwire-rs/commit/8d4176a08ab8c33f30de4a8389fb34a6f1537013))
+
+
+### Bug Fixes
+
+* **deps:** Rust module declarations are containment, not coupling ([9f2afe3](https://github.com/casonadams/ripwire-rs/commit/9f2afe3cf7e97f4f2a5bd2da1f304a30d167a5c4))
+* **for:** a task that is an indexed file path answers with that file ([a86041e](https://github.com/casonadams/ripwire-rs/commit/a86041efe3e730b2bd27753eefa3f24a8a24755a))
+* **gate:** a call bound to another definition no longer keeps a same-named Python function alive ([28b2780](https://github.com/casonadams/ripwire-rs/commit/28b2780e38a55194878b0da09b6c26a20dfc9b5f))
+* **gate:** a local definition of a name no longer keeps another file's symbol alive ([71a12b2](https://github.com/casonadams/ripwire-rs/commit/71a12b221d1710c9b9add1ba54293e528cb9695f))
+* **gate:** a local variable or parameter of the same name no longer keeps a Python symbol alive ([92e73e4](https://github.com/casonadams/ripwire-rs/commit/92e73e42aba19d384659e9346876460029e9e953))
+* **gate:** a renamed import keeps the imported definition alive ([ba3999b](https://github.com/casonadams/ripwire-rs/commit/ba3999b78b15153cca391737657bbedfad1c5f8b))
+* **gate:** a variadic parameter counts as one in the params metric ([92a27e6](https://github.com/casonadams/ripwire-rs/commit/92a27e6efc5ed39d175cfbe61c2eadb8442e71f1))
+* **gate:** scope let, const and catch bindings to their block in TypeScript ([446221a](https://github.com/casonadams/ripwire-rs/commit/446221ae8784e84988ef647a7f85236eb8f247a2))
+* **gate:** the baseline dead set no longer revives symbols by unchanged-file names ([40db936](https://github.com/casonadams/ripwire-rs/commit/40db936d019944d72aca33bbb803013f5c1ef916))
+* **js:** a function-valued const is a definition, not a shadowing local ([d2cc89e](https://github.com/casonadams/ripwire-rs/commit/d2cc89edc4e6e8cb2b561fda224ef6b0d1233d2f))
+* **python:** bind calls through a from-imported submodule ([d0eeeaf](https://github.com/casonadams/ripwire-rs/commit/d0eeeaf3c11fbe6ffd1a255260d9d0bab5c1aebc))
+* **python:** resolve relative levels and package-root imports, and scope dead-code names by import ([c280b8c](https://github.com/casonadams/ripwire-rs/commit/c280b8c421e138bdd0f0d584ad5a59ab4f744f07))
+* **resolve:** a binding that sits on its own definition does not shadow it ([a9b8e88](https://github.com/casonadams/ripwire-rs/commit/a9b8e88ada53675ea16446b0b1b0b2ec22f918b2))
+* **resolve:** a written import proves the only definition of a called name ([43def21](https://github.com/casonadams/ripwire-rs/commit/43def21d638c7b4dd33c863d5c43f133e56a47c0))
+* **resolve:** a written path through a re-exporting module proves the call ([d11162f](https://github.com/casonadams/ripwire-rs/commit/d11162f882c619fe37281ba583a195b1aad64838))
+* **rust:** count tree-sitter Node members as external surface ([a6d0eb6](https://github.com/casonadams/ripwire-rs/commit/a6d0eb6103b3bcadc7e1def17c61331e08ec1592))
+* **rust:** resolve super chains and self at the module's own directory ([af7c310](https://github.com/casonadams/ripwire-rs/commit/af7c3101c6b789f4e2809ebe3083089557a00eee))
+* **skills:** an empty or relative home never places skills in the working directory ([d8e0503](https://github.com/casonadams/ripwire-rs/commit/d8e0503c038d38fc1857029b7a689e346f83eca4))
+* **sql:** a template interpolation in an embedded query holds no SQL calls ([e8e8d4f](https://github.com/casonadams/ripwire-rs/commit/e8e8d4f520e40eefb8fe842e547edf129f8fe162))
+* **sqlx:** read tables behind interpolated prefixes, resolve vars-named models ([f285819](https://github.com/casonadams/ripwire-rs/commit/f28581975f49d94bc47396c1b5df0bef97ccf6ab))
+
 ## [0.7.0](https://github.com/casonadams/ripwire-rs/compare/v0.6.9...v0.7.0) (2026-11-06)
 
 
