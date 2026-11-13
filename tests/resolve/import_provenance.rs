@@ -1,5 +1,7 @@
 use ripwire_rs::{EdgeProv, Graph, Interner, Lang, LanguageRegistry, ingest_in_memory_files};
 
+type Fixture<'a> = (&'a str, Lang, &'a [u8]);
+
 /// The provenance of the edge from `caller` to `callee` in an in-memory corpus.
 fn edge_prov(files: &[(&str, Lang, &[u8])], caller: &str, callee: &str) -> Option<EdgeProv> {
     let registry = LanguageRegistry::new().unwrap();
@@ -19,9 +21,9 @@ fn edge_prov(files: &[(&str, Lang, &[u8])], caller: &str, callee: &str) -> Optio
 
 #[test]
 fn a_written_import_proves_the_only_definition_of_a_called_name() {
-    let rust_def: (&str, Lang, &[u8]) = ("src/b.rs", Lang::Rust, b"pub fn helper() {}\n");
-    let py_def: (&str, Lang, &[u8]) = ("util.py", Lang::Python, b"def helper():\n    return 1\n");
-    let cases: [([(&str, Lang, &[u8]); 2], Option<EdgeProv>); 4] = [
+    let rust_def: Fixture = ("src/b.rs", Lang::Rust, b"pub fn helper() {}\n");
+    let py_def: Fixture = ("util.py", Lang::Python, b"def helper():\n    return 1\n");
+    let cases: [([Fixture; 2], Option<EdgeProv>); 4] = [
         (
             [
                 rust_def,
