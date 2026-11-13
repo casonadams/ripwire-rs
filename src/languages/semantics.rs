@@ -272,6 +272,16 @@ pub trait LanguageSemantics: Sync {
         Vec::new()
     }
 
+    /// `(local name, imported name)` for each import a file renames (`import { a as b }`): a bare use of the
+    /// local name is a use of the imported one.
+    fn renamed_imports(
+        &self,
+        _root: tree_sitter::Node<'_>,
+        _source: &[u8],
+    ) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
     /// Module paths a file loads with a dynamic `import("path")`, each with the export names the importer then
     /// uses; no names means it is used opaquely and every export is reached.
     fn dynamic_imports(

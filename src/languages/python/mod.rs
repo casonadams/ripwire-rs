@@ -82,6 +82,10 @@ impl LanguageSemantics for PythonLanguage {
         true
     }
 
+    fn renamed_imports(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, String)> {
+        submodules::renamed_from_imports(root, source)
+    }
+
     fn submodule_imports(&self, root: tree_sitter::Node<'_>, source: &[u8]) -> Vec<(String, String)> {
         submodules::submodule_imports(root, source)
     }

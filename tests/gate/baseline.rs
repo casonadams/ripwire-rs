@@ -450,3 +450,37 @@ fn test_typescript_name_imported_from_an_external_package_does_not_keep_a_symbol
     ];
     assert_eq!(dead_symbols(&files), ["app/src/Chip.tsx::Chip"]);
 }
+
+#[test]
+fn test_renamed_imports_keep_the_original_definition_alive() {
+    use ripwire_rs::Lang::{Python, TypeScript};
+    let ts_probe = "export function cn(...inputs: string[]) {\n  return inputs.join(\" \");\n}\n";
+    let ts_user = "import { cn as join } from \"./probe\";\n\nexport function Chip() {\n  return join(\"a\");\n}\n";
+    let files = [
+        ("app/src/probe.ts", TypeScript, ts_probe),
+        ("app/src/Chip.tsx", TypeScript, ts_user),
+    ];
+    assert_eq!(dead_symbols(&files), ["app/src/Chip.tsx::Chip"]);
+    let py_probe = "def classify(a):\n    return a - 1\n";
+    let py_user = "from src.probe import classify as grade\n\n\ndef main():\n    return grade(1)\n";
+    let files = [
+        ("src/probe.py", Python, py_probe),
+        ("src/user.py", Python, py_user),
+    ];
+    assert_eq!(dead_symbols(&files), Vec::<String>::new());
+}
+
+#[test]
+fn test_renamed_import_from_an_outside_package_does_not_keep_a_symbol_alive() {
+    use ripwire_rs::Lang::TypeScript;
+    let probe = "export function cn(...inputs: string[]) {\n  return inputs.join(\" \");\n}\n";
+    let external = "import { cn as join } from \"@acme/ui/cn\";\n\nexport function Avatar() {\n  return join(\"a\");\n}\n";
+    let files = [
+        ("app/src/probe.ts", TypeScript, probe),
+        ("app/src/Avatar.tsx", TypeScript, external),
+    ];
+    assert_eq!(
+        dead_symbols(&files),
+        ["app/src/Avatar.tsx::Avatar", "app/src/probe.ts::cn"]
+    );
+}

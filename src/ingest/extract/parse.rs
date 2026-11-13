@@ -50,6 +50,10 @@ pub fn parse_file_tree(
         attach_receiver_types(&mut refs, &bindings, lang);
         let pending_fields = pending_facts(lang, &refs, &bindings);
         append_embedded_refs(&ctx, &mut refs);
+        rename_imported_uses(
+            &mut refs,
+            &lang.semantics().renamed_imports(ctx.root, source_bytes),
+        );
         let submodule_imports = lang.semantics().submodule_imports(ctx.root, source_bytes);
         qualify_import_bound_receivers(&mut refs, lang, &submodule_imports);
         finalize_defs(&mut defs);
@@ -194,6 +198,22 @@ fn parse_with_macro_blank_fallback(
 fn dedup_conditional_macros(defs: &mut Vec<RawDef>) {
     let mut seen_macros = std::collections::HashSet::new();
     defs.retain(|d| d.kind != SymKind::Macro || seen_macros.insert(d.name.clone()));
+}
+
+/// A bare use of a name the file imports under another name is a use of the imported name: `join(..)` after
+/// `import { cn as join }` is a call of `cn`.
+fn rename_imported_uses(refs: &mut [RawRef], renamed: &[(String, String)]) {
+    if renamed.is_empty() {
+        return;
+    }
+    for r in refs.iter_mut().filter(|r| r.role != RefRole::Import) {
+        if r.qualifier.is_none()
+            && !r.member_call
+            && let Some((_, imported)) = renamed.iter().find(|(local, _)| *local == r.callee_name)
+        {
+            r.callee_name.clone_from(imported);
+        }
+    }
 }
 
 /// Give `alias.f()` the qualifier `alias` when this file's own imports bind `alias`; where the language names

@@ -53,6 +53,32 @@ pub(crate) fn resolve_web_import_target(
     None
 }
 
+/// `(local, imported)` for each `import { imported as local }` specifier.
+pub(in crate::languages) fn renamed_import_names(
+    root: tree_sitter::Node<'_>,
+    source: &[u8],
+) -> Vec<(String, String)> {
+    let mut renamed = Vec::new();
+    for statement in children(root).filter(|node| node.kind() == "import_statement") {
+        let mut stack = vec![statement];
+        while let Some(node) = stack.pop() {
+            if node.kind() == "import_specifier"
+                && let Some(local) = node
+                    .child_by_field_name("alias")
+                    .and_then(|alias| node_text(alias, source))
+                && let Some(imported) = node
+                    .child_by_field_name("name")
+                    .and_then(|name| node_text(name, source))
+                && local != imported
+            {
+                renamed.push((local, imported));
+            }
+            stack.extend(children(node));
+        }
+    }
+    renamed
+}
+
 /// The `import("path")` calls of a file, each with the export names the importer goes on to use; no names
 /// means the module is used opaquely, so everything it exports is reached. `lazy(() => import("./Panel"))`
 /// loads `default`, `.then((m) => m.Foo)` and `const { Foo } = await import(..)` load `Foo`.
@@ -273,10 +299,14 @@ fn es_bound_names(stmt: tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
                 }
                 "named_imports" => {
                     for spec in children(part).filter(|c| c.kind() == "import_specifier") {
-                        let local = spec
-                            .child_by_field_name("alias")
-                            .or_else(|| spec.child_by_field_name("name"));
-                        names.extend(local.and_then(|n| node_text(n, source)));
+                        // A renamed specifier binds both names: uses of the local name are rewritten to the
+                        // imported one, so the imported name must resolve to the same module.
+                        for field in ["alias", "name"] {
+                            names.extend(
+                                spec.child_by_field_name(field)
+                                    .and_then(|n| node_text(n, source)),
+                            );
+                        }
                     }
                 }
                 _ => {}

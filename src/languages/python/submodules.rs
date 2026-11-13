@@ -47,3 +47,30 @@ fn collect_statement(statement: Node<'_>, source: &[u8], found: &mut Vec<(String
         found.push((bound.to_string(), format!("{module}{separator}{imported}")));
     }
 }
+
+/// `(alias, name)` for each `from M import name as alias`.
+pub(super) fn renamed_from_imports(root: Node<'_>, source: &[u8]) -> Vec<(String, String)> {
+    let mut renamed = Vec::new();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "import_from_statement" {
+            let mut cursor = node.walk();
+            for name in node.children_by_field_name("name", &mut cursor) {
+                let text = |field| {
+                    name.child_by_field_name(field)
+                        .and_then(|node| node.utf8_text(source).ok())
+                };
+                if name.kind() == "aliased_import"
+                    && let (Some(imported), Some(alias)) = (text("name"), text("alias"))
+                    && imported != alias
+                {
+                    renamed.push((alias.to_string(), imported.to_string()));
+                }
+            }
+            continue;
+        }
+        let mut cursor = node.walk();
+        stack.extend(node.children(&mut cursor));
+    }
+    renamed
+}
