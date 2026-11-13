@@ -66,13 +66,56 @@ class OmissionRule(unittest.TestCase):
     def test_entries_without_omits_keep_the_element_rule_unchanged(self):
         self.assertIsNone(vp.check_xml_parity("--doctor", DOCTOR_OURS_WITH_LOCKS, DOCTOR_UPSTREAM))
 
-    def test_omits_are_only_valid_on_smaller_entries_and_need_a_reason(self):
+    def test_row_and_element_omits_need_smaller_entries_and_every_omit_needs_a_reason(self):
         entry = {"id": "x", "kind": "richer", "why": "locks and note", "omits": ["cache-dir:locks"]}
-        self.assertTrue(any("only smaller entries" in e for e in vp.omit_declaration_errors(entry)))
+        self.assertTrue(any("not rows or elements" in e for e in vp.omit_declaration_errors(entry)))
+        entry = {"id": "x", "kind": "defect", "why": "locks", "omits": ["cache-dir:locks"]}
+        self.assertTrue(any("only smaller and richer" in e for e in vp.omit_declaration_errors(entry)))
         entry = {"id": "x", "kind": "smaller", "why": "note only", "omits": ["cache-dir:locks"]}
         self.assertTrue(any("has no reason naming 'locks'" in e for e in vp.omit_declaration_errors(entry)))
         entry = {"id": "x", "kind": "smaller", "why": "locks has no mechanism", "omits": ["cache-dir:locks"]}
         self.assertEqual(vp.omit_declaration_errors(entry), [])
+
+
+STEM_UPSTREAM = '<map schema="ripwire.map/v1" stem_cut="3" budget="2000"/>'
+STEM_OURS = '<map schema="ripwire-rs.map/v1" budget="2000"/>'
+
+
+class RootOmissionRule(unittest.TestCase):
+    def check(self, ours, omits, allow_extra_root=True):
+        return vp.check_xml_parity("--map", ours, STEM_UPSTREAM, allow_extra_root=allow_extra_root, omits=omits)
+
+    def test_a_declared_root_attribute_is_exempt_from_the_missing_attribute_rule(self):
+        self.assertIsNone(self.check(STEM_OURS, ["@stem_cut"]))
+        self.assertIsNone(self.check(STEM_OURS, ["@stem_cut"], allow_extra_root=False))
+
+    def test_an_undeclared_missing_root_attribute_still_fails(self):
+        self.assertIn("missing upstream attrs ['stem_cut']", self.check(STEM_OURS, ["@other"]))
+
+    def test_a_root_omission_is_not_stale_when_upstream_does_not_print_it(self):
+        upstream_without = '<map schema="ripwire.map/v1" budget="2000"/>'
+        self.assertIsNone(
+            vp.check_xml_parity("--map", STEM_OURS, upstream_without, allow_extra_root=True, omits=["@stem_cut"])
+        )
+
+    def test_a_richer_entry_may_omit_only_root_attributes(self):
+        entry = {"id": "x", "kind": "richer", "why": "no stem_cut: ours prints no stem rows", "omits": ["@stem_cut"]}
+        self.assertEqual(vp.omit_declaration_errors(entry), [])
+
+
+GROUPED_UPSTREAM = '<impact schema="ripwire.impact/v1"><s n="a" d="1"/><s n="b" d="2" via="name"/></impact>'
+GROUPED_OURS = '<impact schema="ripwire-rs.impact/v1"><s n="a" d="1"/><s n="c"/><s n="b" via="name"/></impact>'
+CALLERS_UPSTREAM = '<for schema="ripwire.for/v1"><callers of="f" d2="3"/></for>'
+CALLERS_OURS = '<for schema="ripwire-rs.for/v1"><callers of="f"/></for>'
+
+
+class RowAttributeRules(unittest.TestCase):
+    def test_a_hop_depth_printed_once_per_group_covers_the_rows_after_it(self):
+        self.assertIsNone(vp.check_xml_parity("--impact", GROUPED_OURS, GROUPED_UPSTREAM, allow_extra_root=True))
+
+    def test_a_row_without_a_name_is_omitted_under_its_tag(self):
+        self.assertIn("no row with required attrs", vp.check_xml_parity("--for", CALLERS_OURS, CALLERS_UPSTREAM, omits=[]))
+        self.assertIsNone(vp.check_xml_parity("--for", CALLERS_OURS, CALLERS_UPSTREAM, omits=["callers:d2"]))
 
 
 PAGED_RW = '<external-surface schema="ripwire-rs.external-surface/v1" total="644" shown="3"/>'

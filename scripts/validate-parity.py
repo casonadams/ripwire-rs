@@ -17,7 +17,7 @@ LEDGER = ROOT / "scripts" / "parity-divergences.toml"
 KINDS = ("smaller", "richer", "fixes-upstream-defect", "defect")
 LEDGER_FIELDS = ("id", "command", "case", "kind", "why", "evidence")
 EVIDENCE_RE = re.compile(r"(tests/[A-Za-z0-9_/]+\.rs)::([A-Za-z_][A-Za-z0-9_]*)")
-OMIT_TOKEN_RE = re.compile(r"(?:[A-Za-z0-9_-]+:)?[A-Za-z0-9_-]+")
+OMIT_TOKEN_RE = re.compile(r"(?:[A-Za-z0-9_-]+:)?[A-Za-z0-9_-]+|@[A-Za-z0-9_-]+")
 PAGING_ATTRS = ("total", "has_more", "next_offset", "capped")
 ROW_KEYS = ("p", "n", "path", "name")
 FULL_ROWS_FLAG = "--limit=100000"
@@ -354,7 +354,7 @@ def row_gap(tag, ch_rip, rw_attrs, declared, used):
     need = required_attrs(ch_rip)
     if any(need <= have for have in rw_attrs):
         return None
-    row = ch_rip.attrib.get("n", "")
+    row = ch_rip.attrib.get("n") or tag
     named = {attr for attr in need if f"{row}:{attr}" in declared}
     if not any(need - named <= have for have in rw_attrs):
         return f"child <{tag}> has no row with required attrs {sorted(need - named)}"
@@ -362,8 +362,18 @@ def row_gap(tag, ch_rip, rw_attrs, declared, used):
     return None
 
 
+def with_group_depth(rows):
+    """The attribute sets of ours rows, with `d` carried to the rows after one that prints it: ours
+    writes the hop depth once per group of rows."""
+    sets, depth = [], False
+    for ch in rows:
+        depth = depth or "d" in ch.attrib
+        sets.append(set(ch.attrib) | ({"d"} if depth else set()))
+    return sets
+
+
 def check_unranked_rows(tag, rip_rows, rw_rows, declared, used):
-    rw_attrs = [set(ch.attrib) for ch in rw_rows]
+    rw_attrs = with_group_depth(rw_rows)
     for ch_rip in rip_rows:
         err = row_gap(tag, ch_rip, rw_attrs, declared, used)
         if err:
@@ -394,10 +404,11 @@ def compare_xml_children(root_rw, root_rip, ranked, declared=frozenset(), used=N
 
 def omission_gaps(root_rw, root_rip, declared, used):
     """Exact omissions for an entry that declares `omits`: every upstream element that ours lacks
-    and every attribute the row check exempted must be declared, and no declared omission may be
-    unneeded."""
+    and every row attribute the row check exempted must be declared, and no declared element or row
+    attribute may be unneeded. A root `@attr` is never stale: upstream prints it only when it applies."""
+    root_tokens = {token for token in declared if token.startswith("@")}
     attr_tokens = {token for token in declared if ":" in token}
-    tag_tokens = declared - attr_tokens
+    tag_tokens = declared - attr_tokens - root_tokens
     rip_tags = tag_counts(root_rip)
     missing_tags = {tag for tag in rip_tags if tag not in tag_counts(root_rw)}
     undeclared = sorted(missing_tags - tag_tokens)
@@ -410,21 +421,24 @@ def omission_gaps(root_rw, root_rip, declared, used):
 
 
 def omit_declaration_errors(entry):
-    """Structural rules for an `omits` list: smaller entries only, and each omitted name must be
-    named in `why` so the reason is on record."""
+    """Structural rules for an `omits` list: smaller entries may omit rows, elements and root attributes,
+    richer entries root attributes only (`@attr`), and each omitted name must be named in `why` so the
+    reason is on record."""
     ident, omits = entry["id"], entry["omits"]
-    if entry["kind"] != "smaller":
-        return [f"ledger entry {ident} declares omits but kind is {entry['kind']}; only smaller entries may"]
     if not isinstance(omits, list) or not all(isinstance(token, str) and token for token in omits):
         return [f"ledger entry {ident} omits must be a list of non-empty strings"]
+    if entry["kind"] not in ("smaller", "richer"):
+        return [f"ledger entry {ident} declares omits but kind is {entry['kind']}; only smaller and richer entries may"]
     errors = []
+    if entry["kind"] == "richer" and any(not token.startswith("@") for token in omits):
+        errors.append(f"ledger entry {ident} is richer: it may omit root attributes (@attr), not rows or elements")
     if len(set(omits)) != len(omits):
         errors.append(f"ledger entry {ident} lists an omission twice")
     for token in omits:
         if not OMIT_TOKEN_RE.fullmatch(token):
-            errors.append(f"ledger entry {ident} omission {token!r} must be 'row:attr' or 'element'")
+            errors.append(f"ledger entry {ident} omission {token!r} must be 'row:attr', 'element' or '@attr'")
             continue
-        name = token.rsplit(":", 1)[-1]
+        name = token.lstrip("@").rsplit(":", 1)[-1]
         if not re.search(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_-])", entry["why"]):
             errors.append(f"ledger entry {ident} omission {token!r} has no reason naming {name!r} in why")
     return errors
@@ -492,15 +506,17 @@ def root_identity_error(root_rw, root_rip):
     return None
 
 
-def root_attr_error(root_rw, root_rip, allow_extra_root):
+def root_attr_error(root_rw, root_rip, allow_extra_root, root_omits=frozenset(), used=None):
+    used = set() if used is None else used
     req_rip = set(root_rip.attrib.keys()) - OPTIONAL_ATTRS
     req_rw = set(root_rw.attrib.keys()) - OPTIONAL_ATTRS
+    exempt = (req_rip - req_rw) & root_omits
+    used.update(f"@{attr}" for attr in exempt)
+    missing_root = sorted(req_rip - req_rw - exempt)
     if allow_extra_root:
-        missing_root = sorted(req_rip - req_rw)
         if missing_root:
             return f"root attr keys missing upstream attrs {missing_root}"
-    elif req_rw != req_rip:
-        missing_root = sorted(req_rip - req_rw)
+    elif missing_root or req_rw - req_rip:
         extra_root = sorted(req_rw - req_rip)
         return f"root attr keys mismatch: missing={missing_root} extra={extra_root}"
     return None
@@ -519,16 +535,17 @@ def check_xml_parity(cmd, out_rw, out_rip, allow_extra_root=False, omits=None):
     root_rip, err_rip = parse_xml_dom(out_rip)
     if err_rip:
         return f"ripwire {err_rip}"
+    declared = set(omits or ())
+    used = set()
+    root_omits = {token[1:] for token in declared if token.startswith("@")}
     err = (
         root_identity_error(root_rw, root_rip)
-        or root_attr_error(root_rw, root_rip, allow_extra_root)
+        or root_attr_error(root_rw, root_rip, allow_extra_root, root_omits, used)
         or budget_error(cmd, out_rw, out_rip)
         or check_xml_data_invariants(cmd, root_rw, root_rip)
     )
     if err:
         return err
-    declared = set(omits or ())
-    used = set()
     err = compare_xml_children(root_rw, root_rip, is_ranked(cmd), declared, used)
     if err or omits is None:
         return err

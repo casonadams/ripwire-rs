@@ -114,16 +114,18 @@ id = "map-token-budget-2000-richer"
 command = "--token-budget=2000"
 case = ""
 kind = "richer"
-why = "Under a 2000-token budget ours packs five times the facts and more than twice the density of upstream for about the same size."
-evidence = "bytes rw=3295 rip=3075; facts rw=263 rip=109; density rw=0.07982 rip=0.03545; ours 5 file rows, 33 s rows, 34 c rows vs upstream 10, 10, 15."
+omits = ["@stem_cut"]
+why = "Under a 2000-token budget ours packs five times the facts and more than twice the density of upstream for about the same size. Upstream's root stem_cut counts the map stem rows it cut under the budget; ours prints no stem rows (the rule that adds a file's complete namesake class is not adopted: no retrieval-eval evidence yet), so there is nothing to count."
+evidence = "bytes rw=3295 rip=3075; facts rw=263 rip=109; density rw=0.07982 rip=0.03545; ours 5 file rows, 33 s rows, 34 c rows vs upstream 10, 10, 15. stem_cut checked against upstream 0.6.10 (built_from=ac869640e)."
 
 [[divergence]]
 id = "map-token-budget-4000-richer"
 command = "--token-budget=4000"
 case = ""
 kind = "richer"
-why = "Under a 4000-token budget ours is slightly smaller than upstream and carries more facts at higher density."
-evidence = "bytes rw=7314 rip=7513; facts rw=613 rip=476; density rw=0.08381 rip=0.06336; ours 16 file rows and 77 s rows vs upstream 27 and 39."
+omits = ["@stem_cut"]
+why = "Under a 4000-token budget ours is slightly smaller than upstream and carries more facts at higher density. Upstream's root stem_cut counts the map stem rows it cut under the budget; ours prints no stem rows, so there is nothing to count (see map-token-budget-2000-richer)."
+evidence = "bytes rw=7314 rip=7513; facts rw=613 rip=476; density rw=0.08381 rip=0.06336; ours 16 file rows and 77 s rows vs upstream 27 and 39. stem_cut checked against upstream 0.6.10 (built_from=ac869640e)."
 
 [[divergence]]
 id = "map-rank-authority-by-calling-file"
@@ -267,8 +269,9 @@ id = "deps-afferent-only-files"
 command = "--deps"
 case = ""
 kind = "smaller"
-why = "The default list is budget-windowed, so it carries about half of upstream's bytes. Afferent-only rows, where shown, are real importers: changes.rs is imported by gate.rs and safety_queries.rs through `use crate::commands::common::changes::...`, and score.rs by its parent through `use score::{...}`."
-evidence = "measured: ours about 15.9 KB, upstream about 28.0 KB at the default window."
+omits = ["@no_file_edges", "@unmeasured_files", "health:containment_edges", "health:cyclic_files", "health:masked_files"]
+why = "The default list is budget-windowed, so it carries about half of upstream's bytes. Afferent-only rows, where shown, are real importers: changes.rs is imported by gate.rs and safety_queries.rs through `use crate::commands::common::changes::...`, and score.rs by its parent through `use score::{...}`. Upstream 0.6.10 puts no_file_edges= and unmeasured_files= on the root for files of languages it draws no file edge for (Go, Java, Kotlin, C#, PHP, Swift, Dart, GDScript, Clojure), and masked_files= on its health row; ours resolves file imports for Go, Java, C#, PHP, Kotlin, Swift and Dart (a two-file fixture per language gives the imported file afferent=1), so none of those files is unmeasured. Clojure draws no edge in ours either and carries no such disclosure yet; GDScript was not checked. Upstream's health row also carries containment_edges= (Rust `mod x;` declarations, kept out of its cycles) and cyclic_files= (files in a dependency cycle); ours records no `mod x;` edge and prints its cycles as a <cycles> block, so neither attribute exists in ours."
+evidence = "measured: ours about 15.9 KB, upstream about 28.0 KB at the default window; no_file_edges and unmeasured_files checked against upstream 0.6.10 (built_from=ac869640e)."
 
 [[divergence]]
 id = "clones-seams-compute-directory"
@@ -406,8 +409,9 @@ id = "for-fit-rows-task-lens"
 command = "--for=fit_rows"
 case = ""
 kind = "smaller"
-why = "The task lens for fit_rows is smaller: ours gives the signature, its one caller in a callers section, and no markdown mentions or test tail. Upstream adds a doc section and a test tail for the same symbol."
-evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 989 B; upstream 1093 B."
+omits = ["callers:d2", "callers:d2_shown", "doc", "syms", "t", "tail", "y"]
+why = "The task lens for fit_rows is smaller: ours gives the signature and its one caller in a callers section. Upstream adds a doc section (doc), the shown file's other symbols (syms), a test tail (tail, with one t row) and second-hop callers (d2 and d2_shown on its callers block, plus y rows for the ones it binds by name); ours lists the direct callers and points to --callers and --impact for the rest."
+evidence = "measured on upstream 0.6.10 (built_from=ac869640e): ours 989 B; upstream 3625 B."
 
 [[divergence]]
 id = "impact-fit-rows-hedged-reaches"
