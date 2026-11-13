@@ -78,6 +78,7 @@
           <button class="install-tab" data-tab="apt">APT (Ubuntu/Debian)</button>
           <button class="install-tab" data-tab="dnf">DNF (Fedora/RHEL)</button>
           <button class="install-tab" data-tab="cargo">Cargo</button>
+          <button class="install-tab" data-tab="mise">mise</button>
           <button class="install-tab" data-tab="source">From Source</button>
         </div>
         <div id="panel-brew" class="install-panel active">
@@ -102,6 +103,12 @@
           <div class="code-wrap">
             <code>cargo binstall ripwire-rs || cargo install ripwire-rs</code>
             <button class="btn-copy" data-copy="cargo binstall ripwire-rs || cargo install ripwire-rs">Copy</button>
+          </div>
+        </div>
+        <div id="panel-mise" class="install-panel">
+          <div class="code-wrap">
+            <code>mise use -g cargo:ripwire-rs</code>
+            <button class="btn-copy" data-copy="mise use -g cargo:ripwire-rs">Copy</button>
           </div>
         </div>
         <div id="panel-source" class="install-panel">

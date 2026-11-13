@@ -75,6 +75,28 @@ cargo install ripwire-rs
 
 ---
 
+## mise
+
+Install with [mise](https://mise.jdx.dev) through its Cargo backend. mise uses `cargo-binstall` for a prebuilt binary when it is on `PATH`, and otherwise compiles with `cargo` (a Rust toolchain is required):
+
+```bash
+mise use -g cargo:ripwire-rs
+```
+
+Pin a version per project (writes `mise.toml`):
+
+```bash
+mise use cargo:ripwire-rs@latest
+```
+
+Upgrade:
+
+```bash
+mise upgrade cargo:ripwire-rs
+```
+
+---
+
 ## From Source
 
 ```bash
