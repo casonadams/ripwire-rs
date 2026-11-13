@@ -357,7 +357,7 @@ id = "callees-typed-receiver-binds-exactly"
 command = "--callees=row_bytes"
 case = ""
 kind = "smaller"
-omits = ["dc", "stdm", "flush:via"]
+omits = ["dc", "stdm"]
 why = "row_bytes calls .len() on a byte slice, which is a standard-library method to ours, not a declined call, so there is no <dc gate=\"std\"> row and no <stdm> tally. Upstream binds new and flush to the typed receiver's definitions; on 0.6.8 it also lists the second flush definition by name (via=name), which ours declines because the receiver is typed and a name-only edge is unproven. So ours carries no via on its flush row and lists only the exact flush. Pinned by tests/resolve/ladder.rs::test_a_receiver_typed_by_its_constructor_binds_only_that_types_method."
 evidence = "measured on upstream 0.6.8 (built_from=cd11226a6): ours 2 callee rows (new, flush at writer.rs:172, no via); upstream 4 rows (new, flush at writer.rs:172 and writer.rs:380 both via=\"name\") plus <dc n=\"len\" gate=\"std\"> and <stdm n=\"len\" calls=\"1\">."
 
@@ -441,3 +441,35 @@ case = "scripts/validate-parity.py"
 kind = "smaller"
 why = "A change to the parity checker lists the unit test that exercises it, scripts/test_validate_parity.py at one hop (reached=105), where upstream lists no test (tests=0). Ours is fewer bytes and names the test to run."
 evidence = "measured on 0d4d0b3f9+dirty against upstream 0.6.8 (built_from=cd11226a6): ours bytes=320 facts=15 with one <test> row; upstream bytes=1248 facts=16 with no rows."
+
+[[divergence]]
+id = "callers-row-bytes-qualified-path-calls"
+command = "--callers=row_bytes"
+case = ""
+kind = "richer"
+why = "file_row_bytes (src/gate/pr_context.rs) calls row_bytes through the written path crate::serialize::row_bytes(..); ours lists it as a caller and upstream's full set omits it (the cause on upstream is not traced). The row is a real call site, so ours is more complete."
+evidence = "measured on upstream 0.6.10 (built_from=ac869640e): ours lists file_row_bytes at src/gate/pr_context.rs:371 in its paged <s> set; upstream's full set does not."
+
+[[divergence]]
+id = "safe-delete-row-bytes-qualified-path-calls"
+command = "--safe-delete=row_bytes"
+case = ""
+kind = "richer"
+why = "file_row_bytes (src/gate/pr_context.rs) calls row_bytes through the written path crate::serialize::row_bytes(..), the same call as callers-row-bytes-qualified-path-calls; ours lists it as a caller to check before deleting and upstream's full set omits it."
+evidence = "measured on upstream 0.6.10 (built_from=ac869640e): ours lists file_row_bytes in its paged <c> set; upstream's full set does not."
+
+[[divergence]]
+id = "graph-query-callers-row-bytes-qualified-path-calls"
+command = "--graph-query='callers(name(\"row_bytes\"))'"
+case = ""
+kind = "richer"
+why = "file_row_bytes (src/gate/pr_context.rs) calls row_bytes through the written path crate::serialize::row_bytes(..), the same call as callers-row-bytes-qualified-path-calls; ours returns it from callers(name(\"row_bytes\")) and upstream's full set omits it."
+evidence = "measured on upstream 0.6.10 (built_from=ac869640e): ours lists file_row_bytes in its paged <s> set; upstream's full set does not."
+
+[[divergence]]
+id = "uses-row-bytes-qualified-path-test-call"
+command = "--uses=row_bytes"
+case = ""
+kind = "richer"
+why = "tests/serialize/writer.rs:336 calls ripwire_rs::serialize::row_bytes(row) through a written path; ours lists the site and upstream does not (50 <u> rows against 49). Upstream also writes in_id as a qualified id (file::Type::method) where ours writes the bare symbol name."
+evidence = "measured on upstream 0.6.10 (built_from=ac869640e): ours 50 <u> rows, upstream 49; the one extra is tests/serialize/writer.rs:336 role=call."
