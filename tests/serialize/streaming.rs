@@ -476,11 +476,13 @@ fn test_query_xml_architecture_family() {
         ],
         cycles: vec![vec!["src/a.rs", "src/b.rs"]],
         violations: vec![("src/a.rs", "src/b.rs", 0.25)],
+        containment_edges: 1,
         page: ripwire_rs::serialize::PageRequest::default(),
     };
     ripwire_rs::serialize::serialize_deps_report_xml(".", &deps_rep, &mut buf).unwrap();
     let deps_xml = String::from_utf8_lossy(&buf);
     assert!(deps_xml.contains("<cycles total=\"1\" shown=\"1\" capped=\"0\">"));
+    assert!(deps_xml.contains(" shape=\"vertical\" containment_edges=\"1\" dep_langs="));
     assert!(deps_xml.contains("<cycle size=\"2\" cost=\"4\""));
     assert!(deps_xml.contains("<inc t=\"./b.rs\"/>"));
 }

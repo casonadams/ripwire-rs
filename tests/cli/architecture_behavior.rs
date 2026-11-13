@@ -225,35 +225,86 @@ fn community_summary_partitions_isolated_documents_declarations_and_bodies() {
     assert!(xml.contains("n=\"linked\""), "{xml}");
 }
 
+/// One dependency-report scenario: `(efferent, afferent, transitive)` expected for each of `paths`, plus the
+/// ccd, the cycles (members sorted) and the containment edge count.
+struct DepsCase {
+    files: &'static [(&'static str, Lang, &'static [u8])],
+    paths: &'static [&'static str],
+    rows: &'static [(usize, usize, usize)],
+    ccd: usize,
+    cycles: &'static [&'static [&'static str]],
+    containment: usize,
+}
+
+const DEPS_CASES: [DepsCase; 2] = [
+    // Duplicate calls make one edge, and component dependency counts include the file itself.
+    DepsCase {
+        files: &[
+            (
+                "src/a.rs",
+                Lang::Rust,
+                b"fn start() { middle(); middle(); }\n",
+            ),
+            ("src/b.rs", Lang::Rust, b"fn middle() { finish(); }\n"),
+            ("src/c.rs", Lang::Rust, b"fn finish() { middle(); }\n"),
+            ("src/alone.rs", Lang::Rust, b"fn alone() {}\n"),
+        ],
+        paths: &["src/a.rs", "src/b.rs", "src/c.rs", "src/alone.rs"],
+        rows: &[(1, 0, 3), (1, 2, 2), (1, 1, 2), (0, 0, 1)],
+        ccd: 8,
+        cycles: &[&["src/b.rs", "src/c.rs"]],
+        containment: 0,
+    },
+    // `mod a; mod b;` links count as efferent and afferent but add no reach, ccd or cycle.
+    DepsCase {
+        files: &[
+            ("src/main.rs", Lang::Rust, b"mod a;\nmod b;\nfn main() {}\n"),
+            ("src/a.rs", Lang::Rust, b"pub fn run() {}\n"),
+            (
+                "src/b.rs",
+                Lang::Rust,
+                b"use crate::a::run;\npub fn go() { run(); }\n",
+            ),
+        ],
+        paths: &["src/main.rs", "src/a.rs", "src/b.rs"],
+        rows: &[(2, 0, 1), (0, 2, 1), (1, 1, 2)],
+        ccd: 4,
+        cycles: &[],
+        containment: 2,
+    },
+];
+
 #[test]
-fn dependency_report_deduplicates_file_edges_and_detects_transitive_cycles() {
-    let (ingest, graph, interner) = index_files(&[
-        (
-            "src/a.rs",
-            Lang::Rust,
-            b"fn start() { middle(); middle(); }\n",
-        ),
-        ("src/b.rs", Lang::Rust, b"fn middle() { finish(); }\n"),
-        ("src/c.rs", Lang::Rust, b"fn finish() { middle(); }\n"),
-        ("src/alone.rs", Lang::Rust, b"fn alone() {}\n"),
-    ]);
-    let report = compute_deps_report(&ingest, &graph, &interner);
-    let row = |path| report.rows.iter().find(|row| row.path == path).unwrap();
-    assert_eq!((row("src/a.rs").efferent, row("src/a.rs").afferent), (1, 0));
-    // Component dependency counts include the file itself.
-    assert_eq!(row("src/a.rs").transitive, 3);
-    assert_eq!((row("src/b.rs").efferent, row("src/b.rs").afferent), (1, 2));
-    assert_eq!(row("src/b.rs").transitive, 2);
-    assert_eq!(row("src/c.rs").transitive, 2);
-    assert_eq!(
-        (row("src/alone.rs").efferent, row("src/alone.rs").transitive),
-        (0, 1)
-    );
-    assert_eq!(report.ccd, 8);
-    assert_eq!(report.cycles.len(), 1);
-    let mut cycle = report.cycles[0].clone();
-    cycle.sort_unstable();
-    assert_eq!(cycle, ["src/b.rs", "src/c.rs"]);
+fn dependency_report_measures_file_edges_and_keeps_module_declarations_out_of_coupling() {
+    for case in &DEPS_CASES {
+        let (ingest, graph, interner) = index_files(case.files);
+        let report = compute_deps_report(&ingest, &graph, &interner);
+        let rows: Vec<(usize, usize, usize)> = case
+            .paths
+            .iter()
+            .map(|path| {
+                let row = report.rows.iter().find(|row| row.path == *path).unwrap();
+                (row.efferent, row.afferent, row.transitive)
+            })
+            .collect();
+        let cycles: Vec<Vec<&str>> = report
+            .cycles
+            .iter()
+            .map(|cycle| {
+                let mut members = cycle.clone();
+                members.sort_unstable();
+                members
+            })
+            .collect();
+        assert_eq!(rows, case.rows, "{:?}", case.paths);
+        assert_eq!(report.ccd, case.ccd, "{:?}", case.paths);
+        assert_eq!(cycles, case.cycles, "{:?}", case.paths);
+        assert_eq!(
+            report.containment_edges, case.containment,
+            "{:?}",
+            case.paths
+        );
+    }
 }
 
 #[test]

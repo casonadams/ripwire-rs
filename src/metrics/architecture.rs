@@ -170,15 +170,16 @@ pub fn build_ranked_communities<'a>(
     (comms.comm, by_comm, modules)
 }
 
-fn record_rust_mod_edges(
+/// Per file, the files it declares as child modules (`mod x;`): containment, which is no dependency.
+fn collect_containment_edges(
     ingest: &IngestResult,
     interner: &Interner,
     file_index: &std::collections::HashMap<&str, u32>,
-    adj_sets: &mut [std::collections::BTreeSet<usize>],
-) {
+) -> Vec<std::collections::BTreeSet<usize>> {
     use crate::domain::CorpusView;
     let view = (ingest, interner);
     let f_len = ingest.files.len();
+    let mut contained = vec![std::collections::BTreeSet::new(); f_len];
     for s in &ingest.symbols {
         let uf = s.file_id as usize;
         if uf < f_len
@@ -193,9 +194,10 @@ fn record_rust_mod_edges(
             && (vf as usize) != uf
             && (vf as usize) < f_len
         {
-            adj_sets[uf].insert(vf as usize);
+            contained[uf].insert(vf as usize);
         }
     }
+    contained
 }
 
 fn record_import_edges<'a>(
@@ -231,14 +233,21 @@ fn record_import_edges<'a>(
             adj_sets[uf].insert(vf as usize);
         }
     }
-    record_rust_mod_edges(ingest, interner, file_index, adj_sets);
+}
+
+/// The file graph `--deps` measures: dependency edges per file, the import texts each file names, and the
+/// containment edges (`mod x;`) that are not dependencies.
+struct FileAdjacency<'a> {
+    dependency: Vec<Vec<usize>>,
+    inc_targets: Vec<Vec<&'a str>>,
+    contained: Vec<Vec<usize>>,
 }
 
 fn collect_import_and_call_adj<'a>(
     ingest: &'a IngestResult,
     graph: &Graph,
     interner: &'a Interner,
-) -> (Vec<Vec<usize>>, Vec<Vec<&'a str>>) {
+) -> FileAdjacency<'a> {
     let f_len = ingest.files.len();
     let file_index: std::collections::HashMap<&str, u32> = ingest
         .files
@@ -268,11 +277,20 @@ fn collect_import_and_call_adj<'a>(
         }
     }
 
+    let contained = collect_containment_edges(ingest, interner, &file_index)
+        .into_iter()
+        .zip(&adj_sets)
+        .map(|(declared, depends)| declared.difference(depends).copied().collect())
+        .collect();
     let adj = adj_sets
         .into_iter()
         .map(|s| s.into_iter().collect())
         .collect();
-    (adj, inc_targets)
+    FileAdjacency {
+        dependency: adj,
+        inc_targets,
+        contained,
+    }
 }
 
 struct TarjanState {
@@ -389,27 +407,54 @@ fn collect_stabledeps_violations<'a>(
     violations
 }
 
-pub fn compute_deps_report<'a>(
-    ingest: &'a IngestResult,
-    graph: &Graph,
-    interner: &'a Interner,
-) -> crate::serialize::DepsReport<'a> {
-    let f_len = ingest.files.len();
-    let (adj, inc_targets) = collect_import_and_call_adj(ingest, graph, interner);
+fn afferent_counts(adj: &[Vec<usize>], f_len: usize) -> Vec<usize> {
     let mut afferent = vec![0usize; f_len];
     for &v in adj.iter().flatten() {
         afferent[v] += 1;
     }
-    let transitive = compute_transitive_closure_counts(&adj);
-    let cycles: Vec<Vec<&'a str>> = find_scc_cycles(&adj)
+    afferent
+}
+
+fn cycle_paths<'a>(
+    ingest: &'a IngestResult,
+    interner: &'a Interner,
+    adj: &[Vec<usize>],
+) -> Vec<Vec<&'a str>> {
+    find_scc_cycles(adj)
         .into_iter()
         .map(|c| {
             c.into_iter()
                 .map(|fid| interner.resolve(&ingest.files[fid].path))
                 .collect()
         })
-        .collect();
-    let violations = collect_stabledeps_violations(ingest, interner, &adj, &afferent);
+        .collect()
+}
+
+/// Afferent counts with each containment edge added to the file it declares.
+fn with_containment(dependent: &[usize], contained: &[Vec<usize>]) -> Vec<usize> {
+    let mut afferent = dependent.to_vec();
+    for &v in contained.iter().flatten() {
+        afferent[v] += 1;
+    }
+    afferent
+}
+
+pub fn compute_deps_report<'a>(
+    ingest: &'a IngestResult,
+    graph: &Graph,
+    interner: &'a Interner,
+) -> crate::serialize::DepsReport<'a> {
+    let f_len = ingest.files.len();
+    let FileAdjacency {
+        dependency: adj,
+        inc_targets,
+        contained,
+    } = collect_import_and_call_adj(ingest, graph, interner);
+    let dependent = afferent_counts(&adj, f_len);
+    let afferent = with_containment(&dependent, &contained);
+    let transitive = compute_transitive_closure_counts(&adj);
+    let cycles = cycle_paths(ingest, interner, &adj);
+    let violations = collect_stabledeps_violations(ingest, interner, &adj, &dependent);
 
     let mut rows = Vec::with_capacity(f_len);
     let mut ccd = 0usize;
@@ -419,10 +464,11 @@ pub fn compute_deps_report<'a>(
             dep_files += 1;
             ccd += transitive[i];
         }
+        let linked = adj[i].len() + contained[i].len();
         rows.push(crate::serialize::DepsFileRow {
             path: interner.resolve(&f.path),
-            includes: inc_targets[i].len().max(adj[i].len()),
-            efferent: adj[i].len(),
+            includes: inc_targets[i].len().max(linked),
+            efferent: linked,
             afferent: afferent[i],
             transitive: transitive[i],
             inc_targets: inc_targets[i].clone(),
@@ -445,6 +491,7 @@ pub fn compute_deps_report<'a>(
         rows,
         cycles,
         violations,
+        containment_edges: contained.iter().map(Vec::len).sum(),
         page: crate::serialize::PageRequest::default(),
     }
 }

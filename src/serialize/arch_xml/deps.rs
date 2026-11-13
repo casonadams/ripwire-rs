@@ -22,6 +22,8 @@ pub struct DepsReport<'a> {
     pub rows: Vec<DepsFileRow<'a>>,
     pub cycles: Vec<Vec<&'a str>>,
     pub violations: Vec<(&'a str, &'a str, f64)>,
+    /// File pairs linked only by a `mod x;` declaration: containment, kept out of coupling and cycles.
+    pub containment_edges: usize,
     pub page: crate::serialize::PageRequest,
 }
 
@@ -178,9 +180,14 @@ impl crate::serialize::XmlReport for DepsReport<'_> {
         } else {
             "vertical"
         };
+        let containment = if self.containment_edges > 0 {
+            format!(" containment_edges=\"{}\"", self.containment_edges)
+        } else {
+            String::new()
+        };
         writeln!(
             out,
-            "  <health files=\"{}\" dep_files=\"{}\" ccd=\"{}\" acd=\"{:.1}\" nccd=\"{:.2}\" shape=\"{shape}\" dep_langs=\"cpp,py,ts,go,rs,swift,objc,js,sh,java,rb,cs,c,php,lua,ex,kt\"/>",
+            "  <health files=\"{}\" dep_files=\"{}\" ccd=\"{}\" acd=\"{:.1}\" nccd=\"{:.2}\" shape=\"{shape}\"{containment} dep_langs=\"cpp,py,ts,go,rs,swift,objc,js,sh,java,rb,cs,c,php,lua,ex,kt\"/>",
             self.corpus_files, self.dep_files, self.ccd, self.acd, self.nccd
         )?;
         write_deps_godfiles(out, &active, self.page)?;
@@ -266,6 +273,7 @@ pub fn serialize_deps_xml<W: Write>(
         rows,
         cycles: Vec::new(),
         violations: Vec::new(),
+        containment_edges: 0,
         page: crate::serialize::PageRequest::default(),
     };
     serialize_deps_report_xml(root, &rep, out)
