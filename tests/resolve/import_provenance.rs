@@ -63,3 +63,28 @@ fn a_written_import_proves_the_only_definition_of_a_called_name() {
         assert_eq!(edge_prov(&files, "run", "helper"), expected, "{files:?}");
     }
 }
+
+#[test]
+fn a_written_path_through_a_re_exporting_module_proves_the_edge() {
+    let files: [(&str, Lang, &[u8]); 3] = [
+        (
+            "src/serialize/mod.rs",
+            Lang::Rust,
+            b"mod budget;\npub use budget::row_bytes;\n",
+        ),
+        (
+            "src/serialize/budget.rs",
+            Lang::Rust,
+            b"pub fn row_bytes() {}\n",
+        ),
+        (
+            "src/gate/report.rs",
+            Lang::Rust,
+            b"fn probe() { crate::serialize::row_bytes(); }\n",
+        ),
+    ];
+    assert_eq!(
+        edge_prov(&files, "probe", "row_bytes"),
+        Some(EdgeProv::Import)
+    );
+}

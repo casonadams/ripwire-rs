@@ -85,3 +85,31 @@ fn test_module_path_call_binds_the_module_function_not_a_trait_method_of_that_na
         "only the free `run` in src/commands/mod.rs"
     );
 }
+
+#[test]
+fn a_path_through_a_module_binds_only_what_that_module_re_exports() {
+    let cases: [(&[u8], &[&str]); 2] = [
+        (
+            b"mod budget;\npub use budget::row_bytes;\n",
+            &["src/serialize/budget.rs"],
+        ),
+        (b"mod budget;\n", &[]),
+    ];
+    for (facade, expected) in cases {
+        let files: [(&str, Lang, &[u8]); 4] = [
+            (
+                "src/gate/report.rs",
+                Lang::Rust,
+                b"fn probe() { crate::serialize::row_bytes(); }\n",
+            ),
+            ("src/serialize/mod.rs", Lang::Rust, facade),
+            (
+                "src/serialize/budget.rs",
+                Lang::Rust,
+                b"pub fn row_bytes() {}\n",
+            ),
+            ("src/other.rs", Lang::Rust, b"pub fn row_bytes() {}\n"),
+        ];
+        assert_eq!(callees_described(&files, "probe", callee_file), expected);
+    }
+}

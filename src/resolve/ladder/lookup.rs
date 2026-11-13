@@ -442,7 +442,17 @@ pub trait ResolutionLookup {
         let module_file = self.qualifier_module_file(r.file_id, q)?;
         let in_module = filter_in_file(cands, symbols, module_file);
         let free = filter_unscoped(&in_module, symbols);
-        [free, in_module].into_iter().find(|set| !set.is_empty())
+        if let Some(set) = [free, in_module].into_iter().find(|set| !set.is_empty()) {
+            return Some(set);
+        }
+        let mut reexported = CandBuffer::default();
+        for &id in cands.iter() {
+            let sym = &symbols[id as usize];
+            if sym.scope.is_none() && self.reexports_to(module_file, sym.file_id, sym.name) {
+                reexported.push(id);
+            }
+        }
+        (!reexported.is_empty()).then_some(reexported)
     }
 
     /// `module::Type` names a type the file `module` imports declares: the compatible candidates scoped to
