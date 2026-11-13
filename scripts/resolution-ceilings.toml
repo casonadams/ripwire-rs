@@ -27,9 +27,13 @@
 gauge = "graph_ambiguous"
 max = 630
 
+# graph_unresolved read 540 at a9b8e88 and 541 with the embedded-SQL interpolation test (e8e8d4f, +1). The
+# parity checker's new unit tests (scripts/test_validate_parity.py, 67e9474) added 7 unittest and standard-library
+# calls the resolver cannot bind, reading 548; the ceiling sits 2% above that, 559.
+
 [[ceiling]]
 gauge = "graph_unresolved"
-max = 541
+max = 559
 
 # SCIP oracle (rust-analyzer), measured on this repository: precision=0.9876, recall=0.9819.
 # Floors sit just under the measurement; raise one in the commit that improves it.
