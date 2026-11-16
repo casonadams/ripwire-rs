@@ -49,6 +49,7 @@ OPTIONAL_ATTRS = {
     "rename_window_commits",
     "acked_by_rename",
     "acked_by_content",
+    "sidecar",
     "register-macro-excluded",
     "exempt_groups",
     "demoted_groups",
