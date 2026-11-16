@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/casonadams/ripwire-rs/compare/v0.7.1...v0.7.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **history:** skip shallow-boundary commits instead of failing the walk ([ebf3b12](https://github.com/casonadams/ripwire-rs/commit/ebf3b12904bd7e209cb4e38a936df1f8de923e0c))
+
 ## [0.7.1](https://github.com/casonadams/ripwire-rs/compare/v0.7.0...v0.7.1) (2026-11-13)
 
 
