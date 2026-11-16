@@ -121,16 +121,24 @@ fn oid(n: u32) -> gix::ObjectId {
     gix::ObjectId::from_hex(format!("{n:040x}").as_bytes()).unwrap()
 }
 
-/// Add commit `n` at `timestamp`; its followed parents are `parents`, and it is a merge with two.
+fn node(timestamp: i64, parents: &[u32], reported: bool) -> WalkNode {
+    WalkNode {
+        timestamp,
+        reported,
+        followed_parents: parents.iter().map(|&p| oid(p)).collect(),
+    }
+}
+
+/// Add commit `n` at `timestamp`; its followed parents are `parents`, and a merge (two parents) is
+/// not reported.
 fn add(graph: &mut Graph, n: u32, timestamp: i64, parents: &[u32]) {
-    graph.insert(
-        oid(n),
-        WalkNode {
-            timestamp,
-            is_merge: parents.len() > 1,
-            followed_parents: parents.iter().map(|&p| oid(p)).collect(),
-        },
-    );
+    graph.insert(oid(n), node(timestamp, parents, parents.len() < 2));
+}
+
+/// Add commit `n` that the walk follows through `parents` but does not report: a merge or a
+/// shallow-boundary commit.
+fn add_unreported(graph: &mut Graph, n: u32, timestamp: i64, parents: &[u32]) {
+    graph.insert(oid(n), node(timestamp, parents, false));
 }
 
 fn walk(graph: &Graph, head: u32, cutoff: Option<i64>) -> Vec<gix::ObjectId> {
@@ -194,27 +202,22 @@ fn test_root_commit_is_reported() {
 }
 
 #[test]
-fn test_only_followed_parents_are_walked() {
-    let mut g = Graph::new();
-    g.insert(
-        oid(3),
-        WalkNode {
-            timestamp: 300,
-            is_merge: true,
-            followed_parents: vec![oid(1)],
-        },
+fn test_unreported_commits_are_followed_and_absent_ids_skipped() {
+    let mut merge = Graph::new();
+    add_unreported(&mut merge, 3, 300, &[1]);
+    add(&mut merge, 2, 200, &[]);
+    add(&mut merge, 1, 100, &[]);
+    let mut boundary = Graph::new();
+    add(&mut boundary, 3, 300, &[2]);
+    add_unreported(&mut boundary, 2, 200, &[9]);
+    assert_eq!(
+        (
+            walk(&merge, 3, None),
+            walk(&boundary, 3, None),
+            walk(&boundary, 7, None)
+        ),
+        (vec![oid(1)], vec![oid(3)], vec![])
     );
-    add(&mut g, 2, 200, &[]);
-    add(&mut g, 1, 100, &[]);
-    assert_eq!(walk(&g, 3, None), vec![oid(1)]);
-}
-
-#[test]
-fn test_absent_parent_is_skipped_and_absent_head_is_empty() {
-    let mut g = Graph::new();
-    add(&mut g, 2, 200, &[9]);
-    assert_eq!(walk(&g, 2, None), vec![oid(2)]);
-    assert!(walk(&g, 7, None).is_empty());
 }
 
 #[test]

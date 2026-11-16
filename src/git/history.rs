@@ -277,8 +277,9 @@ pub fn file_commit_counts(commits: &[CommitInfo]) -> HashMap<String, u32> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WalkNode {
     pub timestamp: i64,
-    /// Whether the commit has two or more parents; merges are never reported.
-    pub is_merge: bool,
+    /// Whether the walk reports this commit. Merges are not reported, nor is a shallow-boundary
+    /// commit: its first parent is absent from the object store, so its changes cannot be diffed.
+    pub reported: bool,
     /// The parents the walk continues into from this commit.
     pub followed_parents: Vec<gix::ObjectId>,
 }
@@ -306,11 +307,23 @@ fn walk_node(
     };
     let commit = object.try_into_commit().map_err(walk_err)?;
     let timestamp = commit.time().map_err(walk_err)?.seconds;
+    let is_merge = commit.parent_ids().nth(1).is_some();
     Ok(Some(WalkNode {
         timestamp,
-        is_merge: commit.parent_ids().nth(1).is_some(),
+        reported: !is_merge && first_parent_present(repo, &commit)?,
         followed_parents: followed_parents(repo, &commit, prefix)?,
     }))
+}
+
+/// Whether `commit` is a root commit or its first parent is in the object store.
+fn first_parent_present(
+    repo: &gix::Repository,
+    commit: &gix::Commit<'_>,
+) -> Result<bool, GitHistoryError> {
+    let Some(parent) = commit.parent_ids().next() else {
+        return Ok(true);
+    };
+    Ok(repo.try_find_header(parent).map_err(walk_err)?.is_some())
 }
 
 /// The tree id `commit` holds at `prefix`; `Ok(None)` when the prefix is absent from that commit.
@@ -403,7 +416,7 @@ fn enqueue<E>(
     Ok(())
 }
 
-/// Walk history from `head`, newest first, and return the non-merge commits at or after
+/// Walk history from `head`, newest first, and return the reported commits at or after
 /// `cutoff_timestamp` (inclusive). `lookup` resolves a commit id: `Ok(None)` skips that id, `Err`
 /// aborts the walk. An absent `head` yields no commits.
 pub fn walk_metas<E>(
@@ -419,7 +432,7 @@ pub fn walk_metas<E>(
         if cutoff_timestamp.is_some_and(|cutoff| node.timestamp < cutoff) {
             break;
         }
-        if !node.is_merge {
+        if node.reported {
             metas.push(RawCommitMeta {
                 id,
                 timestamp: node.timestamp,
