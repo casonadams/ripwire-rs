@@ -31,12 +31,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.action != 'edited'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Fetch vendored grammars (pinned revisions)
         run: ./scripts/update-grammars.sh
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Install cargo-binstall
         uses: taiki-e/install-action@v2
@@ -54,12 +54,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.action != 'edited'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Fetch vendored grammars (pinned revisions)
         run: ./scripts/update-grammars.sh
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
@@ -74,7 +74,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nextest-results
           path: target/nextest/ci/junit.xml
